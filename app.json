@@ -54,6 +54,25 @@
             "useFrameworks": "static"
           }
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app needs access to your photos to report issues.",
+          "cameraPermission": "The app needs camera access to photograph issues."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "The app needs camera access to photograph issues."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "The app needs your location to find nearby service providers."
+        }
       ]
     ],
     "experiments": {
