@@ -69,9 +69,10 @@ DRAFT -> OPEN -> IN_PROGRESS -> CLOSED
 - **Messaging**: FCM for push notifications
 
 ### AI Pipeline
-- **Multimodal Analysis**: Gemini API (video/image/voice -> category + summary + urgency)
-- **Speech-to-Text**: Whisper or Google Speech API
+- **Multimodal Analysis**: Gemini API (image + text -> category + summary + urgency)
+- **Speech-to-Text**: Whisper or Google Speech API (for voice notes)
 - **Categorization**: AI-determined service categories (plumbing, electrical, HVAC, IT, etc.)
+- **Phase 1**: Image + text only. Video analysis deferred to later phase.
 
 ### Provider Communication
 - **WhatsApp Business API**: Send leads, receive responses
