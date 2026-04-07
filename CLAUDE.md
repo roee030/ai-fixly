@@ -1,52 +1,326 @@
-# Principles of Clean Software Design & Python Code
+# ai-fixly
 
-This document aggregates core architectural principles, design patterns, and specific rules for writing clean, maintainable, and robust Python code.
+> The Uber of home services. AI-powered platform connecting problems to solutions with minimum effort.
 
-## 1. Encapsulate What Varies
+## Product Overview
 
-**"Encapsulate What Varies"** is the foundational concept behind almost every design pattern (including the Single Responsibility Principle).
+Users report issues via video/photo/voice. AI analyzes & categorizes. Broadcasts to relevant local professionals. Professionals bid (price + ETA). Customer picks, chat opens.
 
-### Core Concept
-Identify the aspects of your application that vary and separate them from what stays the same.
-*   Gather together things that change for the same reasons.
-*   Separate things that change for different reasons.
-*   **Why?** So you can alter or extend the parts that vary without breaking the parts that don't.
+### Target Audiences
 
-### Perspectives
-1.  **Abstraction:** We purposely avoid understanding many details, concentrating instead on a few key features.
-2.  **Information Hiding:** Hide the process and logic. Modules should reveal only what is necessary (abstractions) and hide implementation details that might change.
-3.  **Encapsulation:** Bundle attributes and behaviors, exposing an interface while hiding the details.
+| Audience | Channel | Notes |
+|----------|---------|-------|
+| **Customer** | React Native app (Expo) | Zero-form experience. Push notifications. |
+| **Provider** | WhatsApp + Web App (Phase 1) | No app install. Gets lead link via WhatsApp. Submits bid via lightweight web view. |
 
-### Example: The Simple Factory Pattern
-*Refactoring code where object creation logic varies, but the usage logic remains constant.*
+### Service Request Lifecycle
 
-**The Problem:**
-A function `order_pancake` mixes the logic of *choosing* a pancake (which changes when the menu changes) with the logic of *preparing* it (which stays the same).
+```
+DRAFT -> OPEN -> IN_PROGRESS -> CLOSED
+               |      ^
+               v      |
+              PAUSED---
+```
 
-**The Solution:**
-Move the varying creation logic into a Factory class.
+- **DRAFT**: User capturing media, AI processing
+- **OPEN**: Broadcasting to providers, accepting bids
+- **IN_PROGRESS**: Provider selected, others notified job is taken
+- **PAUSED**: Temporarily stop broadcasting
+- **CLOSED**: Job completed or cancelled
 
-```python
-class SimplePancakeFactory:
-    def create_pancake(self, type: str) -> Pancake:
-        # This logic varies with menu updates
-        if type == 'classic': return ClassicPancake()
-        elif type == 'blueberry': return BlueberryPancake()
-        return ClassicPancake()
+### Screens (Customer App)
 
-def order_pancake(type: str) -> Pancake:
-    # This logic remains constant; it doesn't care which specific class is returned
-    pancake = factory.create_pancake(type)
-    pancake.cook()
-    pancake.plate()
-    return pancake
+1. **Hub** (Home) - Pulsing capture button (long-press to record/shoot). Active requests as mini-cards at bottom.
+2. **Live Capture** - Instagram Stories-style. Voice waveform visualization. Video/photo/voice modes.
+3. **AI Confirmation** - Clean summary of what AI understood. Edit or Send.
+4. **Bidding Wall** - Stacked animated cards. Each: name, price, ETA, Google rating.
+5. **Job Details** - Status timeline. Quick controls: stop bids, reopen, close.
+6. **Chat** - Direct messaging with selected provider.
+7. **History** - Past & closed requests.
+
+### Provider Web App (Phase 1)
+
+- Lightweight responsive web app (link sent via WhatsApp)
+- View request details (media, AI summary, location)
+- Submit bid (price + ETA)
+- Simple dashboard for active/past jobs
+
+---
+
+## Tech Stack
+
+### Core
+- **Framework**: Expo SDK (latest) + Expo Router (file-based routing)
+- **Language**: TypeScript (strict mode, no `any`)
+- **State**: Zustand (client) + TanStack Query (server state)
+- **Forms**: React Hook Form + Zod validation
+- **Styling**: NativeWind (Tailwind CSS for RN)
+- **Animations**: React Native Reanimated + Lottie
+
+### Backend (Firebase)
+- **Database**: Cloud Firestore (offline-first enabled)
+- **Auth**: Firebase Auth (Phone, Google, Apple)
+- **Storage**: Firebase Storage (media uploads)
+- **Functions**: Cloud Functions (bid routing, AI pipeline, WhatsApp integration)
+- **Analytics**: Firebase Analytics
+- **Crashlytics**: Firebase Crashlytics
+- **Remote Config**: Feature flags, dynamic values
+- **Performance**: Firebase Performance Monitoring
+- **Messaging**: FCM for push notifications
+
+### AI Pipeline
+- **Multimodal Analysis**: Gemini API (video/image/voice -> category + summary + urgency)
+- **Speech-to-Text**: Whisper or Google Speech API
+- **Categorization**: AI-determined service categories (plumbing, electrical, HVAC, IT, etc.)
+
+### Provider Communication
+- **WhatsApp Business API**: Send leads, receive responses
+- **SMS fallback**: Twilio (if WhatsApp unavailable)
+
+### Monitoring & Security
+- **Error Tracking**: Sentry (free tier)
+- **Logging**: Structured logger -> Sentry breadcrumbs
+- **Security Rules**: Firestore & Storage rules - locked down from day 1
+- **Input Validation**: Zod schemas on client AND Cloud Functions
+- **Rate Limiting**: Cloud Functions rate limiting on all endpoints
+- **Media Validation**: File type/size validation before upload
+
+### Build & Deploy
+- **Builds**: EAS Build
+- **OTA Updates**: EAS Update
+- **CI/CD**: GitHub Actions
+- **Testing**: Jest + RNTL (unit/integration), Maestro (E2E)
+
+---
+
+## Architecture Rules
+
+### File Size & Organization
+- **Max ~150 lines per file.** If larger, split.
+- **ALL magic numbers, colors, spacing, sizes, durations -> constants/ files.**
+- **ALL text strings -> centralizable** (prep for i18n).
+- Components = pure UI. No business logic inside.
+- One file = one export = one concern.
+
+### SOLID in Practice
+- **S** (Single Responsibility): One file = one concern. Component renders. Hook manages state. Service calls APIs.
+- **O** (Open/Closed): New service categories = new config entry, not new code paths.
+- **L** (Liskov): All request types share ServiceRequest interface.
+- **I** (Interface Segregation): Small focused interfaces: Biddable, Trackable, Notifiable.
+- **D** (Dependency Inversion): Services depend on interfaces. AI provider swappable. Notification channel swappable.
+
+### Project Structure
+```
+ai-fixly/
+  app/                          # Expo Router screens
+    (tabs)/                     # Tab navigator
+      index.tsx                 # Hub (Home)
+      history.tsx               # History
+      profile.tsx               # Profile/Settings
+    (auth)/                     # Auth flow
+    capture/                    # Live Capture flow
+    request/                    # AI confirm, Bidding, Job Details
+    chat/                       # Chat screen
+    _layout.tsx                 # Root layout
+  src/
+    components/                 # Reusable UI (small, pure)
+      ui/                       # Primitives (Button, Card, Input, Badge)
+      request/                  # Request-specific (BidCard, StatusTimeline)
+      capture/                  # Capture-specific (Waveform, CaptureButton)
+      layout/                   # Layout wrappers (ScreenContainer, Header)
+    hooks/                      # Custom hooks
+    services/                   # API/Firebase abstraction layer
+      ai/                       # AI analysis (interface + implementations)
+      auth/                     # Auth service
+      requests/                 # Service requests CRUD
+      bids/                     # Bidding service
+      chat/                     # Chat service
+      media/                    # Upload & processing
+      notifications/            # Push + WhatsApp
+    stores/                     # Zustand stores (small, focused)
+    types/                      # TypeScript interfaces & enums
+    constants/                  # ALL magic values live here
+      theme.ts                  # Colors, fonts, spacing, radii
+      layout.ts                 # Dimensions, breakpoints
+      animation.ts              # Durations, easings
+      limits.ts                 # Max file size, bid timeout, radius km
+      categories.ts             # Service categories config (dynamic)
+      status.ts                 # Request/bid status enums & labels
+    utils/                      # Pure helper functions
+    validators/                 # Zod schemas (shared client/server)
+    config/                     # Firebase config, env vars
+  functions/                    # Firebase Cloud Functions
+    src/
+      ai/                       # AI pipeline
+      bids/                     # Bid management
+      notifications/            # WhatsApp/Push dispatch
+      middleware/               # Auth, rate limiting, validation
+    package.json
+  web-provider/                 # Provider Web App (Phase 1)
+  firebase/
+    firestore.rules             # Security rules (strict)
+    storage.rules               # Media access rules
+  __tests__/                    # E2E tests (Maestro)
+```
+
+### Constants Pattern (MANDATORY)
+```typescript
+// constants/limits.ts - ALL numbers here
+export const LIMITS = {
+  MAX_VIDEO_DURATION_SEC: 60,
+  MAX_IMAGE_SIZE_MB: 10,
+  MAX_IMAGES_PER_REQUEST: 5,
+  BID_WINDOW_MINUTES: 30,
+  SEARCH_RADIUS_KM: 15,
+  MAX_ACTIVE_REQUESTS: 3,
+  MIN_BID_PRICE: 50,
+} as const;
+
+// constants/theme.ts - ALL visual values here
+export const COLORS = {
+  primary: '#6366F1',
+  background: '#0F0F1A',
+  surface: 'rgba(255, 255, 255, 0.06)',
+  text: '#FFFFFF',
+  textSecondary: 'rgba(255, 255, 255, 0.6)',
+  success: '#22C55E',
+  warning: '#F59E0B',
+  error: '#EF4444',
+} as const;
+
+export const SPACING = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 } as const;
+export const RADII = { sm: 8, md: 12, lg: 16, xl: 24, full: 9999 } as const;
+export const FONT_SIZES = { xs: 12, sm: 14, md: 16, lg: 20, xl: 28, xxl: 36 } as const;
+
+// constants/animation.ts - ALL timing here
+export const ANIMATION = {
+  FAST: 150,
+  NORMAL: 300,
+  SLOW: 500,
+  EASING: 'easeInOut',
+} as const;
+```
+
+### Naming Conventions
+- Components: PascalCase.tsx (BidCard.tsx)
+- Hooks: useCamelCase.ts (useServiceRequest.ts)
+- Services: camelCase.ts (aiAnalysis.ts)
+- Constants: camelCase.ts files, UPPER_SNAKE exports
+- Types: PascalCase no prefix/suffix (ServiceRequest, Bid, Provider)
+- Stores: useCamelCaseStore.ts (useRequestStore.ts)
+- Tests: Name.test.tsx co-located next to source
+
+### Service Abstraction (Dependency Inversion)
+```typescript
+// services/ai/types.ts - the interface
+export interface AIAnalysisService {
+  analyzeMedia(media: MediaInput): Promise<AnalysisResult>;
+}
+
+// services/ai/geminiAnalysis.ts - swappable implementation
+export class GeminiAnalysisService implements AIAnalysisService { ... }
 ```
 
 ---
 
-## 2. Favor Composition Over Inheritance
+## Testing Strategy
 
-**"HAS-A is better than IS-A."**
+### Test Pyramid
+- **Unit (70%)**: Pure functions, utils, validators, stores, hooks
+- **Integration (20%)**: Service + store interactions, screen flows with mocked services
+- **E2E (10%)**: Critical paths with Maestro (create request -> receive bid -> select)
+
+### What MUST Be Tested
+- Every Zod schema
+- Every state transition in request lifecycle
+- Every service method (mocked Firebase)
+- Bid calculation & sorting logic
+- AI result parsing & error handling
+- Auth flows (sign in, sign out, token refresh)
+- Deep link routing
+- Offline behavior (queue actions, sync on reconnect)
+
+### Test Co-location
+```
+src/services/bids/
+  bidService.ts
+  bidService.test.ts      # Right next to source
+```
+
+### Test on Every Change
+- Pre-commit: lint + type-check
+- PR: lint + type-check + unit tests + integration tests
+- Release: full E2E suite
+
+---
+
+## Security Checklist
+
+### Firebase Rules (Non-negotiable)
+- NO open reads/writes. Every collection has explicit rules.
+- Users read/write only their own data.
+- Providers read only requests matching their category + radius.
+- Bids are write-once (no editing after submit).
+- Media access requires auth token.
+
+### Input Validation (Double Layer)
+- Zod on every user input (client-side for UX)
+- Zod on every Cloud Function input (server-side for security) - NEVER trust client
+- File type whitelist: video/mp4, image/jpeg, image/png, audio/m4a
+- File size limits enforced in Storage rules AND client-side
+
+### Auth & Access
+- Phone/Google/Apple sign-in only (no email/password)
+- JWT verification on ALL Cloud Functions
+- Provider identity verified before accessing request data
+- Rate limiting on bid submission (max 1 per request per provider)
+- Rate limiting on request creation (max N per hour)
+
+### Data Protection
+- No PII in Firestore document IDs
+- GPS coordinates rounded for display (exact only for matched provider)
+- Chat messages encrypted at rest (Firestore default)
+- Media URLs are signed & time-limited (never permanent public URLs)
+- API keys in environment variables only, never in code
+
+---
+
+## Design Philosophy
+
+### Visual Identity
+- **Minimalist & Futuristic**: Dark theme default, glassmorphism, clean typography
+- **Feeling**: Talking to an intelligent assistant, not filling out forms
+- **Micro-interactions**: Every action has subtle feedback (haptics + animations)
+- **Accessibility**: Min touch targets 44px, sufficient contrast, screen reader labels
+
+### UX Principles
+- **Zero forms**: Capture, confirm, done. No typing unless editing AI output.
+- **Optimistic UI**: Show result immediately, sync in background.
+- **Always clear status**: User always knows what is happening.
+- **Respect provider time**: Clear, actionable leads. Easy bid submission. No spam.
+- **Think like the user**: Simple person, no tech background. Everything obvious.
+
+---
+
+## Git & Workflow
+- Branch: feat/, fix/, chore/, refactor/
+- Commits: conventional (feat:, fix:, chore:, test:)
+- PR into master
+
+## Environment
+- .env.example documents all required vars
+- Never commit .env
+- Firebase config via env vars
+
+## RTL & i18n
+- Hebrew (RTL) primary language
+- All strings externalizable
+- RTL-aware styles from day 1
+
+---
+
+# Appendix: Clean Software Design Principles
+
 # Principles of Clean Software Design & Python Code
 
 This document aggregates core architectural principles, design patterns, and specific rules for writing clean, maintainable, and robust Python code.
