@@ -1,11 +1,15 @@
 import "../global.css";
 import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, I18nManager } from 'react-native';
 import { Stack, router, useSegments } from 'expo-router';
 import * as Sentry from '@sentry/react-native';
 import { ErrorBoundary } from '../src/components/ui';
 import { useAuth } from '../src/hooks/useAuth';
 import { COLORS } from '../src/constants';
+
+// Enable RTL for Hebrew
+I18nManager.allowRTL(true);
+I18nManager.forceRTL(true);
 
 // Initialize Sentry (disabled if no DSN)
 Sentry.init({
