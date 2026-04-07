@@ -74,7 +74,7 @@ DRAFT -> OPEN -> IN_PROGRESS -> CLOSED
 - **Database**: Cloud Firestore (offline-first enabled)
 - **Auth**: Firebase Auth (Phone, Google, Apple)
 - **Storage**: Firebase Storage (media uploads)
-- **Functions**: Cloud Functions (bid routing, AI pipeline, WhatsApp integration)
+- **Functions**: Cloudflare Workers (WhatsApp webhook, Google Places, server-side logic) — NOT Firebase Cloud Functions (requires Blaze plan)
 - **Analytics**: Firebase Analytics
 - **Crashlytics**: Firebase Crashlytics
 - **Remote Config**: Feature flags, dynamic values
