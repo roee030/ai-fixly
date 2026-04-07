@@ -4,14 +4,21 @@
 
 ## Product Overview
 
-Users report issues via video/photo/voice. AI analyzes & categorizes. Broadcasts to relevant local professionals. Professionals bid (price + ETA). Customer picks, chat opens.
+Users report issues via photo/text. AI analyzes & categorizes. System finds relevant local professionals via Google Places API. Sends them WhatsApp with photos + description. Providers reply via WhatsApp (price + ETA). Customer sees responses in app, picks one. Details revealed only after selection.
 
 ### Target Audiences
 
 | Audience | Channel | Notes |
 |----------|---------|-------|
 | **Customer** | React Native app (Expo) | Zero-form experience. Push notifications. |
-| **Provider** | WhatsApp + Web App (Phase 1) | No app install. Gets lead link via WhatsApp. Submits bid via lightweight web view. |
+| **Provider** | WhatsApp only | No app, no website. Gets WhatsApp with job details, replies with price + ETA. |
+
+### Core Principle: We Are The Middleman
+
+- Customer never sees provider details until they choose one
+- Provider never sees customer details until chosen
+- All communication flows through us (WhatsApp API inbound/outbound)
+- We control the narrative, status, and matching
 
 ### Service Request Lifecycle
 
@@ -23,27 +30,33 @@ DRAFT -> OPEN -> IN_PROGRESS -> CLOSED
 ```
 
 - **DRAFT**: User capturing media, AI processing
-- **OPEN**: Broadcasting to providers, accepting bids
-- **IN_PROGRESS**: Provider selected, others notified job is taken
-- **PAUSED**: Temporarily stop broadcasting
+- **OPEN**: WhatsApp sent to providers (20-40km radius), collecting responses
+- **IN_PROGRESS**: Customer chose a provider, details revealed to both sides
+- **PAUSED**: Stop accepting new responses
 - **CLOSED**: Job completed or cancelled
 
 ### Screens (Customer App)
 
 1. **Hub** (Home) - Pulsing capture button (long-press to record/shoot). Active requests as mini-cards at bottom.
-2. **Live Capture** - Instagram Stories-style. Voice waveform visualization. Video/photo/voice modes.
+2. **Live Capture** - Camera/gallery for photos + text description.
 3. **AI Confirmation** - Clean summary of what AI understood. Edit or Send.
-4. **Bidding Wall** - Stacked animated cards. Each: name, price, ETA, Google rating.
-5. **Job Details** - Status timeline. Quick controls: stop bids, reopen, close.
-6. **Chat** - Direct messaging with selected provider.
-7. **History** - Past & closed requests.
+4. **Responses Wall** - Cards with: business name, Google rating, price, ETA. No phone/address yet.
+5. **Job Details** - Status timeline. Controls: pause, cancel, close.
+6. **History** - Past & closed requests.
 
-### Provider Web App (Phase 1)
+### Provider Flow (WhatsApp Only)
 
-- Lightweight responsive web app (link sent via WhatsApp)
-- View request details (media, AI summary, location)
-- Submit bid (price + ETA)
-- Simple dashboard for active/past jobs
+1. Provider receives WhatsApp: photos + AI summary + "מעוניין? השב עם מחיר וזמן הגעה"
+2. Provider replies: "350 שקל, אגיע בעוד שעה"
+3. AI parses response → extracts price + ETA → shows in customer app
+4. If customer picks them → Provider gets WhatsApp with customer name + address + phone
+
+### Finding Providers
+
+- **Google Places API**: Search by category + radius (20-40km from customer)
+- Extract: business name, phone, rating, address
+- Filter: must have WhatsApp-compatible phone number
+- Cache results in Firestore for future requests in same area
 
 ---
 
@@ -74,9 +87,14 @@ DRAFT -> OPEN -> IN_PROGRESS -> CLOSED
 - **Categorization**: AI-determined service categories (plumbing, electrical, HVAC, IT, etc.)
 - **Phase 1**: Image + text only. Video analysis deferred to later phase.
 
-### Provider Communication
-- **WhatsApp Business API**: Send leads, receive responses
-- **SMS fallback**: Twilio (if WhatsApp unavailable)
+### Provider Discovery
+- **Google Places API**: Find businesses by category + location radius
+- **Caching**: Store discovered providers in Firestore for reuse
+
+### Provider Communication (WhatsApp Only)
+- **WhatsApp Business API**: Send job details with photos, receive provider responses
+- **AI Response Parsing**: Parse WhatsApp replies to extract price + ETA
+- **No app/website for providers** — everything happens in WhatsApp
 
 ### Monitoring & Security
 - **Error Tracking**: Sentry (free tier)
@@ -157,7 +175,7 @@ ai-fixly/
       notifications/            # WhatsApp/Push dispatch
       middleware/               # Auth, rate limiting, validation
     package.json
-  web-provider/                 # Provider Web App (Phase 1)
+  # No provider web app — everything via WhatsApp
   firebase/
     firestore.rules             # Security rules (strict)
     storage.rules               # Media access rules
