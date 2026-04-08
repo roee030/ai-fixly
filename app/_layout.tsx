@@ -9,6 +9,7 @@ import { useAuth } from '../src/hooks/useAuth';
 import { COLORS } from '../src/constants';
 import { analyticsService } from '../src/services/analytics';
 import { useNotifications } from '../src/hooks/useNotifications';
+import { useAppStore } from '../src/stores/useAppStore';
 
 // Enable RTL for Hebrew
 I18nManager.allowRTL(true);
@@ -23,10 +24,20 @@ Sentry.init({
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, hasCompletedProfile } = useAuth();
   const segments = useSegments();
+  const { hasSeenOnboarding, loadOnboardingState } = useAppStore();
   useNotifications();
 
   useEffect(() => {
+    loadOnboardingState();
+  }, []);
+
+  useEffect(() => {
     if (isLoading) return;
+
+    if (!hasSeenOnboarding && !segments.includes('onboarding' as never)) {
+      router.replace('/onboarding');
+      return;
+    }
 
     const inAuthGroup = segments[0] === '(auth)';
 
@@ -38,7 +49,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       analyticsService.trackEvent('app_opened');
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, isLoading, hasCompletedProfile, segments]);
+  }, [isAuthenticated, isLoading, hasCompletedProfile, hasSeenOnboarding, segments]);
 
   if (isLoading) {
     return (
@@ -57,6 +68,7 @@ export default function RootLayout() {
       <ThemeProvider>
         <AuthGate>
           <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="onboarding" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tabs)" />
           </Stack>
