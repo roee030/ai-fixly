@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Image, Pressable, ActivityIndicator, StyleSheet, Alert } from 'react-native';
+import {
+  View, Text, ScrollView, Image, Pressable, ActivityIndicator,
+  StyleSheet, Alert, LayoutAnimation, Platform, UIManager,
+} from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
@@ -15,31 +18,30 @@ import { COLORS } from '../../src/constants';
 import type { ServiceRequest } from '../../src/services/requests';
 import type { Bid } from '../../src/services/bids';
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 export default function RequestDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [request, setRequest] = useState<ServiceRequest | null>(null);
   const [bids, setBids] = useState<Bid[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showDetails, setShowDetails] = useState(false);
   const [isLoadingBids, setIsLoadingBids] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, [id]);
+  useEffect(() => { loadData(); }, [id]);
 
   const loadData = async () => {
     if (!id) return;
     try {
       const req = await requestService.getRequest(id);
       setRequest(req);
-
       if (req) {
         setIsLoadingBids(true);
         const bidList = await bidService.getBidsForRequest(id);
         setBids(bidList);
-
-        // If no bids yet, create mock ones (for testing)
         if (bidList.length === 0 && req.status === 'open') {
-          logger.info('Creating mock bids for testing', { requestId: id });
           await bidService.createMockBids(id);
           const newBids = await bidService.getBidsForRequest(id);
           setBids(newBids);
@@ -47,36 +49,48 @@ export default function RequestDetailsScreen() {
         setIsLoadingBids(false);
       }
     } catch (err) {
-      logger.error('Load request failed', err as Error, { requestId: id });
+      logger.error('Load request failed', err as Error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const toggleDetails = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowDetails(!showDetails);
+  };
+
   const handleSelectBid = (bid: Bid) => {
     Alert.alert(
       'בחירת בעל מקצוע',
-      `לבחור את ${bid.providerName} ב-${bid.price} ש"ח?`,
+      `לבחור את ${bid.providerName}?\n${bid.price} ש"ח - ${bid.availability}`,
       [
         { text: 'ביטול', style: 'cancel' },
         {
-          text: 'אשר',
+          text: 'אשר בחירה',
           onPress: async () => {
-            try {
-              await bidService.selectBid(id, bid.id);
-              analyticsService.trackEvent('bid_selected', {
-                requestId: id,
-                bidId: bid.id,
-                price: bid.price,
-              });
-              loadData();
-            } catch (err) {
-              logger.error('Select bid failed', err as Error);
-            }
+            await bidService.selectBid(id, bid.id);
+            analyticsService.trackEvent('bid_selected', { requestId: id, price: bid.price });
+            loadData();
           },
         },
       ]
     );
+  };
+
+  const handleCancelSelection = async () => {
+    if (!request) return;
+    Alert.alert('ביטול בחירה', 'לבטל את בעל המקצוע שנבחר ולחזור להצעות?', [
+      { text: 'לא', style: 'cancel' },
+      {
+        text: 'כן, בטל',
+        style: 'destructive',
+        onPress: async () => {
+          await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
+          loadData();
+        },
+      },
+    ]);
   };
 
   const handlePause = async () => {
@@ -94,9 +108,17 @@ export default function RequestDetailsScreen() {
 
   const handleClose = async () => {
     if (!request) return;
-    await requestService.updateStatus(request.id, REQUEST_STATUS.CLOSED);
-    analyticsService.trackEvent('request_closed', { requestId: request.id });
-    loadData();
+    Alert.alert('סגירת בקשה', 'לסגור את הבקשה?', [
+      { text: 'ביטול', style: 'cancel' },
+      {
+        text: 'סגור',
+        onPress: async () => {
+          await requestService.updateStatus(request.id, REQUEST_STATUS.CLOSED);
+          analyticsService.trackEvent('request_closed', { requestId: request.id });
+          loadData();
+        },
+      },
+    ]);
   };
 
   if (isLoading) {
@@ -119,7 +141,7 @@ export default function RequestDetailsScreen() {
     );
   }
 
-  const categoryLabel = SERVICE_CATEGORIES.find((c) => c.id === request.aiAnalysis.category)?.labelHe || request.aiAnalysis.category;
+  const categories = request.aiAnalysis.categories || [(request.aiAnalysis as any).category || 'general'];
   const statusLabel = REQUEST_STATUS_LABELS[request.status];
   const selectedBid = bids.find((b) => b.id === (request as any).selectedBidId);
 
@@ -128,81 +150,134 @@ export default function RequestDetailsScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Header */}
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.replace('/(tabs)/requests')} style={{ marginRight: 16 }}>
+          <Pressable onPress={() => router.back()} style={{ marginRight: 12 }}>
             <Ionicons name="arrow-back" size={24} color={COLORS.text} />
           </Pressable>
-          <Text style={styles.headerTitle}>פרטי בקשה</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>
+              {categories.map((c: string) => SERVICE_CATEGORIES.find((sc) => sc.id === c)?.labelHe || c).join(' / ')}
+            </Text>
+          </View>
           <View style={[styles.statusBadge, {
             backgroundColor: request.status === 'open' ? COLORS.success + '20' :
                             request.status === 'in_progress' ? COLORS.warning + '20' :
-                            COLORS.primary + '20'
+                            request.status === 'paused' ? COLORS.info + '20' :
+                            COLORS.textTertiary + '20'
           }]}>
             <Text style={[styles.statusText, {
               color: request.status === 'open' ? COLORS.success :
                      request.status === 'in_progress' ? COLORS.warning :
-                     COLORS.primary
+                     request.status === 'paused' ? COLORS.info :
+                     COLORS.textTertiary
             }]}>
               {statusLabel?.he || request.status}
             </Text>
           </View>
         </View>
 
-        {/* Images */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          {request.media.map((m, i) => (
-            <Image key={i} source={{ uri: m.downloadUrl }} style={styles.mediaThumb} />
-          ))}
-        </ScrollView>
+        {/* Collapsible request details */}
+        <Pressable onPress={toggleDetails} style={styles.detailsToggle}>
+          <Text style={styles.detailsToggleText}>פרטי הבקשה</Text>
+          <Ionicons
+            name={showDetails ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={COLORS.textSecondary}
+          />
+        </Pressable>
 
-        {/* AI Summary */}
-        <View style={styles.summaryCard}>
-          <View style={styles.categoryBadge}>
-            <Text style={{ color: COLORS.text, fontWeight: 'bold', fontSize: 13 }}>{categoryLabel}</Text>
+        {showDetails && (
+          <View style={styles.detailsContent}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              {request.media.map((m, i) => (
+                <Image key={i} source={{ uri: m.downloadUrl }} style={styles.mediaThumb} />
+              ))}
+            </ScrollView>
+            <Text style={styles.summaryText}>{request.aiAnalysis.summary}</Text>
+            {request.textDescription && (
+              <Text style={styles.descText}>"{request.textDescription}"</Text>
+            )}
           </View>
-          <Text style={styles.summaryText}>{request.aiAnalysis.summary}</Text>
-        </View>
+        )}
 
-        {/* Selected provider */}
+        {/* Selected provider card */}
         {selectedBid && (
           <View style={styles.selectedCard}>
-            <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.selectedName}>{selectedBid.providerName}</Text>
-              <Text style={styles.selectedPrice}>{selectedBid.price} ש"ח - {selectedBid.availability}</Text>
+            <View style={styles.selectedHeader}>
+              <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
+              <Text style={styles.selectedTitle}>בעל מקצוע נבחר</Text>
+            </View>
+            <Text style={styles.selectedName}>{selectedBid.providerName}</Text>
+            <View style={styles.selectedDetails}>
+              <View style={styles.detailChip}>
+                <Ionicons name="pricetag" size={14} color={COLORS.primary} />
+                <Text style={styles.detailChipText}>{selectedBid.price} ש"ח</Text>
+              </View>
+              <View style={styles.detailChip}>
+                <Ionicons name="time" size={14} color={COLORS.success} />
+                <Text style={styles.detailChipText}>{selectedBid.availability}</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+              <Pressable
+                style={[styles.actionChip, { backgroundColor: COLORS.primary }]}
+                onPress={() => Alert.alert('צ\'אט', 'צ\'אט עם בעל מקצוע - בקרוב!')}
+              >
+                <Ionicons name="chatbubble" size={16} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>שלח הודעה</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.actionChip, { backgroundColor: COLORS.error + '20' }]}
+                onPress={handleCancelSelection}
+              >
+                <Text style={{ color: COLORS.error, fontWeight: '600', fontSize: 13 }}>בטל בחירה</Text>
+              </Pressable>
             </View>
           </View>
         )}
 
-        {/* Bids section */}
+        {/* Bids list */}
         {!selectedBid && (
           <>
-            <Text style={styles.sectionTitle}>
-              {bids.length > 0 ? `הצעות מחיר (${bids.length})` : 'ממתין להצעות...'}
-            </Text>
+            <View style={styles.bidsHeader}>
+              <Text style={styles.bidsTitle}>
+                {bids.length > 0 ? 'הצעות מחיר' : 'ממתין להצעות...'}
+              </Text>
+              {bids.length > 0 && (
+                <View style={styles.bidCount}>
+                  <Text style={styles.bidCountText}>{bids.length}</Text>
+                </View>
+              )}
+            </View>
 
             {isLoadingBids ? (
               <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
+            ) : bids.length === 0 ? (
+              <View style={styles.emptyBids}>
+                <Ionicons name="hourglass-outline" size={48} color={COLORS.textTertiary} />
+                <Text style={styles.emptyBidsText}>בעלי מקצוע מקבלים את הבקשה שלך...</Text>
+              </View>
             ) : (
               bids.map((bid) => (
                 <Pressable key={bid.id} onPress={() => handleSelectBid(bid)} style={styles.bidCard}>
-                  <View style={styles.bidHeader}>
+                  <View style={styles.bidTop}>
                     <Text style={styles.bidName}>{bid.providerName}</Text>
                     <View style={styles.ratingBadge}>
                       <Ionicons name="star" size={12} color={COLORS.warning} />
                       <Text style={styles.ratingText}>{bid.rating}</Text>
                     </View>
                   </View>
-                  <View style={styles.bidDetails}>
-                    <View style={styles.bidDetail}>
-                      <Ionicons name="pricetag-outline" size={16} color={COLORS.primary} />
-                      <Text style={styles.bidDetailText}>{bid.price} ש"ח</Text>
+                  <View style={styles.bidInfo}>
+                    <View style={styles.bidInfoItem}>
+                      <Text style={styles.bidPrice}>{bid.price}</Text>
+                      <Text style={styles.bidPriceLabel}>ש"ח</Text>
                     </View>
-                    <View style={styles.bidDetail}>
+                    <View style={styles.bidDivider} />
+                    <View style={styles.bidInfoItem}>
                       <Ionicons name="time-outline" size={16} color={COLORS.success} />
-                      <Text style={styles.bidDetailText}>{bid.availability}</Text>
+                      <Text style={styles.bidAvail}>{bid.availability}</Text>
                     </View>
                   </View>
-                  <Text style={styles.bidCta}>לחץ לבחירה</Text>
+                  <Text style={styles.bidSelectHint}>לחץ לבחירה</Text>
                 </Pressable>
               ))
             )}
@@ -211,153 +286,82 @@ export default function RequestDetailsScreen() {
       </ScrollView>
 
       {/* Bottom actions */}
-      <View style={styles.bottomBar}>
-        {request.status === REQUEST_STATUS.OPEN && (
-          <Button title="השהה בקשה" onPress={handlePause} variant="secondary" />
-        )}
-        {request.status === REQUEST_STATUS.PAUSED && (
-          <Button title="חדש בקשה" onPress={handleResume} />
-        )}
-        {request.status !== REQUEST_STATUS.CLOSED && (
+      {request.status !== REQUEST_STATUS.CLOSED && !selectedBid && (
+        <View style={styles.bottomBar}>
+          {request.status === REQUEST_STATUS.OPEN && (
+            <Button title="השהה בקשה" onPress={handlePause} variant="secondary" />
+          )}
+          {request.status === REQUEST_STATUS.PAUSED && (
+            <Button title="חדש הצעות" onPress={handleResume} />
+          )}
           <Button title="סגור בקשה" onPress={handleClose} variant="ghost" />
-        )}
-      </View>
+        </View>
+      )}
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 20,
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 16 },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.text },
+  statusBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  statusText: { fontSize: 11, fontWeight: 'bold' },
+  detailsToggle: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: COLORS.surface, borderRadius: 12, padding: 14,
+    marginBottom: 8, borderWidth: 1, borderColor: COLORS.border,
   },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    flex: 1,
+  detailsToggleText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
+  detailsContent: {
+    backgroundColor: COLORS.surface, borderRadius: 12, padding: 16,
+    marginBottom: 16, borderWidth: 1, borderColor: COLORS.border,
   },
-  statusBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  mediaThumb: {
-    width: 100,
-    height: 100,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  summaryCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  categoryBadge: {
-    backgroundColor: COLORS.primaryDark,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    alignSelf: 'flex-start',
-    marginBottom: 12,
-  },
-  summaryText: {
-    color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 22,
-  },
+  mediaThumb: { width: 80, height: 80, borderRadius: 8, marginRight: 8 },
+  summaryText: { color: COLORS.text, fontSize: 14, lineHeight: 20, marginBottom: 8 },
+  descText: { color: COLORS.textSecondary, fontSize: 13, fontStyle: 'italic' },
   selectedCard: {
-    backgroundColor: COLORS.success + '15',
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: COLORS.success + '30',
+    backgroundColor: COLORS.success + '10', borderRadius: 16, padding: 16,
+    marginBottom: 16, borderWidth: 1, borderColor: COLORS.success + '30',
   },
-  selectedName: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: 'bold',
+  selectedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  selectedTitle: { color: COLORS.success, fontSize: 14, fontWeight: '600' },
+  selectedName: { color: COLORS.text, fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
+  selectedDetails: { flexDirection: 'row', gap: 12 },
+  detailChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
   },
-  selectedPrice: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-    marginTop: 2,
+  detailChipText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  actionChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 16,
+  bidsHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 8 },
+  bidsTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, flex: 1 },
+  bidCount: {
+    backgroundColor: COLORS.primary, borderRadius: 12,
+    width: 24, height: 24, alignItems: 'center', justifyContent: 'center',
   },
+  bidCountText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
+  emptyBids: { alignItems: 'center', paddingVertical: 40, gap: 12 },
+  emptyBidsText: { color: COLORS.textSecondary, fontSize: 14 },
   bidCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface, borderRadius: 16, padding: 16,
+    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
   },
-  bidHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  bidName: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '600',
-    flex: 1,
-  },
+  bidTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  bidName: { color: COLORS.text, fontSize: 16, fontWeight: '600', flex: 1 },
   ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.warning + '20',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: COLORS.warning + '20', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
   },
-  ratingText: {
-    color: COLORS.warning,
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  bidDetails: {
-    flexDirection: 'row',
-    gap: 20,
-    marginBottom: 8,
-  },
-  bidDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  bidDetailText: {
-    color: COLORS.text,
-    fontSize: 14,
-  },
-  bidCta: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  bottomBar: {
-    paddingVertical: 12,
-    gap: 8,
-  },
+  ratingText: { color: COLORS.warning, fontSize: 12, fontWeight: 'bold' },
+  bidInfo: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  bidInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  bidPrice: { color: COLORS.primary, fontSize: 22, fontWeight: 'bold' },
+  bidPriceLabel: { color: COLORS.primary, fontSize: 14 },
+  bidDivider: { width: 1, height: 24, backgroundColor: COLORS.border },
+  bidAvail: { color: COLORS.text, fontSize: 14 },
+  bidSelectHint: { color: COLORS.primary, fontSize: 12, textAlign: 'center', marginTop: 8, fontWeight: '600' },
+  bottomBar: { paddingVertical: 12, gap: 8 },
 });
