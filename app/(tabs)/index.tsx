@@ -71,86 +71,109 @@ export default function HubScreen() {
     );
   };
 
-  if (isLoading) {
-    return (
-      <ScreenContainer>
+  return (
+    <ScreenContainer>
+      {/* Header */}
+      <View style={styles.headerRow}>
+        <Ionicons name="notifications-outline" size={24} color={COLORS.textTertiary} />
+        <Text style={styles.logo}>ai-fixly</Text>
+      </View>
+
+      {/* Hero CTA Card */}
+      <View style={styles.heroCard}>
+        <Text style={styles.heroTitle}>{'צריך עזרה בתיקון?'}</Text>
+        <Text style={styles.heroSubtitle}>
+          {'דווח על תקלה בתוך שניות בעזרת בינה מלאכותית'}
+        </Text>
+
+        <Pressable onPress={() => router.push('/capture')} style={styles.ctaButton}>
+          <Ionicons name="camera-outline" size={32} color="#FFFFFF" />
+          <Text style={styles.ctaText}>{'דווח על תקלה'}</Text>
+        </Pressable>
+      </View>
+
+      {/* Requests list */}
+      {isLoading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-      </ScreenContainer>
-    );
-  }
-
-  if (requests.length === 0) {
-    return (
-      <ScreenContainer>
-        <View style={styles.emptyState}>
-          <Pressable onPress={() => router.push('/capture')} style={styles.bigCaptureButton}>
-            <Ionicons name="scan-outline" size={48} color="#FFFFFF" />
-          </Pressable>
-          <Text style={styles.emptyTitle}>{'יש תקלה? צריך שירות?'}</Text>
-          <Text style={styles.emptySubtitle}>
-            {'צלם תמונה של הבעיה ובעלי מקצוע באזור שלך יחזרו אליך עם הצעות'}
-          </Text>
-        </View>
-      </ScreenContainer>
-    );
-  }
-
-  return (
-    <ScreenContainer>
-      <Text style={styles.header}>{'הקריאות שלי'}</Text>
-      <FlatList
-        data={requests}
-        renderItem={renderRequest}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 120 }}
-        showsVerticalScrollIndicator={false}
-      />
+      ) : requests.length > 0 ? (
+        <>
+          <Text style={styles.sectionTitle}>{'קריאות אחרונות'}</Text>
+          <FlatList
+            data={requests}
+            renderItem={renderRequest}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingBottom: 120 }}
+            showsVerticalScrollIndicator={false}
+          />
+        </>
+      ) : null}
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginTop: 16,
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
     marginBottom: 24,
   },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
+  logo: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.primary,
   },
-  bigCaptureButton: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: COLORS.primary,
+  heroCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 28,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 32,
-    elevation: 12,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
+    marginBottom: 28,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  emptyTitle: {
-    fontSize: 22,
+  heroTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: 'center',
   },
-  emptySubtitle: {
-    fontSize: 15,
+  heroSubtitle: {
+    fontSize: 14,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  ctaButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    elevation: 6,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  ctaText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 16,
   },
   requestCard: {
     backgroundColor: COLORS.surface,

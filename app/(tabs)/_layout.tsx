@@ -6,7 +6,7 @@ import { COLORS } from '../../src/constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const CAPTURE_SIZE = 62;
-const NOTCH_SIZE = CAPTURE_SIZE + 20;
+const NOTCH_SIZE = CAPTURE_SIZE + 36;
 const TAB_HEIGHT = 60;
 
 export default function TabLayout() {
