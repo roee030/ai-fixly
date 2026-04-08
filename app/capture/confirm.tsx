@@ -46,7 +46,7 @@ export default function ConfirmScreen() {
         textDescription: description,
       });
       setAnalysis(result);
-      analyticsService.trackEvent('ai_analysis_completed', { category: result.category });
+      analyticsService.trackEvent('ai_analysis_completed', { category: result.categories[0] });
     } catch (err: any) {
       console.error('AI analysis error:', err);
       analyticsService.trackEvent('ai_analysis_failed');
@@ -95,7 +95,7 @@ export default function ConfirmScreen() {
       // Broadcast to providers (async, don't block navigation)
       broadcastToProviders({
         requestId: request.id,
-        category: analysis.category,
+        categories: analysis.categories,
         proFacingSummary: analysis.proFacingSummary,
         mediaUrls: uploadedMedia.map((m) => m.downloadUrl),
         location,
@@ -161,7 +161,7 @@ export default function ConfirmScreen() {
         <View style={{ backgroundColor: COLORS.surface, borderRadius: 16, padding: 20, marginBottom: 16 }}>
           <View style={{ marginBottom: 16 }}>
             <View style={{ backgroundColor: COLORS.primaryDark, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, alignSelf: 'flex-start' }}>
-              <Text style={{ color: COLORS.text, fontWeight: 'bold' }}>{getCategoryLabel(analysis?.category || '')}</Text>
+              <Text style={{ color: COLORS.text, fontWeight: 'bold' }}>{getCategoryLabel(analysis?.categories?.[0] || '')}</Text>
             </View>
           </View>
           <Text style={{ color: COLORS.text, fontSize: 16, lineHeight: 24 }}>{analysis?.summary}</Text>

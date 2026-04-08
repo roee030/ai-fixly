@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIAnalysisService, AIAnalysisInput, AIAnalysisResult } from './types';
 import { ANALYSIS_PROMPT } from './prompts';
 
-const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
+const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'];
 
 class GeminiAnalysisService implements AIAnalysisService {
   private genAI: GoogleGenerativeAI;
@@ -37,7 +37,7 @@ class GeminiAnalysisService implements AIAnalysisService {
         const parsed = JSON.parse(jsonStr);
 
         return {
-          category: parsed.category || 'general',
+          categories: Array.isArray(parsed.categories) ? parsed.categories : [parsed.categories || parsed.category || 'general'],
           summary: parsed.summary || '',
           proFacingSummary: parsed.proFacingSummary || '',
           urgency: parsed.urgency || 'medium',

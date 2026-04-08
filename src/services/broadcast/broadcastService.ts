@@ -5,25 +5,31 @@ import { analyticsService } from '../analytics';
 
 interface BroadcastInput {
   requestId: string;
-  category: string;
+  categories: string[];
   proFacingSummary: string;
   mediaUrls: string[];
   location: { lat: number; lng: number };
 }
 
 export async function broadcastToProviders(input: BroadcastInput): Promise<number> {
-  const { requestId, category, proFacingSummary, mediaUrls, location } = input;
+  const { requestId, categories, proFacingSummary, mediaUrls, location } = input;
 
-  logger.info('Broadcasting request to providers', { requestId, category });
+  logger.info('Broadcasting request to providers', { requestId, category: categories.join(',') });
 
-  const providers = await providerService.findProviders(
-    category,
-    location.lat,
-    location.lng
-  );
+  // Find providers for ALL categories, deduplicate by id
+  type Provider = Awaited<ReturnType<typeof providerService.findProviders>>[number];
+  const providers: Provider[] = [];
+  for (const cat of categories) {
+    const found = await providerService.findProviders(cat, location.lat, location.lng);
+    found.forEach((p) => {
+      if (!providers.find((existing) => existing.id === p.id)) {
+        providers.push(p);
+      }
+    });
+  }
 
   if (providers.length === 0) {
-    logger.warn('No providers found', { category, lat: location.lat.toString(), lng: location.lng.toString() });
+    logger.warn('No providers found', { category: categories.join(','), lat: location.lat.toString(), lng: location.lng.toString() });
     return 0;
   }
 

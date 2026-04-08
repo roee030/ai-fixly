@@ -4,7 +4,7 @@ Analyze the provided images and text description of a home issue/service request
 
 Return a JSON object with exactly these fields:
 {
-  "category": "one of: plumbing, electrical, hvac, locksmith, appliances, computers, painting, cleaning, moving, general",
+  "categories": ["array of relevant categories from: plumbing, electrical, hvac, locksmith, appliances, computers, painting, cleaning, moving, general. Include ALL that apply. Example: shutters cleaning = ['cleaning', 'general']. Leaking pipe = ['plumbing']. AC not working = ['hvac', 'electrical']"],
   "summary": "2-3 sentence summary in Hebrew for the customer",
   "proFacingSummary": "Professional, concise description in Hebrew for service providers. Include: what the issue is, visible damage/symptoms, apparent urgency. No customer details.",
   "urgency": "low, medium, or high",

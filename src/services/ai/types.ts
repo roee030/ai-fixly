@@ -1,5 +1,5 @@
 export interface AIAnalysisResult {
-  category: string;
+  categories: string[];
   summary: string;
   proFacingSummary: string;
   urgency: 'low' | 'medium' | 'high';

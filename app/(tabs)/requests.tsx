@@ -32,7 +32,7 @@ export default function RequestsScreen() {
 
   const renderRequest = ({ item }: { item: ServiceRequest }) => {
     const statusLabel = REQUEST_STATUS_LABELS[item.status];
-    const categoryIcon = SERVICE_CATEGORIES.find((c) => c.id === item.aiAnalysis?.category);
+    const categoryIcon = SERVICE_CATEGORIES.find((c) => c.id === item.aiAnalysis?.categories?.[0]);
 
     return (
       <Pressable
@@ -48,7 +48,7 @@ export default function RequestsScreen() {
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.requestTitle}>
-            {getCategoryLabel(item.aiAnalysis?.category || '')}
+            {getCategoryLabel(item.aiAnalysis?.categories?.[0] || '')}
           </Text>
           <Text style={styles.requestSummary} numberOfLines={1}>
             {item.aiAnalysis?.summary || ''}
