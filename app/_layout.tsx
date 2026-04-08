@@ -4,6 +4,7 @@ import { ActivityIndicator, View, I18nManager } from 'react-native';
 import { Stack, router, useSegments } from 'expo-router';
 import * as Sentry from '@sentry/react-native';
 import { ErrorBoundary } from '../src/components/ui';
+import { ThemeProvider } from '../src/contexts/ThemeContext';
 import { useAuth } from '../src/hooks/useAuth';
 import { COLORS } from '../src/constants';
 import { analyticsService } from '../src/services/analytics';
@@ -51,12 +52,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <ErrorBoundary>
-      <AuthGate>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
-      </AuthGate>
+      <ThemeProvider>
+        <AuthGate>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(tabs)" />
+          </Stack>
+        </AuthGate>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
