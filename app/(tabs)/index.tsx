@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Text, Pressable, FlatList, ActivityIndicator } from 'react-native';
+import { useState, useCallback } from 'react';
+import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
-import { requestService } from '../../src/services/requests';
 import { useAuthStore } from '../../src/stores/useAuthStore';
+import { requestService } from '../../src/services/requests';
 import { REQUEST_STATUS_LABELS } from '../../src/constants/status';
 import { SERVICE_CATEGORIES } from '../../src/constants/categories';
 import { COLORS } from '../../src/constants';
@@ -16,56 +16,54 @@ export default function HubScreen() {
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadRequests = async () => {
-    if (!user) return;
-    try {
-      const data = await requestService.getUserRequests(user.uid);
-      setRequests(data);
-    } catch (err) {
-      console.error('Load requests error:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useFocusEffect(
     useCallback(() => {
-      loadRequests();
+      if (!user) return;
+      setIsLoading(true);
+      requestService.getUserRequests(user.uid)
+        .then(setRequests)
+        .catch(() => {})
+        .finally(() => setIsLoading(false));
     }, [user])
   );
 
-  const handleCapture = () => {
-    router.push('/capture');
-  };
-
-  const getCategoryLabel = (categoryId: string) => {
-    return SERVICE_CATEGORIES.find((c) => c.id === categoryId)?.labelHe || categoryId;
-  };
+  const getCategoryLabel = (id: string) =>
+    SERVICE_CATEGORIES.find((c) => c.id === id)?.labelHe || id;
 
   const renderRequest = ({ item }: { item: ServiceRequest }) => {
     const statusLabel = REQUEST_STATUS_LABELS[item.status];
+    const categoryIcon = SERVICE_CATEGORIES.find((c) => c.id === item.aiAnalysis?.category);
+
     return (
       <Pressable
         onPress={() => router.push({ pathname: '/request/[id]', params: { id: item.id } })}
-        style={{
-          backgroundColor: COLORS.surface,
-          borderRadius: 12,
-          padding: 16,
-          marginBottom: 12,
-          flexDirection: 'row',
-          alignItems: 'center',
-        }}
+        style={styles.requestCard}
       >
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.text, fontSize: 16, fontWeight: 'bold', marginBottom: 4 }}>
+        <View style={styles.requestIcon}>
+          <Ionicons
+            name={(categoryIcon?.icon as any) || 'build'}
+            size={22}
+            color={COLORS.primary}
+          />
+        </View>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.requestTitle}>
             {getCategoryLabel(item.aiAnalysis?.category || '')}
           </Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 14 }} numberOfLines={1}>
-            {item.aiAnalysis?.summary || 'טוען...'}
+          <Text style={styles.requestSummary} numberOfLines={1}>
+            {item.aiAnalysis?.summary || ''}
           </Text>
         </View>
-        <View style={{ backgroundColor: COLORS.primary + '20', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
-          <Text style={{ color: COLORS.primary, fontSize: 12, fontWeight: 'bold' }}>
+        <View style={[styles.statusBadge, {
+          backgroundColor: item.status === 'open' ? COLORS.success + '20' :
+                          item.status === 'in_progress' ? COLORS.warning + '20' :
+                          COLORS.textTertiary + '20'
+        }]}>
+          <Text style={[styles.statusText, {
+            color: item.status === 'open' ? COLORS.success :
+                   item.status === 'in_progress' ? COLORS.warning :
+                   COLORS.textTertiary
+          }]}>
             {statusLabel?.he || item.status}
           </Text>
         </View>
@@ -73,61 +71,123 @@ export default function HubScreen() {
     );
   };
 
-  return (
-    <ScreenContainer>
-      <Text style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.text, marginTop: 16, marginBottom: 24 }}>
-        שלום{user?.phoneNumber ? ` 👋` : ''}
-      </Text>
-
-      {isLoading ? (
+  if (isLoading) {
+    return (
+      <ScreenContainer>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
-      ) : requests.length === 0 ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Pressable
-            onPress={handleCapture}
-            style={{
-              width: 80, height: 80, borderRadius: 40,
-              alignItems: 'center', justifyContent: 'center',
-              marginBottom: 24, backgroundColor: COLORS.primary,
-            }}
-          >
-            <Ionicons name="add" size={36} color="#FFFFFF" />
+      </ScreenContainer>
+    );
+  }
+
+  if (requests.length === 0) {
+    return (
+      <ScreenContainer>
+        <View style={styles.emptyState}>
+          <Pressable onPress={() => router.push('/capture')} style={styles.bigCaptureButton}>
+            <Ionicons name="scan-outline" size={48} color="#FFFFFF" />
           </Pressable>
-          <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 8, color: COLORS.text }}>
-            יש תקלה?
-          </Text>
-          <Text style={{ fontSize: 14, textAlign: 'center', color: COLORS.textSecondary }}>
-            לחץ על הכפתור כדי לצלם או להעלות תמונה של הבעיה
+          <Text style={styles.emptyTitle}>{'יש תקלה? צריך שירות?'}</Text>
+          <Text style={styles.emptySubtitle}>
+            {'צלם תמונה של הבעיה ובעלי מקצוע באזור שלך יחזרו אליך עם הצעות'}
           </Text>
         </View>
-      ) : (
-        <FlatList
-          data={requests}
-          renderItem={renderRequest}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 100 }}
-        />
-      )}
+      </ScreenContainer>
+    );
+  }
 
-      {/* Floating action button when there are requests */}
-      {requests.length > 0 && (
-        <Pressable
-          onPress={handleCapture}
-          style={{
-            position: 'absolute', bottom: 24, right: 24,
-            width: 56, height: 56, borderRadius: 28,
-            backgroundColor: COLORS.primary,
-            alignItems: 'center', justifyContent: 'center',
-            elevation: 4,
-            shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.25, shadowRadius: 4,
-          }}
-        >
-          <Ionicons name="add" size={28} color="#FFFFFF" />
-        </Pressable>
-      )}
+  return (
+    <ScreenContainer>
+      <Text style={styles.header}>{'הקריאות שלי'}</Text>
+      <FlatList
+        data={requests}
+        renderItem={renderRequest}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+      />
     </ScreenContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  header: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  bigCaptureButton: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+    elevation: 12,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+  },
+  emptyTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  requestCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  requestIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  requestSummary: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  statusBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginLeft: 8,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+});
