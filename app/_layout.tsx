@@ -8,6 +8,7 @@ import { ThemeProvider } from '../src/contexts/ThemeContext';
 import { useAuth } from '../src/hooks/useAuth';
 import { COLORS } from '../src/constants';
 import { analyticsService } from '../src/services/analytics';
+import { useNotifications } from '../src/hooks/useNotifications';
 
 // Enable RTL for Hebrew
 I18nManager.allowRTL(true);
@@ -22,6 +23,7 @@ Sentry.init({
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, hasCompletedProfile } = useAuth();
   const segments = useSegments();
+  useNotifications();
 
   useEffect(() => {
     if (isLoading) return;
