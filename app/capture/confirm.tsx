@@ -101,10 +101,7 @@ export default function ConfirmScreen() {
         location,
       }).catch((err) => logger.error('Broadcast failed', err as Error));
 
-      router.replace({
-        pathname: '/request/[id]',
-        params: { id: request.id },
-      });
+      router.replace('/capture/sent');
     } catch (err: any) {
       console.error('Send error:', err);
       setHasError(true);
