@@ -2,6 +2,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIAnalysisService, AIAnalysisInput, AIAnalysisResult } from './types';
 import { ANALYSIS_PROMPT } from './prompts';
 
+const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
+
 class GeminiAnalysisService implements AIAnalysisService {
   private genAI: GoogleGenerativeAI;
 
@@ -14,37 +16,42 @@ class GeminiAnalysisService implements AIAnalysisService {
   }
 
   async analyzeIssue(input: AIAnalysisInput): Promise<AIAnalysisResult> {
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
     const imageParts = input.images.map((base64) => ({
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: base64,
-      },
+      inlineData: { mimeType: 'image/jpeg' as const, data: base64 },
     }));
 
     const textPart = input.textDescription
       ? `\n\nCustomer description: "${input.textDescription}"`
       : '';
 
-    const result = await model.generateContent([
-      ANALYSIS_PROMPT + textPart,
-      ...imageParts,
-    ]);
+    const content = [ANALYSIS_PROMPT + textPart, ...imageParts];
 
-    const response = result.response;
-    const text = response.text();
+    // Try models in order, fallback on 503/429
+    let lastError: Error | null = null;
+    for (const modelName of MODELS) {
+      try {
+        const model = this.genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(content);
+        const text = result.response.text();
+        const jsonStr = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const parsed = JSON.parse(jsonStr);
 
-    const jsonStr = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonStr);
+        return {
+          category: parsed.category || 'general',
+          summary: parsed.summary || '',
+          proFacingSummary: parsed.proFacingSummary || '',
+          urgency: parsed.urgency || 'medium',
+          confidence: parsed.confidence || 0.5,
+        };
+      } catch (err: any) {
+        lastError = err;
+        const is503or429 = err?.message?.includes('503') || err?.message?.includes('429');
+        if (is503or429) continue;
+        throw err;
+      }
+    }
 
-    return {
-      category: parsed.category || 'general',
-      summary: parsed.summary || '',
-      proFacingSummary: parsed.proFacingSummary || '',
-      urgency: parsed.urgency || 'medium',
-      confidence: parsed.confidence || 0.5,
-    };
+    throw lastError || new Error('All AI models failed');
   }
 }
 
