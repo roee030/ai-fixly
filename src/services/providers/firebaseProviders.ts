@@ -31,7 +31,8 @@ class FirebaseProviderService implements ProviderService {
       where('isActive', '==', true)
     );
 
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocs(q).catch(() => null);
+    if (!snapshot) return [];
     const providers: Provider[] = [];
 
     snapshot.docs.forEach((d) => {

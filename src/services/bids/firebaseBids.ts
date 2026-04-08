@@ -25,26 +25,29 @@ class FirebaseBidService implements BidService {
   private db = getFirestore();
 
   async getBidsForRequest(requestId: string): Promise<Bid[]> {
+    // Simple query without orderBy to avoid requiring composite index
     const q = query(
       collection(this.db, 'bids'),
-      where('requestId', '==', requestId),
-      orderBy('createdAt', 'desc')
+      where('requestId', '==', requestId)
     );
     const snapshot = await getDocs(q).catch(() => null);
     if (!snapshot) return [];
-    return snapshot.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        requestId: data.requestId,
-        providerName: data.providerName,
-        providerPhone: data.providerPhone,
-        price: data.price,
-        availability: data.availability,
-        rating: data.rating,
-        createdAt: data.createdAt?.toDate() || new Date(),
-      };
-    });
+    // Sort client-side instead
+    return snapshot.docs
+      .map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          requestId: data.requestId,
+          providerName: data.providerName,
+          providerPhone: data.providerPhone,
+          price: data.price,
+          availability: data.availability,
+          rating: data.rating,
+          createdAt: data.createdAt?.toDate() || new Date(),
+        };
+      })
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   async createMockBids(requestId: string): Promise<void> {
