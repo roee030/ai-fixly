@@ -81,10 +81,17 @@ class FirebaseRequestService implements RequestService {
 
   async updateStatus(requestId: string, status: string): Promise<void> {
     const docRef = doc(this.db, this.collectionName, requestId);
-    await updateDoc(docRef, {
+    const update: Record<string, any> = {
       status,
       updatedAt: serverTimestamp(),
-    });
+    };
+
+    // Clear selection when going back to OPEN
+    if (status === REQUEST_STATUS.OPEN) {
+      update.selectedBidId = null;
+    }
+
+    await updateDoc(docRef, update);
   }
 }
 
