@@ -28,8 +28,9 @@ export default function PhoneScreen() {
         pathname: '/(auth)/verify',
         params: { verificationId, phone },
       });
-    } catch (err) {
-      setError('שליחת קוד האימות נכשלה. נסה שוב.');
+    } catch (err: any) {
+      console.error('Phone auth error:', err);
+      setError(err?.message || 'שליחת קוד האימות נכשלה. נסה שוב.');
     } finally {
       setIsLoading(false);
     }

@@ -73,7 +73,7 @@ DRAFT -> OPEN -> IN_PROGRESS -> CLOSED
 ### Backend (Firebase)
 - **Database**: Cloud Firestore (offline-first enabled)
 - **Auth**: Firebase Auth (Phone, Google, Apple)
-- **Storage**: Firebase Storage (media uploads)
+- **Storage**: Supabase Storage (media uploads — free 1GB, no credit card)
 - **Functions**: Cloudflare Workers (WhatsApp webhook, Google Places, server-side logic) — NOT Firebase Cloud Functions (requires Blaze plan)
 - **Analytics**: Firebase Analytics
 - **Crashlytics**: Firebase Crashlytics

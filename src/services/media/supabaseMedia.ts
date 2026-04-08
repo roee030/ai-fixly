@@ -1,6 +1,5 @@
 import { supabase } from '../../config/supabase';
 import { MediaService, UploadedMedia } from './types';
-import { File } from 'expo-file-system/next';
 import { decode } from 'base64-arraybuffer';
 
 const BUCKET_NAME = 'request-media';
@@ -14,19 +13,32 @@ class SupabaseMediaService implements MediaService {
     const filename = `${Date.now()}.jpg`;
     const storagePath = `${requestId}/${filename}`;
 
-    // Read file as blob using fetch (works with all URI types)
-    const response = await fetch(uri);
-    const blob = await response.blob();
+    // Use FormData for React Native file upload
+    const formData = new FormData();
+    formData.append('file', {
+      uri,
+      name: filename,
+      type: 'image/jpeg',
+    } as any);
 
-    const { data, error } = await supabase.storage
-      .from(BUCKET_NAME)
-      .upload(storagePath, blob, {
-        contentType: 'image/jpeg',
-        upsert: false,
-      });
+    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (error) {
-      throw new Error(`Upload failed: ${error.message}`);
+    const response = await fetch(
+      `${supabaseUrl}/storage/v1/object/${BUCKET_NAME}/${storagePath}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${supabaseKey}`,
+          apikey: supabaseKey!,
+        },
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Upload failed: ${errorText}`);
     }
 
     const { data: urlData } = supabase.storage
