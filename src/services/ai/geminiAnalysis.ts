@@ -14,7 +14,7 @@ class GeminiAnalysisService implements AIAnalysisService {
   }
 
   async analyzeIssue(input: AIAnalysisInput): Promise<AIAnalysisResult> {
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const imageParts = input.images.map((base64) => ({
       inlineData: {
