@@ -220,7 +220,7 @@ export default function RequestDetailsScreen() {
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
               <Pressable
                 style={[styles.actionChip, { backgroundColor: COLORS.primary }]}
-                onPress={() => Alert.alert('צ\'אט', 'צ\'אט עם בעל מקצוע - בקרוב!')}
+                onPress={() => router.push({ pathname: '/chat/[requestId]', params: { requestId: id } })}
               >
                 <Ionicons name="chatbubble" size={16} color="#FFF" />
                 <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>שלח הודעה</Text>
