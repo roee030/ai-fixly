@@ -25,7 +25,7 @@ export default function ConfirmScreen() {
   const [analysis, setAnalysis] = useState<AIAnalysisResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [error, setError] = useState('');
+  const [hasError, setHasError] = useState(false);
 
   const imageUris: string[] = JSON.parse(images || '[]');
 
@@ -35,7 +35,7 @@ export default function ConfirmScreen() {
 
   const analyzeImages = async () => {
     setIsLoading(true);
-    setError('');
+    setHasError(false);
     try {
       const base64Array: string[] = JSON.parse(base64Images || '[]');
       const result = await aiAnalysisService.analyzeIssue({
@@ -45,7 +45,7 @@ export default function ConfirmScreen() {
       setAnalysis(result);
     } catch (err: any) {
       console.error('AI analysis error:', err);
-      setError(err?.message || 'ניתוח AI נכשל. נסה שוב.');
+      setHasError(true);
     } finally {
       setIsLoading(false);
     }
@@ -54,7 +54,6 @@ export default function ConfirmScreen() {
   const handleConfirmAndSend = async () => {
     if (!analysis || !user) return;
     setIsSending(true);
-    setError('');
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       let location = { lat: 32.0853, lng: 34.7818, address: 'Tel Aviv, Israel' };
@@ -93,8 +92,7 @@ export default function ConfirmScreen() {
       });
     } catch (err: any) {
       console.error('Send error:', err);
-      setError(err?.message || 'שליחה נכשלה. נסה שוב.');
-    } finally {
+      setHasError(true);
       setIsSending(false);
     }
   };
@@ -103,38 +101,34 @@ export default function ConfirmScreen() {
     return SERVICE_CATEGORIES.find((c) => c.id === categoryId)?.labelHe || categoryId;
   };
 
-  const getUrgencyInfo = (urgency: string) => {
-    const map: Record<string, { text: string; color: string }> = {
-      low: { text: 'לא דחוף', color: COLORS.success },
-      medium: { text: 'בינוני', color: COLORS.warning },
-      high: { text: 'דחוף', color: COLORS.error },
-    };
-    return map[urgency] || map.medium;
-  };
-
   if (isLoading) {
     return (
       <ScreenContainer>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={{ color: COLORS.text, marginTop: 16, fontSize: 18 }}>AI מנתח את הבעיה...</Text>
+          <Text style={{ color: COLORS.text, marginTop: 16, fontSize: 18 }}>מנתח את הבעיה...</Text>
         </View>
       </ScreenContainer>
     );
   }
 
-  if (error && !analysis) {
+  if (hasError && !analysis) {
     return (
       <ScreenContainer>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: COLORS.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>{error}</Text>
+          <Text style={{ color: COLORS.text, fontSize: 18, textAlign: 'center', marginBottom: 8 }}>
+            לא הצלחנו לנתח את הבעיה
+          </Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
+            נסה שוב או צלם תמונה ברורה יותר
+          </Text>
           <Button title="נסה שוב" onPress={analyzeImages} />
+          <View style={{ height: 12 }} />
+          <Button title="חזור" onPress={() => router.back()} variant="ghost" />
         </View>
       </ScreenContainer>
     );
   }
-
-  const urgency = getUrgencyInfo(analysis?.urgency || 'medium');
 
   return (
     <ScreenContainer>
@@ -150,18 +144,21 @@ export default function ConfirmScreen() {
         </ScrollView>
 
         <View style={{ backgroundColor: COLORS.surface, borderRadius: 16, padding: 20, marginBottom: 16 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
-            <View style={{ backgroundColor: COLORS.primaryDark, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+          <View style={{ marginBottom: 16 }}>
+            <View style={{ backgroundColor: COLORS.primaryDark, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, alignSelf: 'flex-start' }}>
               <Text style={{ color: COLORS.text, fontWeight: 'bold' }}>{getCategoryLabel(analysis?.category || '')}</Text>
-            </View>
-            <View style={{ backgroundColor: urgency.color + '20', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
-              <Text style={{ color: urgency.color, fontWeight: 'bold' }}>{urgency.text}</Text>
             </View>
           </View>
           <Text style={{ color: COLORS.text, fontSize: 16, lineHeight: 24 }}>{analysis?.summary}</Text>
         </View>
 
-        {error && <Text style={{ color: COLORS.error, marginBottom: 16 }}>{error}</Text>}
+        {hasError && (
+          <View style={{ backgroundColor: COLORS.error + '15', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <Text style={{ color: COLORS.text, textAlign: 'center' }}>
+              משהו השתבש. נסה שוב.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       <View style={{ paddingVertical: 16, gap: 12 }}>

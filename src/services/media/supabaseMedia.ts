@@ -1,6 +1,6 @@
 import { supabase } from '../../config/supabase';
 import { MediaService, UploadedMedia } from './types';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system/next';
 import { decode } from 'base64-arraybuffer';
 
 const BUCKET_NAME = 'request-media';
@@ -14,14 +14,13 @@ class SupabaseMediaService implements MediaService {
     const filename = `${Date.now()}.jpg`;
     const storagePath = `${requestId}/${filename}`;
 
-    // Read file as base64
-    const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+    // Read file as blob using fetch (works with all URI types)
+    const response = await fetch(uri);
+    const blob = await response.blob();
 
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(storagePath, decode(base64), {
+      .upload(storagePath, blob, {
         contentType: 'image/jpeg',
         upsert: false,
       });
@@ -44,7 +43,7 @@ class SupabaseMediaService implements MediaService {
   async getSignedUrl(storagePath: string): Promise<string> {
     const { data, error } = await supabase.storage
       .from(BUCKET_NAME)
-      .createSignedUrl(storagePath, 3600); // 1 hour expiry
+      .createSignedUrl(storagePath, 3600);
 
     if (error) {
       throw new Error(`Signed URL failed: ${error.message}`);
