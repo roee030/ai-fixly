@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Pressable, FlatList, StyleSheet } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
+import { RequestListSkeleton } from '../../src/components/ui';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { requestService } from '../../src/services/requests';
 import { REQUEST_STATUS_LABELS } from '../../src/constants/status';
@@ -76,8 +77,8 @@ export default function RequestsScreen() {
       <Text style={styles.header}>הקריאות שלי</Text>
 
       {isLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={{ flex: 1, paddingTop: 8 }}>
+          <RequestListSkeleton />
         </View>
       ) : requests.length === 0 ? (
         <View style={styles.emptyState}>
@@ -94,6 +95,15 @@ export default function RequestsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
+          refreshing={isLoading}
+          onRefresh={() => {
+            if (!user) return;
+            setIsLoading(true);
+            requestService.getUserRequests(user.uid)
+              .then(setRequests)
+              .catch(() => {})
+              .finally(() => setIsLoading(false));
+          }}
         />
       )}
     </ScreenContainer>
