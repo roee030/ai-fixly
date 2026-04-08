@@ -6,7 +6,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
-import { Button } from '../../src/components/ui';
+import { Button, AnimatedCard, AnimatedPressable } from '../../src/components/ui';
 import { requestService } from '../../src/services/requests';
 import { bidService } from '../../src/services/bids';
 import { analyticsService } from '../../src/services/analytics';
@@ -271,28 +271,30 @@ export default function RequestDetailsScreen() {
                 <Text style={styles.emptyBidsText}>בעלי מקצוע מקבלים את הבקשה שלך...</Text>
               </View>
             ) : (
-              bids.map((bid) => (
-                <Pressable key={bid.id} onPress={() => handleSelectBid(bid)} style={styles.bidCard}>
-                  <View style={styles.bidTop}>
-                    <Text style={styles.bidName}>{bid.providerName}</Text>
-                    <View style={styles.ratingBadge}>
-                      <Ionicons name="star" size={12} color={COLORS.warning} />
-                      <Text style={styles.ratingText}>{bid.rating}</Text>
+              bids.map((bid, index) => (
+                <AnimatedCard key={bid.id} index={index}>
+                  <AnimatedPressable onPress={() => handleSelectBid(bid)} style={styles.bidCard}>
+                    <View style={styles.bidTop}>
+                      <Text style={styles.bidName}>{bid.providerName}</Text>
+                      <View style={styles.ratingBadge}>
+                        <Ionicons name="star" size={12} color={COLORS.warning} />
+                        <Text style={styles.ratingText}>{bid.rating}</Text>
+                      </View>
                     </View>
-                  </View>
-                  <View style={styles.bidInfo}>
-                    <View style={styles.bidInfoItem}>
-                      <Text style={styles.bidPrice}>{bid.price}</Text>
-                      <Text style={styles.bidPriceLabel}>ש"ח</Text>
+                    <View style={styles.bidInfo}>
+                      <View style={styles.bidInfoItem}>
+                        <Text style={styles.bidPrice}>{bid.price}</Text>
+                        <Text style={styles.bidPriceLabel}>ש"ח</Text>
+                      </View>
+                      <View style={styles.bidDivider} />
+                      <View style={styles.bidInfoItem}>
+                        <Ionicons name="time-outline" size={16} color={COLORS.success} />
+                        <Text style={styles.bidAvail}>{bid.availability}</Text>
+                      </View>
                     </View>
-                    <View style={styles.bidDivider} />
-                    <View style={styles.bidInfoItem}>
-                      <Ionicons name="time-outline" size={16} color={COLORS.success} />
-                      <Text style={styles.bidAvail}>{bid.availability}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.bidSelectHint}>לחץ לבחירה</Text>
-                </Pressable>
+                    <Text style={styles.bidSelectHint}>לחץ לבחירה</Text>
+                  </AnimatedPressable>
+                </AnimatedCard>
               ))
             )}
           </>
