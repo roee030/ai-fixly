@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, Image, Pressable, TextInput, ScrollView,
   StyleSheet, Modal, Dimensions,
@@ -9,6 +9,7 @@ import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { useImagePicker } from '../../src/hooks/useImagePicker';
 import { COLORS, LIMITS } from '../../src/constants';
+import { analyticsService } from '../../src/services/analytics';
 
 const THUMB_SIZE = 72;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -19,6 +20,16 @@ export default function CaptureScreen() {
   const [description, setDescription] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    analyticsService.trackEvent('capture_started');
+  }, []);
+
+  useEffect(() => {
+    if (images.length > 0) {
+      analyticsService.trackEvent('capture_photo_added', { count: images.length });
+    }
+  }, [images.length]);
 
   const handleAnalyze = async () => {
     if (!hasImages) return;

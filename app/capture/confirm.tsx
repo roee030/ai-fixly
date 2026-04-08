@@ -10,6 +10,7 @@ import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
 import { REQUEST_STATUS } from '../../src/constants/status';
 import { SERVICE_CATEGORIES } from '../../src/constants/categories';
+import { analyticsService } from '../../src/services/analytics';
 import * as Location from 'expo-location';
 
 import type { AIAnalysisResult } from '../../src/services/ai';
@@ -43,8 +44,10 @@ export default function ConfirmScreen() {
         textDescription: description,
       });
       setAnalysis(result);
+      analyticsService.trackEvent('ai_analysis_completed', { category: result.category });
     } catch (err: any) {
       console.error('AI analysis error:', err);
+      analyticsService.trackEvent('ai_analysis_failed');
       setHasError(true);
     } finally {
       setIsLoading(false);
@@ -85,6 +88,7 @@ export default function ConfirmScreen() {
       });
 
       await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
+      analyticsService.trackEvent('request_created', { requestId: request.id });
 
       router.replace({
         pathname: '/request/[id]',

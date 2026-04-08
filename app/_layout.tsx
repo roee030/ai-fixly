@@ -6,6 +6,7 @@ import * as Sentry from '@sentry/react-native';
 import { ErrorBoundary } from '../src/components/ui';
 import { useAuth } from '../src/hooks/useAuth';
 import { COLORS } from '../src/constants';
+import { analyticsService } from '../src/services/analytics';
 
 // Enable RTL for Hebrew
 I18nManager.allowRTL(true);
@@ -31,6 +32,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     } else if (isAuthenticated && !hasCompletedProfile && segments[1] !== 'profile-setup') {
       router.replace('/(auth)/profile-setup');
     } else if (isAuthenticated && hasCompletedProfile && inAuthGroup) {
+      analyticsService.trackEvent('app_opened');
       router.replace('/(tabs)');
     }
   }, [isAuthenticated, isLoading, hasCompletedProfile, segments]);
