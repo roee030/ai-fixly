@@ -2,6 +2,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
+import { FadeInView, AnimatedPressable } from '../../src/components/ui';
 import { COLORS } from '../../src/constants';
 
 export default function HomeScreen() {
@@ -9,39 +10,43 @@ export default function HomeScreen() {
     <ScreenContainer>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {/* Hero section */}
-        <View style={styles.heroSection}>
-          <Text style={styles.heroTitle}>{'צריך עזרה בתיקון?'}</Text>
-          <Text style={styles.heroSubtitle}>
-            {'דווח על תקלה בתוך שניות\nבעזרת בינה מלאכותית'}
-          </Text>
-        </View>
+        <FadeInView>
+          <View style={styles.heroSection}>
+            <Text style={styles.heroTitle}>{'צריך עזרה בתיקון?'}</Text>
+            <Text style={styles.heroSubtitle}>
+              {'דווח על תקלה בתוך שניות\nבעזרת בינה מלאכותית'}
+            </Text>
+          </View>
+        </FadeInView>
 
         {/* Main CTA */}
-        <Pressable onPress={() => router.push('/capture')} style={styles.ctaCard}>
+        <AnimatedPressable onPress={() => router.push('/capture')} style={styles.ctaCard}>
           <View style={styles.ctaIconWrap}>
             <Ionicons name="camera-outline" size={36} color="#FFFFFF" />
           </View>
           <Text style={styles.ctaText}>דווח על תקלה</Text>
-        </Pressable>
+        </AnimatedPressable>
 
         {/* Quick info cards */}
-        <View style={styles.infoRow}>
-          <View style={styles.infoCard}>
-            <Ionicons name="flash-outline" size={24} color={COLORS.warning} />
-            <Text style={styles.infoTitle}>מהיר</Text>
-            <Text style={styles.infoDesc}>תשובות תוך דקות</Text>
+        <FadeInView delay={200}>
+          <View style={styles.infoRow}>
+            <View style={styles.infoCard}>
+              <Ionicons name="flash-outline" size={24} color={COLORS.warning} />
+              <Text style={styles.infoTitle}>מהיר</Text>
+              <Text style={styles.infoDesc}>תשובות תוך דקות</Text>
+            </View>
+            <View style={styles.infoCard}>
+              <Ionicons name="shield-checkmark-outline" size={24} color={COLORS.success} />
+              <Text style={styles.infoTitle}>אמין</Text>
+              <Text style={styles.infoDesc}>בעלי מקצוע מאומתים</Text>
+            </View>
+            <View style={styles.infoCard}>
+              <Ionicons name="pricetag-outline" size={24} color={COLORS.info} />
+              <Text style={styles.infoTitle}>הוגן</Text>
+              <Text style={styles.infoDesc}>השוואת מחירים</Text>
+            </View>
           </View>
-          <View style={styles.infoCard}>
-            <Ionicons name="shield-checkmark-outline" size={24} color={COLORS.success} />
-            <Text style={styles.infoTitle}>אמין</Text>
-            <Text style={styles.infoDesc}>בעלי מקצוע מאומתים</Text>
-          </View>
-          <View style={styles.infoCard}>
-            <Ionicons name="pricetag-outline" size={24} color={COLORS.info} />
-            <Text style={styles.infoTitle}>הוגן</Text>
-            <Text style={styles.infoDesc}>השוואת מחירים</Text>
-          </View>
-        </View>
+        </FadeInView>
       </ScrollView>
     </ScreenContainer>
   );
