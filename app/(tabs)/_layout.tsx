@@ -1,5 +1,5 @@
 import { View, Pressable, StyleSheet, Platform, Text } from 'react-native';
-import { Tabs, router } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ErrorBoundary } from '../../src/components/ui';
 import { COLORS } from '../../src/constants';
@@ -18,7 +18,8 @@ export default function TabLayout() {
         screenOptions={{ headerShown: false }}
         tabBar={(props) => <CustomTabBar {...props} bottomInset={insets.bottom} />}
       >
-        <Tabs.Screen name="index" options={{ title: 'הקריאות שלי' }} />
+        <Tabs.Screen name="requests" options={{ title: 'הקריאות שלי' }} />
+        <Tabs.Screen name="index" options={{ title: 'בית' }} />
         <Tabs.Screen name="profile" options={{ title: 'פרופיל' }} />
       </Tabs>
     </ErrorBoundary>
@@ -27,20 +28,23 @@ export default function TabLayout() {
 
 function CustomTabBar({ state, navigation, bottomInset }: any) {
   const isLeftFocused = state.index === 0;
-  const isRightFocused = state.index === 1;
+  const isCenterFocused = state.index === 1;
+  const isRightFocused = state.index === 2;
 
   return (
     <View style={[styles.wrapper, { paddingBottom: Math.max(bottomInset, 0) }]}>
-      {/* The raised capture button — sits above the bar */}
+      {/* Raised center button */}
       <View style={styles.captureContainer}>
-        <Pressable onPress={() => router.push('/capture')} style={styles.captureButton}>
-          <Ionicons name="scan-outline" size={28} color="#FFFFFF" />
+        <Pressable
+          onPress={() => navigation.navigate(state.routes[1].name)}
+          style={[styles.captureButton, isCenterFocused && styles.captureButtonActive]}
+        >
+          <Ionicons name="home" size={26} color="#FFFFFF" />
         </Pressable>
       </View>
 
-      {/* The tab bar with a visual notch gap in the middle */}
       <View style={styles.barRow}>
-        {/* Left side */}
+        {/* Left - My Requests */}
         <View style={styles.barSide}>
           <Pressable
             onPress={() => navigation.navigate(state.routes[0].name)}
@@ -51,22 +55,19 @@ function CustomTabBar({ state, navigation, bottomInset }: any) {
               size={24}
               color={isLeftFocused ? COLORS.primary : COLORS.textTertiary}
             />
-            <Text style={[
-              styles.tabLabel,
-              { color: isLeftFocused ? COLORS.primary : COLORS.textTertiary }
-            ]}>
+            <Text style={[styles.tabLabel, { color: isLeftFocused ? COLORS.primary : COLORS.textTertiary }]}>
               הקריאות שלי
             </Text>
           </Pressable>
         </View>
 
-        {/* Center gap — the notch space */}
+        {/* Center gap */}
         <View style={styles.notchGap} />
 
-        {/* Right side */}
+        {/* Right - Profile */}
         <View style={styles.barSide}>
           <Pressable
-            onPress={() => navigation.navigate(state.routes[1].name)}
+            onPress={() => navigation.navigate(state.routes[2].name)}
             style={styles.tabItem}
           >
             <Ionicons
@@ -74,10 +75,7 @@ function CustomTabBar({ state, navigation, bottomInset }: any) {
               size={24}
               color={isRightFocused ? COLORS.primary : COLORS.textTertiary}
             />
-            <Text style={[
-              styles.tabLabel,
-              { color: isRightFocused ? COLORS.primary : COLORS.textTertiary }
-            ]}>
+            <Text style={[styles.tabLabel, { color: isRightFocused ? COLORS.primary : COLORS.textTertiary }]}>
               פרופיל
             </Text>
           </Pressable>
@@ -120,16 +118,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -(CAPTURE_SIZE / 2),
     left: '50%',
-    marginLeft: -(CAPTURE_SIZE / 2),
+    marginLeft: -(CAPTURE_SIZE + 8) / 2,
     zIndex: 10,
-    // White ring behind the button to create the "notch" illusion
     width: CAPTURE_SIZE + 8,
     height: CAPTURE_SIZE + 8,
     borderRadius: (CAPTURE_SIZE + 8) / 2,
     backgroundColor: COLORS.backgroundLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: -(CAPTURE_SIZE + 8) / 2,
   },
   captureButton: {
     width: CAPTURE_SIZE,
@@ -145,9 +141,10 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.4,
         shadowRadius: 10,
       },
-      android: {
-        elevation: 10,
-      },
+      android: { elevation: 10 },
     }),
+  },
+  captureButtonActive: {
+    backgroundColor: COLORS.primaryDark,
   },
 });

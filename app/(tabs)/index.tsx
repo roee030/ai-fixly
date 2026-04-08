@@ -1,216 +1,123 @@
-import { useState, useCallback } from 'react';
-import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
-import { useAuthStore } from '../../src/stores/useAuthStore';
-import { requestService } from '../../src/services/requests';
-import { REQUEST_STATUS_LABELS } from '../../src/constants/status';
-import { SERVICE_CATEGORIES } from '../../src/constants/categories';
 import { COLORS } from '../../src/constants';
 
-import type { ServiceRequest } from '../../src/services/requests';
-
-export default function HubScreen() {
-  const user = useAuthStore((s) => s.user);
-  const [requests, setRequests] = useState<ServiceRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!user) return;
-      setIsLoading(true);
-      requestService.getUserRequests(user.uid)
-        .then(setRequests)
-        .catch(() => {})
-        .finally(() => setIsLoading(false));
-    }, [user])
-  );
-
-  const getCategoryLabel = (id: string) =>
-    SERVICE_CATEGORIES.find((c) => c.id === id)?.labelHe || id;
-
-  const renderRequest = ({ item }: { item: ServiceRequest }) => {
-    const statusLabel = REQUEST_STATUS_LABELS[item.status];
-    const categoryIcon = SERVICE_CATEGORIES.find((c) => c.id === item.aiAnalysis?.category);
-
-    return (
-      <Pressable
-        onPress={() => router.push({ pathname: '/request/[id]', params: { id: item.id } })}
-        style={styles.requestCard}
-      >
-        <View style={styles.requestIcon}>
-          <Ionicons
-            name={(categoryIcon?.icon as any) || 'build'}
-            size={22}
-            color={COLORS.primary}
-          />
-        </View>
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.requestTitle}>
-            {getCategoryLabel(item.aiAnalysis?.category || '')}
-          </Text>
-          <Text style={styles.requestSummary} numberOfLines={1}>
-            {item.aiAnalysis?.summary || ''}
-          </Text>
-        </View>
-        <View style={[styles.statusBadge, {
-          backgroundColor: item.status === 'open' ? COLORS.success + '20' :
-                          item.status === 'in_progress' ? COLORS.warning + '20' :
-                          COLORS.textTertiary + '20'
-        }]}>
-          <Text style={[styles.statusText, {
-            color: item.status === 'open' ? COLORS.success :
-                   item.status === 'in_progress' ? COLORS.warning :
-                   COLORS.textTertiary
-          }]}>
-            {statusLabel?.he || item.status}
-          </Text>
-        </View>
-      </Pressable>
-    );
-  };
-
+export default function HomeScreen() {
   return (
     <ScreenContainer>
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <Ionicons name="notifications-outline" size={24} color={COLORS.textTertiary} />
-        <Text style={styles.logo}>ai-fixly</Text>
-      </View>
-
-      {/* Hero CTA Card */}
-      <View style={styles.heroCard}>
-        <Text style={styles.heroTitle}>{'צריך עזרה בתיקון?'}</Text>
-        <Text style={styles.heroSubtitle}>
-          {'דווח על תקלה בתוך שניות בעזרת בינה מלאכותית'}
-        </Text>
-
-        <Pressable onPress={() => router.push('/capture')} style={styles.ctaButton}>
-          <Ionicons name="camera-outline" size={32} color="#FFFFFF" />
-          <Text style={styles.ctaText}>{'דווח על תקלה'}</Text>
-        </Pressable>
-      </View>
-
-      {/* Requests list */}
-      {isLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        {/* Hero section */}
+        <View style={styles.heroSection}>
+          <Text style={styles.heroTitle}>{'צריך עזרה בתיקון?'}</Text>
+          <Text style={styles.heroSubtitle}>
+            {'דווח על תקלה בתוך שניות\nבעזרת בינה מלאכותית'}
+          </Text>
         </View>
-      ) : requests.length > 0 ? (
-        <>
-          <Text style={styles.sectionTitle}>{'קריאות אחרונות'}</Text>
-          <FlatList
-            data={requests}
-            renderItem={renderRequest}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ paddingBottom: 120 }}
-            showsVerticalScrollIndicator={false}
-          />
-        </>
-      ) : null}
+
+        {/* Main CTA */}
+        <Pressable onPress={() => router.push('/capture')} style={styles.ctaCard}>
+          <View style={styles.ctaIconWrap}>
+            <Ionicons name="camera-outline" size={36} color="#FFFFFF" />
+          </View>
+          <Text style={styles.ctaText}>דווח על תקלה</Text>
+        </Pressable>
+
+        {/* Quick info cards */}
+        <View style={styles.infoRow}>
+          <View style={styles.infoCard}>
+            <Ionicons name="flash-outline" size={24} color={COLORS.warning} />
+            <Text style={styles.infoTitle}>מהיר</Text>
+            <Text style={styles.infoDesc}>תשובות תוך דקות</Text>
+          </View>
+          <View style={styles.infoCard}>
+            <Ionicons name="shield-checkmark-outline" size={24} color={COLORS.success} />
+            <Text style={styles.infoTitle}>אמין</Text>
+            <Text style={styles.infoDesc}>בעלי מקצוע מאומתים</Text>
+          </View>
+          <View style={styles.infoCard}>
+            <Ionicons name="pricetag-outline" size={24} color={COLORS.info} />
+            <Text style={styles.infoTitle}>הוגן</Text>
+            <Text style={styles.infoDesc}>השוואת מחירים</Text>
+          </View>
+        </View>
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 24,
+  scroll: {
+    paddingTop: 40,
+    paddingBottom: 120,
   },
-  logo: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-  },
-  heroCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    padding: 28,
+  heroSection: {
     alignItems: 'center',
-    marginBottom: 28,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    marginBottom: 32,
   },
   heroTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: 8,
     textAlign: 'center',
+    marginBottom: 12,
   },
   heroSubtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  ctaButton: {
+  ctaCard: {
     backgroundColor: COLORS.primary,
-    borderRadius: 16,
-    paddingVertical: 20,
-    paddingHorizontal: 40,
+    borderRadius: 20,
+    paddingVertical: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
-    elevation: 6,
+    marginBottom: 32,
+    elevation: 8,
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+  },
+  ctaIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   ctaText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 8,
-  },
-  sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 16,
   },
-  requestCard: {
+  infoRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  infoCard: {
+    flex: 1,
     backgroundColor: COLORS.surface,
     borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
-    flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
+    gap: 6,
   },
-  requestIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: COLORS.primary + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  requestTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  requestSummary: {
-    color: COLORS.textSecondary,
+  infoTitle: {
     fontSize: 13,
-  },
-  statusBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginLeft: 8,
-  },
-  statusText: {
-    fontSize: 11,
     fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  infoDesc: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
   },
 });
