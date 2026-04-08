@@ -219,19 +219,33 @@ export default function RequestDetailsScreen() {
             </View>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
               <Pressable
-                style={[styles.actionChip, { backgroundColor: COLORS.primary }]}
+                style={[styles.actionChip, { backgroundColor: COLORS.primary, flex: 1 }]}
                 onPress={() => router.push({ pathname: '/chat/[requestId]', params: { requestId: id } })}
               >
                 <Ionicons name="chatbubble" size={16} color="#FFF" />
-                <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>שלח הודעה</Text>
+                <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>צ'אט</Text>
               </Pressable>
               <Pressable
-                style={[styles.actionChip, { backgroundColor: COLORS.error + '20' }]}
-                onPress={handleCancelSelection}
+                style={[styles.actionChip, { backgroundColor: COLORS.success, flex: 1 }]}
+                onPress={() => {
+                  const phone = selectedBid.providerPhone;
+                  if (phone) {
+                    import('react-native').then(({ Linking }) => {
+                      Linking.openURL(`tel:${phone}`);
+                    });
+                  }
+                }}
               >
-                <Text style={{ color: COLORS.error, fontWeight: '600', fontSize: 13 }}>בטל בחירה</Text>
+                <Ionicons name="call" size={16} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>התקשר</Text>
               </Pressable>
             </View>
+            <Pressable
+              style={[styles.actionChip, { backgroundColor: COLORS.error + '15', alignSelf: 'center', marginTop: 8 }]}
+              onPress={handleCancelSelection}
+            >
+              <Text style={{ color: COLORS.error, fontWeight: '600', fontSize: 13 }}>בטל בחירה</Text>
+            </Pressable>
           </View>
         )}
 
