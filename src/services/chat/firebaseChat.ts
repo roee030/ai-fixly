@@ -17,7 +17,8 @@ class FirebaseChatService implements ChatService {
       collection(this.db, this.getCollectionPath(requestId)),
       orderBy('createdAt', 'asc')
     );
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocs(q).catch(() => null);
+    if (!snapshot) return [];
     return snapshot.docs.map((d) => this.docToMessage(d));
   }
 

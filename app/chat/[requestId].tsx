@@ -87,6 +87,17 @@ export default function ChatScreen() {
           <Text style={styles.headerTitle}>צ'אט</Text>
           <Text style={styles.headerSubtitle}>כל ההודעות מתועדות</Text>
         </View>
+        <Pressable
+          onPress={() => {
+            // TODO: get provider phone from request context
+            import('react-native').then(({ Linking }) => {
+              Linking.openURL('tel:+972501234567');
+            });
+          }}
+          style={styles.callBtn}
+        >
+          <Ionicons name="call" size={20} color={COLORS.success} />
+        </Pressable>
       </View>
 
       {/* Messages */}
@@ -143,6 +154,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 12,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  callBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: COLORS.success + '20',
+    alignItems: 'center', justifyContent: 'center',
   },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.text },
   headerSubtitle: { fontSize: 11, color: COLORS.textTertiary, marginTop: 2 },

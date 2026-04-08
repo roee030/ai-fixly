@@ -30,7 +30,8 @@ class FirebaseBidService implements BidService {
       where('requestId', '==', requestId),
       orderBy('createdAt', 'desc')
     );
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocs(q).catch(() => null);
+    if (!snapshot) return [];
     return snapshot.docs.map((d) => {
       const data = d.data();
       return {
