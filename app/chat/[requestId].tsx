@@ -6,7 +6,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
-import { chatService } from '../../src/services/chat';
+import { chatService, monitorAndUpdateStatus } from '../../src/services/chat';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
 
@@ -40,6 +40,7 @@ export default function ChatScreen() {
 
     try {
       await chatService.sendMessage(requestId, user.uid, 'customer', text);
+      monitorAndUpdateStatus(requestId, text, 'customer').catch(() => {});
     } catch (err) {
       console.error('Send message error:', err);
       setInput(text);
