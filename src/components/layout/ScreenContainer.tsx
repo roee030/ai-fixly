@@ -14,7 +14,7 @@ export function ScreenContainer({
   ...props
 }: ScreenContainerProps) {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }} accessibilityRole="none">
       <View
         style={[{ flex: 1 }, padded && { paddingHorizontal: SPACING.md }, style]}
         {...props}

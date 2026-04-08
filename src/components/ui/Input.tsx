@@ -15,6 +15,8 @@ export function Input({ label, error, style, ...props }: InputProps) {
         </Text>
       )}
       <TextInput
+        accessibilityLabel={label || props.placeholder}
+        accessibilityHint={error ? `Error: ${error}` : undefined}
         style={[
           {
             width: '100%',
