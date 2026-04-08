@@ -37,19 +37,36 @@ DRAFT -> OPEN -> IN_PROGRESS -> CLOSED
 
 ### Screens (Customer App)
 
-1. **Hub** (Home) - Pulsing capture button (long-press to record/shoot). Active requests as mini-cards at bottom.
-2. **Live Capture** - Camera/gallery for photos + text description.
-3. **AI Confirmation** - Clean summary of what AI understood. Edit or Send.
-4. **Responses Wall** - Cards with: business name, Google rating, price, ETA. No phone/address yet.
-5. **Job Details** - Status timeline. Controls: pause, cancel, close.
-6. **History** - Past & closed requests.
+1. **Hub** (Home) - Large prominent capture button center-screen. This is the heart of the app.
+2. **My Requests** - List of active/past requests with status badges and response counts.
+3. **Capture** - Camera/gallery for photos + text description.
+4. **AI Confirmation** - Clean summary of what AI understood. Edit or Send.
+5. **Responses Wall** - Cards per request: business name, price, availability (days/hours). No phone/address yet.
+6. **Job Details** - Status timeline. Controls: pause, cancel, close.
+7. **Profile** - Editable: name, phone, address. Sign out.
 
-### Provider Flow (WhatsApp Only)
+### Tab Bar Design
+- Left tab: "הקריאות שלי" (My Requests)
+- Center: Prominent raised capture button (like Uber/GetTaxi FAB style)
+- Right tab: "פרופיל" (Profile)
 
-1. Provider receives WhatsApp: photos + AI summary + "מעוניין? השב עם מחיר וזמן הגעה"
-2. Provider replies: "350 שקל, אגיע בעוד שעה"
-3. AI parses response → extracts price + ETA → shows in customer app
-4. If customer picks them → Provider gets WhatsApp with customer name + address + phone
+### Provider Flow (WhatsApp Only — "The Secretary")
+
+The system acts as an AI secretary between customer and providers:
+
+1. Provider receives WhatsApp: photos + AI pro-facing summary
+2. Secretary asks: "מעוניין? מה המחיר המשוער? מתי תוכל להגיע? (ימים ושעות)"
+3. Provider replies freely: "350 שקל, יום ראשון אחהצ"
+4. AI parses response → extracts: { price, availability: { days, hours }, rawText }
+5. Parsed response appears in customer app as a bid card
+6. If customer picks them → Provider gets WhatsApp with customer name + address + phone
+7. Customer can change status: pause (stop new bids), cancel, close (job done)
+
+### Provider Discovery
+
+- **Phase 1 (MVP)**: Manual provider database in Firestore. Providers onboarded via WhatsApp link or admin.
+- **Phase 2**: Google Places API for automatic discovery (requires billing).
+- **Search radius**: Configurable per request (default 20-40km, stored in constants)
 
 ### Finding Providers
 
