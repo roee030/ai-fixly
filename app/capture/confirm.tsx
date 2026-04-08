@@ -11,6 +11,8 @@ import { COLORS } from '../../src/constants';
 import { REQUEST_STATUS } from '../../src/constants/status';
 import { SERVICE_CATEGORIES } from '../../src/constants/categories';
 import { analyticsService } from '../../src/services/analytics';
+import { broadcastToProviders } from '../../src/services/broadcast';
+import { logger } from '../../src/services/logger';
 import * as Location from 'expo-location';
 
 import type { AIAnalysisResult } from '../../src/services/ai';
@@ -89,6 +91,15 @@ export default function ConfirmScreen() {
 
       await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
       analyticsService.trackEvent('request_created', { requestId: request.id });
+
+      // Broadcast to providers (async, don't block navigation)
+      broadcastToProviders({
+        requestId: request.id,
+        category: analysis.category,
+        proFacingSummary: analysis.proFacingSummary,
+        mediaUrls: uploadedMedia.map((m) => m.downloadUrl),
+        location,
+      }).catch((err) => logger.error('Broadcast failed', err as Error));
 
       router.replace({
         pathname: '/request/[id]',
