@@ -7,7 +7,6 @@ import { RequestListSkeleton } from '../../src/components/ui';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { requestService } from '../../src/services/requests';
 import { REQUEST_STATUS_LABELS } from '../../src/constants/status';
-import { SERVICE_CATEGORIES } from '../../src/constants/categories';
 import { COLORS } from '../../src/constants';
 
 import type { ServiceRequest } from '../../src/services/requests';
@@ -28,12 +27,14 @@ export default function RequestsScreen() {
     }, [user])
   );
 
-  const getCategoryLabel = (id: string) =>
-    SERVICE_CATEGORIES.find((c) => c.id === id)?.labelHe || id;
-
   const renderRequest = ({ item }: { item: ServiceRequest }) => {
     const statusLabel = REQUEST_STATUS_LABELS[item.status];
-    const categoryIcon = SERVICE_CATEGORIES.find((c) => c.id === item.aiAnalysis?.categories?.[0]);
+    const ai = item.aiAnalysis as any;
+    const professionLabel =
+      ai?.professionLabelsHe?.[0] ||
+      ai?.categories?.[0] || // backward compat with old data
+      'בקשה';
+    const shortSummary = ai?.shortSummary || ai?.summary || '';
 
     return (
       <Pressable
@@ -42,17 +43,17 @@ export default function RequestsScreen() {
       >
         <View style={styles.requestIcon}>
           <Ionicons
-            name={(categoryIcon?.icon as any) || 'build'}
+            name="build"
             size={22}
             color={COLORS.primary}
           />
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.requestTitle}>
-            {getCategoryLabel(item.aiAnalysis?.categories?.[0] || '')}
+            {professionLabel}
           </Text>
           <Text style={styles.requestSummary} numberOfLines={1}>
-            {item.aiAnalysis?.summary || ''}
+            {shortSummary}
           </Text>
         </View>
         <View style={[styles.statusBadge, {

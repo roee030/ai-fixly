@@ -13,7 +13,6 @@ import { bidService } from '../../src/services/bids';
 import { analyticsService } from '../../src/services/analytics';
 import { logger } from '../../src/services/logger';
 import { REQUEST_STATUS, REQUEST_STATUS_LABELS } from '../../src/constants/status';
-import { SERVICE_CATEGORIES } from '../../src/constants/categories';
 import { COLORS } from '../../src/constants';
 
 import type { ServiceRequest } from '../../src/services/requests';
@@ -142,7 +141,12 @@ export default function RequestDetailsScreen() {
     );
   }
 
-  const categories = request.aiAnalysis.categories || [(request.aiAnalysis as any).category || 'general'];
+  const ai = request.aiAnalysis as any;
+  const professionLabels: string[] =
+    ai?.professionLabelsHe ||
+    ai?.categories || // backward compat
+    [];
+  const shortSummary = ai?.shortSummary || ai?.summary || '';
   const statusLabel = REQUEST_STATUS_LABELS[request.status];
   const selectedBid = bids.find((b) => b.id === (request as any).selectedBidId);
 
@@ -156,7 +160,7 @@ export default function RequestDetailsScreen() {
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>
-              {categories.map((c: string) => SERVICE_CATEGORIES.find((sc) => sc.id === c)?.labelHe || c).join(' / ')}
+              {professionLabels.length > 0 ? professionLabels.join(' / ') : 'בקשה'}
             </Text>
           </View>
           <View style={[styles.statusBadge, {
@@ -200,7 +204,7 @@ export default function RequestDetailsScreen() {
                 />
               ))}
             </ScrollView>
-            <Text style={styles.summaryText}>{request.aiAnalysis.summary}</Text>
+            {shortSummary ? <Text style={styles.summaryText}>{shortSummary}</Text> : null}
             {request.textDescription && (
               <Text style={styles.descText}>"{request.textDescription}"</Text>
             )}

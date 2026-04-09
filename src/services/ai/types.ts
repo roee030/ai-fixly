@@ -1,9 +1,16 @@
+/**
+ * AI analysis result. Kept minimal by design:
+ * - professions: Google Places business types (used for search)
+ * - professionLabelsHe: Hebrew labels (for display)
+ * - shortSummary: neutral 1-sentence description for the customer
+ *
+ * We deliberately do NOT have the AI diagnose the problem or provide urgency.
+ * The professional sees the media and description directly.
+ */
 export interface AIAnalysisResult {
-  categories: string[];
-  summary: string;
-  proFacingSummary: string;
-  urgency: 'low' | 'medium' | 'high';
-  confidence: number;
+  professions: string[];
+  professionLabelsHe: string[];
+  shortSummary: string;
 }
 
 export interface AIAnalysisInput {

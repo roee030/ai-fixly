@@ -1,0 +1,17 @@
+{
+  "name": "ai-fixly-broker",
+  "version": "0.1.0",
+  "description": "Cloudflare Worker acting as the broker between the ai-fixly app and external services (Google Places, Twilio, Gemini, Firebase)",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240512.0",
+    "typescript": "^5.4.0",
+    "wrangler": "^3.57.0"
+  }
+}

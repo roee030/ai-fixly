@@ -9,7 +9,6 @@ import { requestService } from '../../src/services/requests';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
 import { REQUEST_STATUS } from '../../src/constants/status';
-import { SERVICE_CATEGORIES } from '../../src/constants/categories';
 import { analyticsService } from '../../src/services/analytics';
 import { broadcastToProviders } from '../../src/services/broadcast';
 import { logger } from '../../src/services/logger';
@@ -46,7 +45,7 @@ export default function ConfirmScreen() {
         textDescription: description,
       });
       setAnalysis(result);
-      analyticsService.trackEvent('ai_analysis_completed', { category: result.categories[0] });
+      analyticsService.trackEvent('ai_analysis_completed', { profession: result.professions[0] });
     } catch (err: any) {
       console.error('AI analysis error:', err);
       analyticsService.trackEvent('ai_analysis_failed');
@@ -92,11 +91,11 @@ export default function ConfirmScreen() {
       await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
       analyticsService.trackEvent('request_created', { requestId: request.id });
 
-      // Broadcast to providers (async, don't block navigation)
+      // Broadcast to providers via Cloudflare Worker (async, don't block navigation)
       broadcastToProviders({
         requestId: request.id,
-        categories: analysis.categories,
-        proFacingSummary: analysis.proFacingSummary,
+        professions: analysis.professions,
+        shortSummary: analysis.shortSummary,
         mediaUrls: uploadedMedia.map((m) => m.downloadUrl),
         location,
       }).catch((err) => logger.error('Broadcast failed', err as Error));
@@ -109,9 +108,7 @@ export default function ConfirmScreen() {
     }
   };
 
-  const getCategoryLabel = (categoryId: string) => {
-    return SERVICE_CATEGORIES.find((c) => c.id === categoryId)?.labelHe || categoryId;
-  };
+  // AI now returns profession labels in Hebrew directly — no lookup needed
 
   if (isLoading) {
     return (
@@ -156,12 +153,19 @@ export default function ConfirmScreen() {
         </ScrollView>
 
         <View style={{ backgroundColor: COLORS.surface, borderRadius: 16, padding: 20, marginBottom: 16 }}>
-          <View style={{ marginBottom: 16 }}>
-            <View style={{ backgroundColor: COLORS.primaryDark, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, alignSelf: 'flex-start' }}>
-              <Text style={{ color: COLORS.text, fontWeight: 'bold' }}>{getCategoryLabel(analysis?.categories?.[0] || '')}</Text>
-            </View>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginBottom: 8 }}>בעל מקצוע רלוונטי:</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            {(analysis?.professionLabelsHe || []).map((label, i) => (
+              <View key={i} style={{ backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 }}>
+                <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 14 }}>{label}</Text>
+              </View>
+            ))}
           </View>
-          <Text style={{ color: COLORS.text, fontSize: 16, lineHeight: 24 }}>{analysis?.summary}</Text>
+          {analysis?.shortSummary && (
+            <Text style={{ color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, fontStyle: 'italic' }}>
+              {analysis.shortSummary}
+            </Text>
+          )}
         </View>
 
         {hasError && (

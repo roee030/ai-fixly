@@ -36,12 +36,17 @@ class GeminiAnalysisService implements AIAnalysisService {
         const jsonStr = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const parsed = JSON.parse(jsonStr);
 
+        const professions = Array.isArray(parsed.professions) && parsed.professions.length > 0
+          ? parsed.professions
+          : ['handyman'];
+        const professionLabelsHe = Array.isArray(parsed.professionLabelsHe) && parsed.professionLabelsHe.length > 0
+          ? parsed.professionLabelsHe
+          : ['הנדימן'];
+
         return {
-          categories: Array.isArray(parsed.categories) ? parsed.categories : [parsed.categories || parsed.category || 'general'],
-          summary: parsed.summary || '',
-          proFacingSummary: parsed.proFacingSummary || '',
-          urgency: parsed.urgency || 'medium',
-          confidence: parsed.confidence || 0.5,
+          professions,
+          professionLabelsHe,
+          shortSummary: parsed.shortSummary || '',
         };
       } catch (err: any) {
         lastError = err;
