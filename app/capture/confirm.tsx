@@ -91,28 +91,16 @@ export default function ConfirmScreen() {
       await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
       analyticsService.trackEvent('request_created', { requestId: request.id });
 
-      // Broadcast to providers via Cloudflare Worker.
-      // We await this so we can save the provider list to Firestore for display,
-      // but we don't fail the whole request if it errors.
-      try {
-        const broadcastResult = await broadcastToProviders({
-          requestId: request.id,
-          professions: analysis.professions,
-          shortSummary: analysis.shortSummary,
-          mediaUrls: uploadedMedia.map((m) => m.downloadUrl),
-          location,
-        });
-        await requestService.saveBroadcastResult(
-          request.id,
-          broadcastResult.providers.map((p) => ({
-            name: p.name,
-            phone: p.phone,
-            sent: p.sent,
-          }))
-        );
-      } catch (err) {
-        logger.error('Broadcast failed', err as Error);
-      }
+      // Fire-and-forget: the worker handles everything in the background
+      // (finding providers, sending WhatsApp, saving bids + broadcastedProviders).
+      // Don't block the UI on this — navigate immediately.
+      broadcastToProviders({
+        requestId: request.id,
+        professions: analysis.professions,
+        shortSummary: analysis.shortSummary,
+        mediaUrls: uploadedMedia.map((m) => m.downloadUrl),
+        location,
+      }).catch((err) => logger.error('Broadcast failed', err as Error));
 
       router.replace('/capture/sent');
     } catch (err: any) {

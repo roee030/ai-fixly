@@ -14,7 +14,8 @@ import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { COLORS } from '../../src/constants';
 
-const AUTO_REDIRECT_MS = 2500;
+// No auto-redirect — user should see confirmation clearly and tap themselves.
+// (Earlier we had auto-redirect but it felt jarring.)
 
 export default function SentScreen() {
   const scale = useSharedValue(0);
@@ -27,13 +28,6 @@ export default function SentScreen() {
       withSpring(1, { damping: 10 })
     );
     checkmarkScale.value = withDelay(200, withSpring(1, { damping: 12, stiffness: 150 }));
-
-    // Auto-redirect after a short moment - don't make user wait
-    const timer = setTimeout(() => {
-      router.replace('/(tabs)/requests');
-    }, AUTO_REDIRECT_MS);
-
-    return () => clearTimeout(timer);
   }, []);
 
   const iconStyle = useAnimatedStyle(() => ({

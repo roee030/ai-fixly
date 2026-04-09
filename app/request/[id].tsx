@@ -30,14 +30,14 @@ export default function RequestDetailsScreen() {
   const [showDetails, setShowDetails] = useState(false);
   const [isLoadingBids, setIsLoadingBids] = useState(false);
 
-  // Load the request once
+  // Subscribe to real-time updates of the request document (broadcastedProviders, status, etc.)
   useEffect(() => {
     if (!id) return;
-    requestService
-      .getRequest(id)
-      .then((req) => setRequest(req))
-      .catch((err) => logger.error('Load request failed', err as Error))
-      .finally(() => setIsLoading(false));
+    const unsubscribe = requestService.onRequestChanged(id, (req) => {
+      setRequest(req);
+      setIsLoading(false);
+    });
+    return unsubscribe;
   }, [id]);
 
   // Subscribe to bid updates in real time so new bids appear instantly
@@ -51,14 +51,9 @@ export default function RequestDetailsScreen() {
     return unsubscribe;
   }, [id]);
 
+  // Manual reload - only needed as a fallback after actions like select/cancel
   const loadData = async () => {
-    if (!id) return;
-    try {
-      const req = await requestService.getRequest(id);
-      setRequest(req);
-    } catch (err) {
-      logger.error('Load request failed', err as Error);
-    }
+    // No-op: onSnapshot handles updates now
   };
 
   const toggleDetails = () => {

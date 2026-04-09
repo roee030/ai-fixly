@@ -201,6 +201,21 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
     }
   }
 
+  // Save the broadcast result to the request doc so the app can display it.
+  // We write only simple fields (name, phone, sent) - no reasons/errors.
+  try {
+    await firestore.updateRequestBroadcast({
+      requestId: body.requestId,
+      providers: results.map((r) => ({
+        name: r.name,
+        phone: r.phone,
+        sent: r.sent,
+      })),
+    });
+  } catch (err) {
+    console.error('Failed to save broadcast result to request:', err);
+  }
+
   return jsonResponse({
     sentCount,
     providersFound: providers.length,

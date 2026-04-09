@@ -62,7 +62,7 @@ class FirebaseBidService implements BidService {
     const data = d.data();
     return {
       id: d.id,
-      requestId: data.requestId,
+      requestId: data.requestId || '',
       providerName: data.providerName || 'בעל מקצוע',
       providerPhone: data.providerPhone || '',
       price: typeof data.price === 'number' ? data.price : 0,
@@ -71,15 +71,30 @@ class FirebaseBidService implements BidService {
       address: data.address,
       isReal: data.isReal === true,
       source: (data.source as BidSource) || 'mock',
-      createdAt: data.createdAt?.toDate?.() || data.receivedAt ? new Date(data.receivedAt) : new Date(),
+      createdAt: parseDate(data.createdAt, data.receivedAt),
     };
   }
 }
 
 function byNewestFirst(a: Bid, b: Bid): number {
-  const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
-  const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+  const ta = a.createdAt instanceof Date && !isNaN(a.createdAt.getTime()) ? a.createdAt.getTime() : 0;
+  const tb = b.createdAt instanceof Date && !isNaN(b.createdAt.getTime()) ? b.createdAt.getTime() : 0;
   return tb - ta;
+}
+
+function parseDate(firestoreTimestamp: any, isoString: string | undefined): Date {
+  if (firestoreTimestamp?.toDate) {
+    try {
+      return firestoreTimestamp.toDate();
+    } catch {
+      // fall through
+    }
+  }
+  if (isoString) {
+    const d = new Date(isoString);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return new Date();
 }
 
 export const bidService: BidService = new FirebaseBidService();

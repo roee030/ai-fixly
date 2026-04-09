@@ -42,4 +42,5 @@ export interface RequestService {
   getUserRequests(userId: string): Promise<ServiceRequest[]>;
   updateStatus(requestId: string, status: RequestStatus): Promise<void>;
   saveBroadcastResult(requestId: string, providers: BroadcastedProvider[]): Promise<void>;
+  onRequestChanged(requestId: string, callback: (req: ServiceRequest | null) => void): () => void;
 }

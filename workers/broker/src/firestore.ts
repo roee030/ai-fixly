@@ -30,6 +30,54 @@ export class FirestoreClient {
    * Using a subcollection keeps bids scoped to their parent request, which
    * matches the Firestore security rules we set up earlier.
    */
+  /**
+   * Update a service request document with the list of providers we broadcast to.
+   * This lets the app display 'Sent to: X providers' in the request details.
+   */
+  async updateRequestBroadcast(params: {
+    requestId: string;
+    providers: Array<{ name: string; phone: string; sent: boolean }>;
+  }): Promise<void> {
+    const { requestId, providers } = params;
+    const accessToken = await this.getAccessToken();
+
+    // Use PATCH with updateMask to only update specific fields
+    const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}?updateMask.fieldPaths=broadcastedProviders&updateMask.fieldPaths=broadcastedAt`;
+
+    const firestoreDoc = {
+      fields: {
+        broadcastedProviders: {
+          arrayValue: {
+            values: providers.map((p) => ({
+              mapValue: {
+                fields: {
+                  name: { stringValue: p.name },
+                  phone: { stringValue: p.phone },
+                  sent: { booleanValue: p.sent },
+                },
+              },
+            })),
+          },
+        },
+        broadcastedAt: { timestampValue: new Date().toISOString() },
+      },
+    };
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(firestoreDoc),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Firestore updateRequestBroadcast error ${response.status}: ${errText}`);
+    }
+  }
+
   async createBid(params: {
     requestId: string;
     bidId: string;

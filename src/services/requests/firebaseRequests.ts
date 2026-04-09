@@ -7,9 +7,9 @@ import {
   getDocs,
   query,
   where,
-  orderBy,
   updateDoc,
   serverTimestamp,
+  onSnapshot,
 } from '@react-native-firebase/firestore';
 import { RequestService, CreateRequestInput, ServiceRequest } from './types';
 import { REQUEST_STATUS } from '../../constants/status';
@@ -116,6 +116,9 @@ class FirebaseRequestService implements RequestService {
    * Save the broadcast result so the user can see which providers were
    * contacted (even before they reply). Stores the list as a denormalized
    * field on the request document.
+   *
+   * Note: In production flows this is done by the worker directly. Kept here
+   * for completeness.
    */
   async saveBroadcastResult(
     requestId: string,
@@ -130,6 +133,38 @@ class FirebaseRequestService implements RequestService {
     } catch (err) {
       console.warn('[saveBroadcastResult] failed', err);
     }
+  }
+
+  /**
+   * Subscribe to real-time updates of a single request document.
+   * Fires when the worker updates it (e.g. adds broadcastedProviders).
+   */
+  onRequestChanged(requestId: string, callback: (req: ServiceRequest | null) => void): () => void {
+    const docRef = doc(this.db, this.collectionName, requestId);
+    return onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (!snapshot || !snapshot.exists) {
+          callback(null);
+          return;
+        }
+        const data = snapshot.data();
+        if (!data) {
+          callback(null);
+          return;
+        }
+        callback({
+          id: snapshot.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || new Date(),
+          updatedAt: data.updatedAt?.toDate?.() || new Date(),
+        } as ServiceRequest);
+      },
+      (error) => {
+        console.warn('[onRequestChanged] error', error);
+        callback(null);
+      }
+    );
   }
 }
 
