@@ -130,10 +130,13 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
     return jsonResponse({ sentCount: 0, providersFound: 0, providers: [], dryRun: isDryRun });
   }
 
-  // Send (or simulate sending) WhatsApp to each provider
+  // Build the message ahead of time so we can reuse it
   const message = buildProviderMessage(body);
   let sentCount = 0;
   const results: Array<{ name: string; phone: string; sent: boolean; reason?: string }> = [];
+
+  // Initialize Firestore client (used in dry-run to create demo bids)
+  const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
 
   for (const provider of providers) {
     if (!provider.phone) {
@@ -142,11 +145,44 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
     }
 
     if (isDryRun) {
-      console.log(`[DRY RUN] would send WhatsApp to ${provider.name} (${provider.phone})`);
-      results.push({ name: provider.name, phone: provider.phone, sent: false, reason: 'dry run' });
+      // Demo mode: don't send WhatsApp, instead create a simulated bid in
+      // Firestore using the REAL provider data from Google Places. This lets
+      // the user test the full UI flow with real provider names + phones +
+      // ratings, with simulated price and availability.
+      console.log(`[DRY RUN] creating demo bid for ${provider.name} (${provider.phone})`);
+
+      try {
+        const bidId = crypto.randomUUID();
+        await firestore.createBid({
+          requestId: body.requestId,
+          bidId,
+          data: {
+            providerName: provider.name,
+            providerPhone: provider.phone,
+            price: simulatePrice(),
+            availability: simulateAvailability(),
+            rating: provider.rating,
+            address: provider.address,
+            rawReply: '[DEMO BID - simulated, not from real reply]',
+            receivedAt: new Date().toISOString(),
+            isReal: false,
+            source: 'google_places_demo',
+          },
+        });
+        results.push({ name: provider.name, phone: provider.phone, sent: false, reason: 'demo bid created' });
+      } catch (err) {
+        console.error(`Failed to create demo bid for ${provider.name}:`, err);
+        results.push({
+          name: provider.name,
+          phone: provider.phone,
+          sent: false,
+          reason: 'demo bid failed: ' + (err instanceof Error ? err.message : 'unknown'),
+        });
+      }
       continue;
     }
 
+    // Real mode: send WhatsApp via Twilio
     const result = await sendWhatsAppMessage({
       accountSid: env.TWILIO_ACCOUNT_SID,
       authToken: env.TWILIO_AUTH_TOKEN,
@@ -171,6 +207,26 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
     providers: results,
     dryRun: isDryRun,
   });
+}
+
+// Simulated values for demo bids
+const SIM_AVAILABILITY = [
+  'היום אחה"צ',
+  'מחר בבוקר',
+  'מחר בין 10:00-14:00',
+  'יום ראשון בבוקר',
+  'תוך 2 שעות',
+  'מחר בערב',
+];
+
+function simulatePrice(): number {
+  // Random between 150 and 700 ILS, rounded to nearest 50
+  const raw = 150 + Math.floor(Math.random() * 550);
+  return Math.round(raw / 50) * 50;
+}
+
+function simulateAvailability(): string {
+  return SIM_AVAILABILITY[Math.floor(Math.random() * SIM_AVAILABILITY.length)];
 }
 
 async function handleTwilioWebhook(request: Request, env: Env): Promise<Response> {
@@ -223,21 +279,59 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
 
 // ===== Helpers =====
 
+/**
+ * Build the WhatsApp message sent to providers.
+ *
+ * Includes:
+ * - Greeting + brand
+ * - Short city/area (NOT exact address - privacy until customer picks)
+ * - Problem description from AI
+ * - Photos (sent as Twilio MediaUrl - shown inline in WhatsApp)
+ * - Clear ask: price + availability
+ * - Reference code so we can match the reply to this request
+ *
+ * Privacy: We do NOT send the customer's exact address, name, or phone
+ * until they pick this provider.
+ */
 function buildProviderMessage(body: BroadcastBody): string {
+  const city = extractCity(body.location.address);
+  const refCode = body.requestId.slice(0, 6).toUpperCase();
+
   return [
-    `שלום, קיבלת הצעת עבודה חדשה דרך ai-fixly:`,
+    `🔧 *ai-fixly* - בקשת שירות חדשה`,
     ``,
-    body.shortSummary || 'בקשת שירות חדשה',
+    `📍 אזור: ${city}`,
     ``,
-    `המיקום: ${body.location.address || 'לא צוין'}`,
+    `📝 הבעיה:`,
+    body.shortSummary || 'בקשת שירות',
     ``,
-    `מעוניין?`,
-    `אנא השב עם:`,
-    `1. מחיר משוער`,
-    `2. מתי תוכל להגיע`,
+    body.mediaUrls && body.mediaUrls.length > 0
+      ? `📷 צרף ${body.mediaUrls.length} תמונות (ראה למעלה)`
+      : '',
     ``,
-    `תודה!`,
-  ].join('\n');
+    `*מעוניין? אנא השב בהודעה הבאה עם:*`,
+    `1️⃣ מחיר משוער`,
+    `2️⃣ מתי תוכל להגיע (יום + שעה)`,
+    ``,
+    `📋 מספר בקשה: #${refCode}`,
+    `_פרטי הלקוח יישלחו אליך לאחר שתיבחר_`,
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
+}
+
+/**
+ * Extract a city or short area name from a full address string.
+ * "רחוב הרצל 12, תל אביב, ישראל" -> "תל אביב"
+ */
+function extractCity(address: string | undefined): string {
+  if (!address) return 'לא צוין';
+  // Try to find the second-to-last comma-separated part (city)
+  const parts = address.split(',').map((p) => p.trim());
+  if (parts.length >= 2) {
+    return parts[parts.length - 2] || parts[parts.length - 1] || address;
+  }
+  return address;
 }
 
 function jsonResponse(data: unknown, status: number = 200): Response {

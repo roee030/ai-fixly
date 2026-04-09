@@ -38,8 +38,12 @@ export class FirestoreClient {
       providerPhone: string;
       price: number | null;
       availability: string | null;
+      rating?: number | null;
+      address?: string;
       rawReply: string;
       receivedAt: string;
+      isReal: boolean; // true = from real WhatsApp reply, false = simulated demo bid
+      source: 'whatsapp' | 'google_places_demo' | 'mock';
     };
   }): Promise<void> {
     const { requestId, bidId, data } = params;
@@ -47,7 +51,7 @@ export class FirestoreClient {
 
     const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/bids?documentId=${bidId}`;
 
-    const firestoreDoc = {
+    const firestoreDoc: any = {
       fields: {
         requestId: { stringValue: requestId },
         providerName: { stringValue: data.providerName },
@@ -58,8 +62,17 @@ export class FirestoreClient {
           : { nullValue: null },
         rawReply: { stringValue: data.rawReply },
         receivedAt: { timestampValue: data.receivedAt },
+        isReal: { booleanValue: data.isReal },
+        source: { stringValue: data.source },
       },
     };
+
+    if (data.rating !== undefined && data.rating !== null) {
+      firestoreDoc.fields.rating = { doubleValue: data.rating };
+    }
+    if (data.address) {
+      firestoreDoc.fields.address = { stringValue: data.address };
+    }
 
     const response = await fetch(url, {
       method: 'POST',

@@ -1,73 +1,53 @@
 import {
   getFirestore, collection, doc, setDoc, getDocs, query,
-  where, orderBy, serverTimestamp, updateDoc,
+  where, serverTimestamp, updateDoc, onSnapshot,
 } from '@react-native-firebase/firestore';
-import { BidService, Bid } from './types';
+import { BidService, Bid, BidSource } from './types';
 import { REQUEST_STATUS } from '../../constants/status';
-
-const MOCK_PROVIDERS = [
-  { name: 'שמעון - אינסטלציה מקצועית', phone: '+972501111111', rating: 4.8 },
-  { name: 'דוד חשמל ותאורה', phone: '+972502222222', rating: 4.5 },
-  { name: 'יוסי תיקונים כלליים', phone: '+972503333333', rating: 4.2 },
-  { name: 'אבי השרברב', phone: '+972504444444', rating: 4.9 },
-  { name: 'מוטי מיזוג אוויר', phone: '+972505555555', rating: 4.6 },
-];
-
-const MOCK_AVAILABILITIES = [
-  'היום אחה"צ',
-  'מחר בבוקר',
-  'יום ראשון',
-  'תוך שעתיים',
-  'מחר בין 10-14',
-];
 
 class FirebaseBidService implements BidService {
   private db = getFirestore();
 
   async getBidsForRequest(requestId: string): Promise<Bid[]> {
-    // Simple query without orderBy to avoid requiring composite index
-    const q = query(
-      collection(this.db, 'bids'),
-      where('requestId', '==', requestId)
-    );
+    const q = query(collection(this.db, 'bids'), where('requestId', '==', requestId));
     const snapshot = await getDocs(q).catch(() => null);
-    if (!snapshot) return [];
-    // Sort client-side instead
-    return snapshot.docs
-      .map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          requestId: data.requestId,
-          providerName: data.providerName,
-          providerPhone: data.providerPhone,
-          price: data.price,
-          availability: data.availability,
-          rating: data.rating,
-          createdAt: data.createdAt?.toDate() || new Date(),
-        };
-      })
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    if (!snapshot || !snapshot.docs) return [];
+
+    return snapshot.docs.map(this.docToBid).sort(byNewestFirst);
   }
 
-  async createMockBids(requestId: string): Promise<void> {
-    const shuffled = [...MOCK_PROVIDERS].sort(() => Math.random() - 0.5);
-    const count = 2 + Math.floor(Math.random() * 3);
-    const selected = shuffled.slice(0, count);
+  /**
+   * Subscribe to real-time bid updates for a request. The callback fires
+   * whenever a bid is added/updated/removed in Firestore.
+   */
+  onBidsChanged(requestId: string, callback: (bids: Bid[]) => void): () => void {
+    const q = query(collection(this.db, 'bids'), where('requestId', '==', requestId));
 
-    for (const provider of selected) {
-      const bidRef = doc(collection(this.db, 'bids'));
-      const availIndex = Math.floor(Math.random() * MOCK_AVAILABILITIES.length);
-      await setDoc(bidRef, {
-        requestId,
-        providerName: provider.name,
-        providerPhone: provider.phone,
-        price: 150 + Math.floor(Math.random() * 500),
-        availability: MOCK_AVAILABILITIES[availIndex],
-        rating: provider.rating,
-        createdAt: serverTimestamp(),
-      });
-    }
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot || !snapshot.docs) {
+          callback([]);
+          return;
+        }
+        const bids = snapshot.docs.map(this.docToBid).sort(byNewestFirst);
+        callback(bids);
+      },
+      (error) => {
+        console.warn('[onBidsChanged] error', error);
+        callback([]);
+      }
+    );
+  }
+
+  /**
+   * @deprecated The worker now creates bids automatically (real or demo).
+   * This method is kept for backward compat with existing screens but does
+   * nothing.
+   */
+  async createMockBids(_requestId: string): Promise<void> {
+    // No-op. Bids are created by the broker worker (real WhatsApp replies
+    // or demo bids in dry-run mode).
   }
 
   async selectBid(requestId: string, bidId: string): Promise<void> {
@@ -77,6 +57,29 @@ class FirebaseBidService implements BidService {
       selectedBidId: bidId,
     });
   }
+
+  private docToBid(d: any): Bid {
+    const data = d.data();
+    return {
+      id: d.id,
+      requestId: data.requestId,
+      providerName: data.providerName || 'בעל מקצוע',
+      providerPhone: data.providerPhone || '',
+      price: typeof data.price === 'number' ? data.price : 0,
+      availability: data.availability || '',
+      rating: typeof data.rating === 'number' ? data.rating : null,
+      address: data.address,
+      isReal: data.isReal === true,
+      source: (data.source as BidSource) || 'mock',
+      createdAt: data.createdAt?.toDate?.() || data.receivedAt ? new Date(data.receivedAt) : new Date(),
+    };
+  }
+}
+
+function byNewestFirst(a: Bid, b: Bid): number {
+  const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+  const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+  return tb - ta;
 }
 
 export const bidService: BidService = new FirebaseBidService();

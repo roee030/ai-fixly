@@ -30,25 +30,34 @@ export default function RequestDetailsScreen() {
   const [showDetails, setShowDetails] = useState(false);
   const [isLoadingBids, setIsLoadingBids] = useState(false);
 
-  useEffect(() => { loadData(); }, [id]);
+  // Load the request once
+  useEffect(() => {
+    if (!id) return;
+    requestService
+      .getRequest(id)
+      .then((req) => setRequest(req))
+      .catch((err) => logger.error('Load request failed', err as Error))
+      .finally(() => setIsLoading(false));
+  }, [id]);
+
+  // Subscribe to bid updates in real time so new bids appear instantly
+  useEffect(() => {
+    if (!id) return;
+    setIsLoadingBids(true);
+    const unsubscribe = bidService.onBidsChanged(id, (newBids) => {
+      setBids(newBids);
+      setIsLoadingBids(false);
+    });
+    return unsubscribe;
+  }, [id]);
 
   const loadData = async () => {
     if (!id) return;
     try {
       const req = await requestService.getRequest(id);
       setRequest(req);
-      if (req) {
-        setIsLoadingBids(true);
-        // Real bids only — no mock generation. Bids arrive when providers
-        // reply via WhatsApp and the worker writes them to Firestore.
-        const bidList = await bidService.getBidsForRequest(id);
-        setBids(bidList);
-        setIsLoadingBids(false);
-      }
     } catch (err) {
       logger.error('Load request failed', err as Error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -311,12 +320,20 @@ export default function RequestDetailsScreen() {
                 <AnimatedCard key={bid.id} index={index}>
                   <AnimatedPressable onPress={() => handleSelectBid(bid)} style={styles.bidCard}>
                     <View style={styles.bidTop}>
-                      <Text style={styles.bidName}>{bid.providerName}</Text>
-                      <View style={styles.ratingBadge}>
-                        <Ionicons name="star" size={12} color={COLORS.warning} />
-                        <Text style={styles.ratingText}>{bid.rating}</Text>
-                      </View>
+                      <Text style={styles.bidName} numberOfLines={1}>{bid.providerName}</Text>
+                      {bid.rating !== null && (
+                        <View style={styles.ratingBadge}>
+                          <Ionicons name="star" size={12} color={COLORS.warning} />
+                          <Text style={styles.ratingText}>{bid.rating.toFixed(1)}</Text>
+                        </View>
+                      )}
                     </View>
+                    {!bid.isReal && (
+                      <View style={styles.demoBadge}>
+                        <Ionicons name="flask-outline" size={10} color={COLORS.info} />
+                        <Text style={styles.demoBadgeText}>הצעה מדומה</Text>
+                      </View>
+                    )}
                     <View style={styles.bidInfo}>
                       <View style={styles.bidInfoItem}>
                         <Text style={styles.bidPrice}>{bid.price}</Text>
@@ -433,6 +450,22 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 13,
     flex: 1,
+  },
+  demoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.info + '15',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+  },
+  demoBadgeText: {
+    color: COLORS.info,
+    fontSize: 10,
+    fontWeight: '600',
   },
   bidsHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 8 },
   bidsTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, flex: 1 },
