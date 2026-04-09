@@ -1,7 +1,8 @@
 import "../global.css";
 import { useEffect } from 'react';
-import { ActivityIndicator, View, I18nManager } from 'react-native';
+import { View, I18nManager } from 'react-native';
 import { Stack, router, useSegments } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import * as Sentry from '@sentry/react-native';
 import { ErrorBoundary } from '../src/components/ui';
 import { ThemeProvider } from '../src/contexts/ThemeContext';
@@ -10,6 +11,9 @@ import { COLORS } from '../src/constants';
 import { analyticsService } from '../src/services/analytics';
 import { useNotifications } from '../src/hooks/useNotifications';
 import { useAppStore } from '../src/stores/useAppStore';
+
+// Keep splash screen visible until the app is fully ready
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Enable RTL for Hebrew
 I18nManager.allowRTL(true);
@@ -31,6 +35,13 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     loadOnboardingState();
   }, []);
 
+  // Hide native splash screen as soon as auth is ready
+  useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [isLoading]);
+
   useEffect(() => {
     if (isLoading) return;
 
@@ -51,12 +62,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, isLoading, hasCompletedProfile, hasSeenOnboarding, segments]);
 
+  // Render empty view while loading — native splash is visible until hideAsync()
   if (isLoading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
   }
 
   return <>{children}</>;
