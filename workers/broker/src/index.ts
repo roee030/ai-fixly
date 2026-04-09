@@ -257,11 +257,50 @@ async function handleProviderSelected(request: Request, env: Env): Promise<Respo
     providerPhone: body.providerPhone,
   });
 
-  // Notify provider that they were selected (dry-run skips the actual send)
   const text = buildSelectionMessage(body);
 
   if (isDryRun) {
     console.log(`[DRY RUN] would WhatsApp ${body.providerName}:\n${text}`);
+
+    // Simulation: pretend the provider approved and sent a chat message.
+    // This lets the customer see the full middleman chat flow without
+    // actually sending any WhatsApp messages.
+    try {
+      const firestore = new FirestoreClient(
+        env.FIREBASE_PROJECT_ID,
+        env.FIREBASE_SERVICE_ACCOUNT_JSON
+      );
+
+      // Wait 2s to simulate real-world delay
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // System message: "provider confirmed"
+      await firestore.addChatMessage({
+        requestId: body.requestId,
+        senderId: 'system',
+        senderType: 'system',
+        text: `${body.providerName} אישר את העבודה ומוכן להתחיל`,
+      });
+
+      // Simulated provider greeting message
+      await firestore.addChatMessage({
+        requestId: body.requestId,
+        senderId: body.providerPhone,
+        senderType: 'provider',
+        text: `שלום! אני ${body.providerName}. קיבלתי את הפרטים ואני מוכן להגיע בזמן שסיכמנו. אם יש שאלות - כתוב לי כאן.`,
+      });
+
+      // Push notification to customer
+      await pushToCustomer({
+        env,
+        requestId: body.requestId,
+        title: `${body.providerName} אישר את העבודה`,
+        body: 'שלח הודעה דרך הצ\'אט או התקשר ישירות',
+      });
+    } catch (err) {
+      console.error('Simulation failed:', err);
+    }
+
     return jsonResponse({ ok: true, dryRun: true });
   }
 
@@ -294,7 +333,7 @@ async function handleChatSend(request: Request, env: Env): Promise<Response> {
 
   const isDryRun = (env.DRY_RUN || 'false').toLowerCase() === 'true';
 
-  // Keep the mapping fresh - even existing entries get refreshed
+  // Keep the mapping fresh
   await recordProviderContact(env.PLACES_CACHE, body.providerPhone, {
     requestId: body.requestId,
     providerName: 'Provider',
@@ -303,10 +342,44 @@ async function handleChatSend(request: Request, env: Env): Promise<Response> {
 
   if (isDryRun) {
     console.log(`[DRY RUN] would forward chat to ${body.providerPhone}: ${body.text}`);
+
+    // Simulation: pretend the provider replies after a short delay
+    // so the customer sees both sides of the conversation working.
+    try {
+      const firestore = new FirestoreClient(
+        env.FIREBASE_PROJECT_ID,
+        env.FIREBASE_SERVICE_ACCOUNT_JSON
+      );
+
+      // Fetch request to get provider name
+      const reqDoc = await firestore.getRequest(body.requestId);
+      const providerName = reqDoc?.selectedProviderName || 'בעל מקצוע';
+
+      // Wait 3s
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      const reply = simulateProviderReply(body.text);
+      await firestore.addChatMessage({
+        requestId: body.requestId,
+        senderId: body.providerPhone,
+        senderType: 'provider',
+        text: reply,
+      });
+
+      await pushToCustomer({
+        env,
+        requestId: body.requestId,
+        title: `הודעה חדשה מ-${providerName}`,
+        body: reply.slice(0, 80),
+      });
+    } catch (err) {
+      console.error('Chat simulation failed:', err);
+    }
+
     return jsonResponse({ ok: true, dryRun: true });
   }
 
-  // Forward the customer's message as-is via WhatsApp
+  // Real mode: forward the message via WhatsApp
   const text = `💬 ${body.text}\n\n_- מהלקוח דרך ai-fixly_`;
   const result = await sendWhatsAppMessage({
     accountSid: env.TWILIO_ACCOUNT_SID,
@@ -317,6 +390,24 @@ async function handleChatSend(request: Request, env: Env): Promise<Response> {
   });
 
   return jsonResponse({ ok: result.success, error: result.error });
+}
+
+// Simple heuristic replies for the chat simulation in dry-run mode
+function simulateProviderReply(customerText: string): string {
+  const lower = customerText.toLowerCase();
+  if (lower.includes('מתי') || lower.includes('שעה') || lower.includes('זמן')) {
+    return 'אגיע בין 10:00-12:00 כפי שסיכמנו. אם יש שינוי אעדכן.';
+  }
+  if (lower.includes('כמה') || lower.includes('מחיר') || lower.includes('עלות')) {
+    return 'המחיר שנקבתי כולל הכל. אם יצוץ משהו נוסף נסכם.';
+  }
+  if (lower.includes('איפה') || lower.includes('כתובת') || lower.includes('חנ')) {
+    return 'אשלח הודעה כשאני בדרך. אין צורך בחניה מיוחדת.';
+  }
+  if (lower.includes('תודה') || lower.includes('מעולה')) {
+    return 'בכיף! מחכה לעבודה.';
+  }
+  return 'קיבלתי, אני על זה. אעדכן בקרוב.';
 }
 
 // =========================================================================

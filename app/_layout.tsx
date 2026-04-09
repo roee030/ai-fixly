@@ -1,5 +1,5 @@
 import "../global.css";
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View, I18nManager } from 'react-native';
 import { Stack, router, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -25,20 +25,22 @@ Sentry.init({
   enabled: !!process.env.EXPO_PUBLIC_SENTRY_DSN,
 });
 
+// Load onboarding state once at module load, outside any component.
+// Prevents the action from being accidentally re-called per-render.
+useAppStore.getState().loadOnboardingState();
+
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, hasCompletedProfile } = useAuth();
   const segments = useSegments();
-  // Use selectors to avoid recreating references on every render
+  // Only subscribe to the primitive boolean - no actions
   const hasSeenOnboarding = useAppStore((s) => s.hasSeenOnboarding);
-  const loadOnboardingState = useAppStore((s) => s.loadOnboardingState);
   useNotifications();
 
-  // Stable string version of segments to use as dependency (avoids infinite loop)
+  // Stable string version of segments to use as dependency
   const segmentsKey = segments.join('/');
 
-  useEffect(() => {
-    loadOnboardingState();
-  }, [loadOnboardingState]);
+  // Guard against repeated navigation to the same destination
+  const lastDestination = useRef<string | null>(null);
 
   // Hide native splash screen as soon as auth is ready
   useEffect(() => {
@@ -54,37 +56,43 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inAuthGroup = segments[0] === '(auth)';
     const inProfileSetup = segments[1] === 'profile-setup';
 
+    const navigate = (to: string) => {
+      if (lastDestination.current === to) return; // prevent re-nav to same place
+      lastDestination.current = to;
+      router.replace(to as any);
+    };
+
     if (!hasSeenOnboarding && !inOnboarding) {
-      router.replace('/onboarding');
+      navigate('/onboarding');
       return;
     }
 
     if (hasSeenOnboarding && inOnboarding) {
-      // Onboarding done, move forward
-      if (!isAuthenticated) {
-        router.replace('/(auth)/phone');
-      } else if (!hasCompletedProfile) {
-        router.replace('/(auth)/profile-setup');
-      } else {
-        router.replace('/(tabs)');
-      }
+      if (!isAuthenticated) navigate('/(auth)/phone');
+      else if (!hasCompletedProfile) navigate('/(auth)/profile-setup');
+      else navigate('/(tabs)');
       return;
     }
 
     if (!isAuthenticated && !inAuthGroup && !inOnboarding) {
-      router.replace('/(auth)/phone');
+      navigate('/(auth)/phone');
       return;
     }
 
     if (isAuthenticated && !hasCompletedProfile && !inProfileSetup) {
-      router.replace('/(auth)/profile-setup');
+      navigate('/(auth)/profile-setup');
       return;
     }
 
     if (isAuthenticated && hasCompletedProfile && inAuthGroup) {
       analyticsService.trackEvent('app_opened');
-      router.replace('/(tabs)');
+      navigate('/(tabs)');
+      return;
     }
+
+    // On successful "stable" state (no navigation needed), clear the ref so
+    // future legitimate navigations can happen.
+    lastDestination.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, isLoading, hasCompletedProfile, hasSeenOnboarding, segmentsKey]);
 
