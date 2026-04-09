@@ -23,15 +23,28 @@ class FirebaseBidService implements BidService {
   onBidsChanged(requestId: string, callback: (bids: Bid[]) => void): () => void {
     const q = query(collection(this.db, 'bids'), where('requestId', '==', requestId));
 
+    // Track the last callback value to avoid redundant updates
+    let lastJson = '';
+
     return onSnapshot(
       q,
       (snapshot) => {
-        if (!snapshot || !snapshot.docs) {
-          callback([]);
+        if (!snapshot || !Array.isArray(snapshot.docs)) {
+          if (lastJson !== '[]') {
+            lastJson = '[]';
+            callback([]);
+          }
           return;
         }
-        const bids = snapshot.docs.map(this.docToBid).sort(byNewestFirst);
-        callback(bids);
+        const bids = snapshot.docs.map((d: any) => this.docToBid(d)).sort(byNewestFirst);
+        // Only call back if the serialized content actually changed
+        const json = JSON.stringify(
+          bids.map((b) => `${b.id}:${b.price}:${b.availability}:${b.createdAt.getTime()}`)
+        );
+        if (json !== lastJson) {
+          lastJson = json;
+          callback(bids);
+        }
       },
       (error) => {
         console.warn('[onBidsChanged] error', error);

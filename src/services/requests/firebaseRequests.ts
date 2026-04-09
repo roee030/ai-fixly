@@ -48,17 +48,8 @@ class FirebaseRequestService implements RequestService {
     try {
       const docRef = doc(this.db, this.collectionName, requestId);
       const snapshot = await getDoc(docRef);
-
-      if (!snapshot || !snapshot.exists) return null;
-
-      const data = snapshot.data();
-      if (!data) return null;
-      return {
-        id: snapshot.id,
-        ...data,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-      } as ServiceRequest;
+      if (!snapshot) return null;
+      return snapshotToRequest(snapshot);
     } catch (err) {
       console.warn('[getRequest] failed', err);
       return null;
@@ -67,12 +58,7 @@ class FirebaseRequestService implements RequestService {
 
   async getUserRequests(userId: string): Promise<ServiceRequest[]> {
     try {
-      // Simple query without orderBy - sort client-side to avoid index requirement
-      const q = query(
-        collection(this.db, this.collectionName),
-        where('userId', '==', userId)
-      );
-
+      const q = query(collection(this.db, this.collectionName), where('userId', '==', userId));
       const snapshot = await getDocs(q);
       if (!snapshot || !snapshot.docs) return [];
 
@@ -82,15 +68,11 @@ class FirebaseRequestService implements RequestService {
           return {
             id: d.id,
             ...data,
-            createdAt: data.createdAt?.toDate() || new Date(),
-            updatedAt: data.updatedAt?.toDate() || new Date(),
+            createdAt: toDateSafe(data.createdAt),
+            updatedAt: toDateSafe(data.updatedAt),
           } as ServiceRequest;
         })
-        .sort((a, b) => {
-          const timeA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
-          const timeB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
-          return timeB - timeA;
-        });
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     } catch (err) {
       console.warn('[getUserRequests] failed', err);
       return [];
@@ -141,24 +123,30 @@ class FirebaseRequestService implements RequestService {
    */
   onRequestChanged(requestId: string, callback: (req: ServiceRequest | null) => void): () => void {
     const docRef = doc(this.db, this.collectionName, requestId);
+
+    // Track last emitted signature to avoid redundant updates
+    let lastSignature = '';
+
     return onSnapshot(
       docRef,
       (snapshot) => {
-        if (!snapshot || !snapshot.exists) {
-          callback(null);
+        if (!snapshot) {
+          if (lastSignature !== 'null') {
+            lastSignature = 'null';
+            callback(null);
+          }
           return;
         }
-        const data = snapshot.data();
-        if (!data) {
-          callback(null);
-          return;
+        const req = snapshotToRequest(snapshot);
+        // Create a signature of the relevant fields
+        const signature = req
+          ? `${req.id}:${req.status}:${(req as any).selectedBidId || ''}:${(req as any).broadcastedProviders?.length || 0}:${req.updatedAt.getTime()}`
+          : 'null';
+
+        if (signature !== lastSignature) {
+          lastSignature = signature;
+          callback(req);
         }
-        callback({
-          id: snapshot.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.() || new Date(),
-          updatedAt: data.updatedAt?.toDate?.() || new Date(),
-        } as ServiceRequest);
       },
       (error) => {
         console.warn('[onRequestChanged] error', error);
@@ -166,6 +154,43 @@ class FirebaseRequestService implements RequestService {
       }
     );
   }
+}
+
+/**
+ * Convert a Firestore DocumentSnapshot to a ServiceRequest.
+ * Handles @react-native-firebase v22+ where `exists` is a method, not a property.
+ */
+function snapshotToRequest(snapshot: any): ServiceRequest | null {
+  // In v22+ `exists` is a method. Fall back to the property for older versions.
+  const exists =
+    typeof snapshot.exists === 'function' ? snapshot.exists() : snapshot.exists;
+  if (!exists) return null;
+
+  const data = snapshot.data?.();
+  if (!data) return null;
+
+  return {
+    id: snapshot.id,
+    ...data,
+    createdAt: toDateSafe(data.createdAt),
+    updatedAt: toDateSafe(data.updatedAt),
+  } as ServiceRequest;
+}
+
+function toDateSafe(value: any): Date {
+  if (value && typeof value.toDate === 'function') {
+    try {
+      return value.toDate();
+    } catch {
+      // fall through
+    }
+  }
+  if (value instanceof Date) return value;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return new Date();
 }
 
 export const requestService: RequestService = new FirebaseRequestService();

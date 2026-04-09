@@ -59,15 +59,24 @@ class FirebaseChatService implements ChatService {
       orderBy('createdAt', 'asc')
     );
 
+    let lastSignature = '';
+
     return onSnapshot(
       q,
       (snapshot) => {
-        if (!snapshot || !snapshot.docs) {
-          callback([]);
+        if (!snapshot || !Array.isArray(snapshot.docs)) {
+          if (lastSignature !== '[]') {
+            lastSignature = '[]';
+            callback([]);
+          }
           return;
         }
-        const messages = snapshot.docs.map((d) => this.docToMessage(d));
-        callback(messages);
+        const messages = snapshot.docs.map((d: any) => this.docToMessage(d));
+        const signature = messages.map((m) => `${m.id}:${m.createdAt.getTime()}`).join('|');
+        if (signature !== lastSignature) {
+          lastSignature = signature;
+          callback(messages);
+        }
       },
       (error) => {
         console.warn('[onNewMessages] snapshot error', error);
@@ -91,13 +100,21 @@ class FirebaseChatService implements ChatService {
 
   private docToMessage(d: any): ChatMessage {
     const data = d.data();
+    let createdAt = new Date();
+    if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+      try {
+        createdAt = data.createdAt.toDate();
+      } catch {
+        // ignore
+      }
+    }
     return {
       id: d.id,
-      requestId: data.requestId,
-      senderId: data.senderId,
-      senderType: data.senderType,
-      text: data.text,
-      createdAt: data.createdAt?.toDate() || new Date(),
+      requestId: data.requestId || '',
+      senderId: data.senderId || '',
+      senderType: data.senderType || 'customer',
+      text: data.text || '',
+      createdAt,
     };
   }
 }

@@ -19,7 +19,12 @@ export function useAuth() {
       if (authUser) {
         try {
           const userDoc = await getDoc(doc(getFirestore(), 'users', authUser.uid));
-          setHasCompletedProfile(userDoc.exists && !!userDoc.data()?.displayName);
+          // In @react-native-firebase v22+, `exists` is a method, not a property
+          const exists =
+            typeof (userDoc as any).exists === 'function'
+              ? (userDoc as any).exists()
+              : (userDoc as any).exists;
+          setHasCompletedProfile(Boolean(exists) && !!userDoc.data()?.displayName);
         } catch {
           setHasCompletedProfile(false);
         }
