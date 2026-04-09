@@ -3,21 +3,32 @@ import { notificationService } from '../services/notifications';
 import { useAuthStore } from '../stores/useAuthStore';
 import { logger } from '../services/logger/logger';
 
+/**
+ * Subscribe to FCM push notifications for the signed-in user.
+ * Uses uid (primitive) as the effect dep so the effect only re-runs when
+ * the actual user changes, not whenever any other auth state updates.
+ */
 export function useNotifications() {
-  const user = useAuthStore((s) => s.user);
+  const uid = useAuthStore((s) => s.user?.uid || null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!uid) return;
 
-    async function setup() {
-      const granted = await notificationService.requestPermission();
-      if (!granted) return;
+    let cancelled = false;
 
-      const token = await notificationService.getToken();
-      if (token) {
-        await notificationService.saveToken(user!.uid, token);
+    const setup = async () => {
+      try {
+        const granted = await notificationService.requestPermission();
+        if (!granted || cancelled) return;
+
+        const token = await notificationService.getToken();
+        if (token && !cancelled) {
+          await notificationService.saveToken(uid, token);
+        }
+      } catch (err) {
+        logger.error('Push setup failed', err as Error);
       }
-    }
+    };
 
     setup();
 
@@ -27,6 +38,9 @@ export function useNotifications() {
       });
     });
 
-    return unsubscribe;
-  }, [user]);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [uid]);
 }

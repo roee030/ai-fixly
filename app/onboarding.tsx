@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { COLORS } from '../src/constants';
 import { useAppStore } from '../src/stores/useAppStore';
 
@@ -99,13 +98,8 @@ export default function OnboardingScreen() {
         </Pressable>
       </View>
 
-      {/* Slide content */}
-      <Animated.View
-        key={currentSlide}
-        entering={FadeIn.duration(400)}
-        exiting={FadeOut.duration(150)}
-        style={styles.content}
-      >
+      {/* Slide content - no animations to avoid render loops */}
+      <View style={styles.content}>
         <View style={[styles.iconWrap, { backgroundColor: slide.color + '20' }]}>
           <Ionicons name={slide.icon} size={80} color={slide.color} />
         </View>
@@ -116,17 +110,16 @@ export default function OnboardingScreen() {
         {/* Example chips */}
         <View style={styles.examples}>
           {slide.examples.map((ex, i) => (
-            <Animated.View
+            <View
               key={`${currentSlide}-${i}`}
-              entering={FadeIn.delay(200 + i * 100).duration(400)}
               style={[styles.exampleChip, { borderColor: slide.color + '50' }]}
             >
               <Ionicons name={ex.icon} size={18} color={slide.color} />
               <Text style={styles.exampleText}>{ex.label}</Text>
-            </Animated.View>
+            </View>
           ))}
         </View>
-      </Animated.View>
+      </View>
 
       {/* Dots */}
       <View style={styles.dots}>
