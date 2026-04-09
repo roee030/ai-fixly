@@ -4,15 +4,21 @@ import { authService } from '../services/auth';
 import { getFirestore, doc, getDoc } from '@react-native-firebase/firestore';
 
 export function useAuth() {
-  const { setUser, setLoading, setHasCompletedProfile } = useAuthStore();
+  // Select individual values to avoid unnecessary re-renders
+  const user = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const hasCompletedProfile = useAuthStore((s) => s.hasCompletedProfile);
 
   useEffect(() => {
+    const { setUser, setLoading, setHasCompletedProfile } = useAuthStore.getState();
     setLoading(true);
-    const unsubscribe = authService.onAuthStateChanged(async (user) => {
-      setUser(user);
-      if (user) {
+
+    const unsubscribe = authService.onAuthStateChanged(async (authUser) => {
+      setUser(authUser);
+      if (authUser) {
         try {
-          const userDoc = await getDoc(doc(getFirestore(), 'users', user.uid));
+          const userDoc = await getDoc(doc(getFirestore(), 'users', authUser.uid));
           setHasCompletedProfile(userDoc.exists && !!userDoc.data()?.displayName);
         } catch {
           setHasCompletedProfile(false);
@@ -24,7 +30,7 @@ export function useAuth() {
     });
 
     return unsubscribe;
-  }, [setUser, setLoading, setHasCompletedProfile]);
+  }, []);
 
-  return useAuthStore();
+  return { user, isLoading, isAuthenticated, hasCompletedProfile };
 }

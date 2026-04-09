@@ -28,12 +28,17 @@ Sentry.init({
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, hasCompletedProfile } = useAuth();
   const segments = useSegments();
-  const { hasSeenOnboarding, loadOnboardingState } = useAppStore();
+  // Use selectors to avoid recreating references on every render
+  const hasSeenOnboarding = useAppStore((s) => s.hasSeenOnboarding);
+  const loadOnboardingState = useAppStore((s) => s.loadOnboardingState);
   useNotifications();
+
+  // Stable string version of segments to use as dependency (avoids infinite loop)
+  const segmentsKey = segments.join('/');
 
   useEffect(() => {
     loadOnboardingState();
-  }, []);
+  }, [loadOnboardingState]);
 
   // Hide native splash screen as soon as auth is ready
   useEffect(() => {
@@ -45,22 +50,43 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
 
-    if (!hasSeenOnboarding && !segments.includes('onboarding' as never)) {
+    const inOnboarding = segments[0] === 'onboarding';
+    const inAuthGroup = segments[0] === '(auth)';
+    const inProfileSetup = segments[1] === 'profile-setup';
+
+    if (!hasSeenOnboarding && !inOnboarding) {
       router.replace('/onboarding');
       return;
     }
 
-    const inAuthGroup = segments[0] === '(auth)';
+    if (hasSeenOnboarding && inOnboarding) {
+      // Onboarding done, move forward
+      if (!isAuthenticated) {
+        router.replace('/(auth)/phone');
+      } else if (!hasCompletedProfile) {
+        router.replace('/(auth)/profile-setup');
+      } else {
+        router.replace('/(tabs)');
+      }
+      return;
+    }
 
-    if (!isAuthenticated && !inAuthGroup) {
+    if (!isAuthenticated && !inAuthGroup && !inOnboarding) {
       router.replace('/(auth)/phone');
-    } else if (isAuthenticated && !hasCompletedProfile && segments[1] !== 'profile-setup') {
+      return;
+    }
+
+    if (isAuthenticated && !hasCompletedProfile && !inProfileSetup) {
       router.replace('/(auth)/profile-setup');
-    } else if (isAuthenticated && hasCompletedProfile && inAuthGroup) {
+      return;
+    }
+
+    if (isAuthenticated && hasCompletedProfile && inAuthGroup) {
       analyticsService.trackEvent('app_opened');
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, isLoading, hasCompletedProfile, hasSeenOnboarding, segments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, isLoading, hasCompletedProfile, hasSeenOnboarding, segmentsKey]);
 
   // Render empty view while loading — native splash is visible until hideAsync()
   if (isLoading) {
