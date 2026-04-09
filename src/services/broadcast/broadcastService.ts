@@ -1,6 +1,29 @@
 import { logger } from '../logger';
 import { analyticsService } from '../analytics';
 
+function brokerUrl(): string | null {
+  return process.env.EXPO_PUBLIC_BROKER_URL || null;
+}
+
+async function brokerFetch(path: string, body: unknown): Promise<Response | null> {
+  const url = brokerUrl();
+  if (!url) {
+    logger.warn(`[broker] EXPO_PUBLIC_BROKER_URL not set, skipping ${path}`);
+    return null;
+  }
+
+  try {
+    return await fetch(`${url}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    logger.error(`[broker] ${path} request failed`, err as Error);
+    return null;
+  }
+}
+
 export interface BroadcastInput {
   requestId: string;
   professions: string[];
@@ -85,5 +108,46 @@ export async function broadcastToProviders(input: BroadcastInput): Promise<Broad
   } catch (err) {
     logger.error('[broadcast] Failed', err as Error, { requestId: input.requestId });
     throw err;
+  }
+}
+
+/**
+ * Notify the worker that the customer selected a provider.
+ * The worker will:
+ * 1. Send a WhatsApp to the provider saying "you were selected"
+ * 2. Refresh the phone->requestId mapping in KV so future replies are
+ *    routed to the chat instead of creating new bids
+ */
+export async function notifyProviderSelected(params: {
+  requestId: string;
+  providerPhone: string;
+  providerName: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+}): Promise<void> {
+  const response = await brokerFetch('/provider/selected', params);
+  if (!response || !response.ok) {
+    logger.warn('[notifyProviderSelected] failed', {
+      requestId: params.requestId,
+      status: response?.status?.toString() || 'no response',
+    });
+  }
+}
+
+/**
+ * Forward a customer chat message to the provider via WhatsApp.
+ */
+export async function forwardChatMessage(params: {
+  requestId: string;
+  providerPhone: string;
+  text: string;
+}): Promise<void> {
+  const response = await brokerFetch('/chat/send', params);
+  if (!response || !response.ok) {
+    logger.warn('[forwardChatMessage] failed', {
+      requestId: params.requestId,
+      status: response?.status?.toString() || 'no response',
+    });
   }
 }

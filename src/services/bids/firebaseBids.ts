@@ -63,11 +63,16 @@ class FirebaseBidService implements BidService {
     // or demo bids in dry-run mode).
   }
 
-  async selectBid(requestId: string, bidId: string): Promise<void> {
+  async selectBid(requestId: string, bid: Bid): Promise<void> {
     const requestRef = doc(this.db, 'serviceRequests', requestId);
+    // Denormalize the selected provider's details onto the request doc so:
+    // 1. The chat screen can forward messages without another lookup
+    // 2. The worker webhook can check 'is this the selected provider?'
     await updateDoc(requestRef, {
       status: REQUEST_STATUS.IN_PROGRESS,
-      selectedBidId: bidId,
+      selectedBidId: bid.id,
+      selectedProviderPhone: bid.providerPhone,
+      selectedProviderName: bid.providerName,
     });
   }
 

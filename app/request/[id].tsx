@@ -10,6 +10,7 @@ import { ScreenContainer } from '../../src/components/layout';
 import { Button, AnimatedCard, AnimatedPressable, SkeletonImage } from '../../src/components/ui';
 import { requestService } from '../../src/services/requests';
 import { bidService } from '../../src/services/bids';
+import { notifyProviderSelected } from '../../src/services/broadcast';
 import { analyticsService } from '../../src/services/analytics';
 import { logger } from '../../src/services/logger';
 import { REQUEST_STATUS, REQUEST_STATUS_LABELS } from '../../src/constants/status';
@@ -70,9 +71,21 @@ export default function RequestDetailsScreen() {
         {
           text: 'אשר בחירה',
           onPress: async () => {
-            await bidService.selectBid(id, bid.id);
-            analyticsService.trackEvent('bid_selected', { requestId: id, price: bid.price });
-            loadData();
+            try {
+              // 1. Update Firestore (status + denormalized selected provider fields)
+              await bidService.selectBid(id, bid);
+              analyticsService.trackEvent('bid_selected', { requestId: id, price: bid.price });
+
+              // 2. Notify the worker to send 'you were selected' WhatsApp to the
+              //    provider and refresh the phone->requestId mapping.
+              notifyProviderSelected({
+                requestId: id,
+                providerPhone: bid.providerPhone,
+                providerName: bid.providerName,
+              }).catch((err) => logger.error('notifyProviderSelected failed', err as Error));
+            } catch (err) {
+              logger.error('selectBid failed', err as Error);
+            }
           },
         },
       ]

@@ -19,7 +19,7 @@ export interface BidService {
   getBidsForRequest(requestId: string): Promise<Bid[]>;
   /** @deprecated Use real bids from worker */
   createMockBids(requestId: string): Promise<void>;
-  selectBid(requestId: string, bidId: string): Promise<void>;
+  selectBid(requestId: string, bid: Bid): Promise<void>;
   /** Subscribe to bid changes for a request in real time */
   onBidsChanged(requestId: string, callback: (bids: Bid[]) => void): () => void;
 }

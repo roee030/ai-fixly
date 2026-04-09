@@ -1,16 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, Pressable, FlatList, KeyboardAvoidingView,
-  Platform, StyleSheet, ActivityIndicator,
+  Platform, StyleSheet, ActivityIndicator, Linking,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
 import { chatService, monitorAndUpdateStatus } from '../../src/services/chat';
+import { requestService } from '../../src/services/requests';
+import { forwardChatMessage } from '../../src/services/broadcast';
+import { logger } from '../../src/services/logger';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
 
 import type { ChatMessage } from '../../src/services/chat';
+import type { ServiceRequest } from '../../src/services/requests';
 
 export default function ChatScreen() {
   const { requestId } = useLocalSearchParams<{ requestId: string }>();
@@ -18,8 +22,16 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [request, setRequest] = useState<ServiceRequest | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
+  // Subscribe to request so we know the selected provider's phone + name
+  useEffect(() => {
+    if (!requestId) return;
+    return requestService.onRequestChanged(requestId, setRequest);
+  }, [requestId]);
+
+  // Subscribe to chat messages
   useEffect(() => {
     if (!requestId) return;
 
@@ -31,6 +43,9 @@ export default function ChatScreen() {
     return unsubscribe;
   }, [requestId]);
 
+  const providerPhone = (request as any)?.selectedProviderPhone || '';
+  const providerName = (request as any)?.selectedProviderName || 'בעל מקצוע';
+
   const handleSend = async () => {
     if (!input.trim() || !user || !requestId) return;
 
@@ -39,7 +54,19 @@ export default function ChatScreen() {
     setIsSending(true);
 
     try {
+      // 1. Write to Firestore (app chat history)
       await chatService.sendMessage(requestId, user.uid, 'customer', text);
+
+      // 2. Forward to provider via WhatsApp through the worker (middleman)
+      if (providerPhone) {
+        forwardChatMessage({
+          requestId,
+          providerPhone,
+          text,
+        }).catch((err) => logger.error('forwardChatMessage failed', err as Error));
+      }
+
+      // 3. AI monitor checks for completion/cancellation signals
       monitorAndUpdateStatus(requestId, text, 'customer').catch(() => {});
     } catch (err) {
       console.error('Send message error:', err);
@@ -47,6 +74,11 @@ export default function ChatScreen() {
     } finally {
       setIsSending(false);
     }
+  };
+
+  const handleCall = () => {
+    if (!providerPhone) return;
+    Linking.openURL(`tel:${providerPhone}`).catch(() => {});
   };
 
   const renderMessage = ({ item }: { item: ChatMessage }) => {
@@ -84,20 +116,14 @@ export default function ChatScreen() {
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>צ'אט</Text>
-          <Text style={styles.headerSubtitle}>כל ההודעות מתועדות</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{providerName}</Text>
+          <Text style={styles.headerSubtitle}>כל ההודעות מתועדות וחוזרות דרך WhatsApp</Text>
         </View>
-        <Pressable
-          onPress={() => {
-            // TODO: get provider phone from request context
-            import('react-native').then(({ Linking }) => {
-              Linking.openURL('tel:+972501234567');
-            });
-          }}
-          style={styles.callBtn}
-        >
-          <Ionicons name="call" size={20} color={COLORS.success} />
-        </Pressable>
+        {providerPhone ? (
+          <Pressable onPress={handleCall} style={styles.callBtn}>
+            <Ionicons name="call" size={20} color={COLORS.success} />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* Messages */}
