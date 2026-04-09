@@ -16,7 +16,8 @@
  */
 
 import { Env } from './env';
-import { findNearbyProviders } from './googlePlaces';
+import { findNearbyProvidersCached } from './placesCache';
+import type { PlacesProvider } from './googlePlaces';
 import { sendWhatsAppMessage } from './twilio';
 import { parseProviderReply } from './geminiParser';
 import { FirestoreClient } from './firestore';
@@ -79,20 +80,23 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
 
   const maxProviders = parseInt(env.MAX_PROVIDERS_PER_REQUEST || '5', 10);
   const radiusMeters = parseInt(env.SEARCH_RADIUS_METERS || '20000', 10);
+  const cacheTtl = parseInt(env.PLACES_CACHE_TTL_SECONDS || '86400', 10);
 
-  // Find providers for each profession via Google Places
-  const allProviders: Awaited<ReturnType<typeof findNearbyProviders>> = [];
+  // Find providers for each profession via Google Places (cached via KV)
+  const allProviders: PlacesProvider[] = [];
   const seenPlaceIds = new Set<string>();
 
   for (const profession of body.professions) {
     try {
-      const found = await findNearbyProviders({
+      const found = await findNearbyProvidersCached({
+        kv: env.PLACES_CACHE,
         apiKey: env.GOOGLE_PLACES_API_KEY,
         profession,
         lat: body.location.lat,
         lng: body.location.lng,
         radiusMeters,
         maxResults: maxProviders,
+        ttlSeconds: cacheTtl,
       });
 
       for (const p of found) {

@@ -3,6 +3,13 @@ main = "src/index.ts"
 compatibility_date = "2024-05-01"
 compatibility_flags = ["nodejs_compat"]
 
+# KV namespace for caching Google Places results (saves money on duplicate lookups)
+# Create it with: npx wrangler kv:namespace create "PLACES_CACHE"
+# Then replace the id below with the one wrangler prints.
+[[kv_namespaces]]
+binding = "PLACES_CACHE"
+id = "REPLACE_WITH_YOUR_KV_ID"
+
 # Secrets (set via `wrangler secret put <NAME>`):
 #   GOOGLE_PLACES_API_KEY
 #   TWILIO_ACCOUNT_SID
@@ -16,3 +23,5 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 MAX_PROVIDERS_PER_REQUEST = "5"
 SEARCH_RADIUS_METERS = "20000"
+# Cache Google Places results for this many seconds (24 hours default)
+PLACES_CACHE_TTL_SECONDS = "86400"

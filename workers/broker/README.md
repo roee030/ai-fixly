@@ -33,7 +33,23 @@ npx wrangler login
 This opens a browser to authorize wrangler with your Cloudflare account. You
 need a free Cloudflare account — no credit card required for Workers.
 
-### 3. Set secrets
+### 3. Create KV namespace for Places caching
+
+Google Places costs money ($32 per 1000 calls after free tier). We cache
+results in Cloudflare KV to dramatically reduce cost.
+
+```bash
+npx wrangler kv:namespace create "PLACES_CACHE"
+```
+
+This will print something like:
+```
+id = "abcd1234567890efgh"
+```
+
+Copy the id and paste it in `wrangler.toml`, replacing `REPLACE_WITH_YOUR_KV_ID`.
+
+### 4. Set secrets
 
 ```bash
 # Google Places API Key (get from Google Cloud Console)
@@ -60,7 +76,7 @@ npx wrangler secret put FIREBASE_SERVICE_ACCOUNT_JSON
 4. Minify it to a single line: `cat serviceAccount.json | jq -c`
 5. Paste the entire minified JSON when wrangler prompts for the secret
 
-### 4. Deploy
+### 5. Deploy
 
 ```bash
 npm run deploy
@@ -68,7 +84,7 @@ npm run deploy
 
 You'll get a URL like `https://ai-fixly-broker.<your-subdomain>.workers.dev`.
 
-### 5. Configure the app
+### 6. Configure the app
 
 Add the worker URL to your app's `.env`:
 
@@ -78,7 +94,7 @@ EXPO_PUBLIC_BROKER_URL=https://ai-fixly-broker.<your-subdomain>.workers.dev
 
 Restart Metro so Expo picks up the new env var.
 
-### 6. Configure Twilio webhook
+### 7. Configure Twilio webhook
 
 In Twilio Console → Messaging → Try it out → Send a WhatsApp message → Sandbox
 settings:
@@ -116,6 +132,43 @@ npm run tail
 ```
 
 Streams live logs from the deployed worker.
+
+## Cost protection
+
+### Google Places API
+
+The "Nearby Search (New)" endpoint costs ~$32 per 1000 requests after the
+free tier (first 10,000 per month are free). We protect against runaway costs
+with three layers:
+
+**1. KV caching (this worker)**
+- Results are cached in Cloudflare KV by `profession + lat_rounded + lng_rounded`
+- Default TTL: 24 hours
+- Users within the same ~1km² cell share results for the same profession
+- Configurable via `PLACES_CACHE_TTL_SECONDS` in wrangler.toml
+
+**2. Field masks (this worker)**
+- We only request the fields we actually need via `X-Goog-FieldMask`
+- Reduces cost per request (Google charges per field SKU tier)
+
+**3. API key restrictions (Google Cloud Console)**
+After creating the API key:
+- **Application restriction**: Choose "None" (worker is a server, not a client)
+- **API restriction**: Restrict key to ONLY "Places API (New)"
+  (so a leaked key can't be used for other Google services)
+- **Quota limits**: Go to Google Cloud Console → APIs & Services → Quotas
+  and cap "Requests per day" to a low number (e.g. 100) during development
+
+### Twilio
+
+- Sandbox mode is free
+- Production WhatsApp costs ~$0.05 per conversation
+- Set Twilio spending limit in Console → Billing → Usage triggers
+
+### Gemini
+
+- Free tier: generous for our use case (parsing short WhatsApp replies)
+- Uses `gemini-2.5-flash` which has the best free-tier quota
 
 ## Architecture notes
 
