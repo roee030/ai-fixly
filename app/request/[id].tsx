@@ -39,13 +39,10 @@ export default function RequestDetailsScreen() {
       setRequest(req);
       if (req) {
         setIsLoadingBids(true);
+        // Real bids only — no mock generation. Bids arrive when providers
+        // reply via WhatsApp and the worker writes them to Firestore.
         const bidList = await bidService.getBidsForRequest(id);
         setBids(bidList);
-        if (bidList.length === 0 && req.status === 'open') {
-          await bidService.createMockBids(id);
-          const newBids = await bidService.getBidsForRequest(id);
-          setBids(newBids);
-        }
         setIsLoadingBids(false);
       }
     } catch (err) {
@@ -265,6 +262,28 @@ export default function RequestDetailsScreen() {
           </Animated.View>
         )}
 
+        {/* Sent to: list of providers we contacted via Google Places + Twilio */}
+        {!selectedBid && (request as any)?.broadcastedProviders?.length > 0 && (
+          <View style={styles.broadcastCard}>
+            <View style={styles.broadcastHeader}>
+              <Ionicons name="paper-plane-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.broadcastTitle}>
+                נשלח ל-{(request as any).broadcastedProviders.length} בעלי מקצוע באזור
+              </Text>
+            </View>
+            {((request as any).broadcastedProviders as Array<{ name: string; phone: string; sent: boolean }>).slice(0, 5).map((p, i) => (
+              <View key={i} style={styles.broadcastRow}>
+                <Ionicons
+                  name={p.sent ? 'checkmark-circle' : 'time-outline'}
+                  size={14}
+                  color={p.sent ? COLORS.success : COLORS.textTertiary}
+                />
+                <Text style={styles.broadcastName} numberOfLines={1}>{p.name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Bids list */}
         {!selectedBid && (
           <>
@@ -284,7 +303,8 @@ export default function RequestDetailsScreen() {
             ) : bids.length === 0 ? (
               <View style={styles.emptyBids}>
                 <Ionicons name="hourglass-outline" size={48} color={COLORS.textTertiary} />
-                <Text style={styles.emptyBidsText}>בעלי מקצוע מקבלים את הבקשה שלך...</Text>
+                <Text style={styles.emptyBidsText}>ממתינים שבעלי המקצוע יענו...</Text>
+                <Text style={[styles.emptyBidsText, { fontSize: 12 }]}>תשובות מגיעות דרך WhatsApp</Text>
               </View>
             ) : (
               bids.map((bid, index) => (
@@ -384,6 +404,36 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.error + '15',
   },
   cancelSelectionText: { color: COLORS.error, fontSize: 13, fontWeight: '600' },
+  broadcastCard: {
+    backgroundColor: COLORS.primary + '10',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '30',
+    gap: 8,
+  },
+  broadcastHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  broadcastTitle: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  broadcastRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  broadcastName: {
+    color: COLORS.text,
+    fontSize: 13,
+    flex: 1,
+  },
   bidsHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 8 },
   bidsTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, flex: 1 },
   bidCount: {

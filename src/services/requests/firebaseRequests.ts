@@ -111,6 +111,26 @@ class FirebaseRequestService implements RequestService {
 
     await updateDoc(docRef, update);
   }
+
+  /**
+   * Save the broadcast result so the user can see which providers were
+   * contacted (even before they reply). Stores the list as a denormalized
+   * field on the request document.
+   */
+  async saveBroadcastResult(
+    requestId: string,
+    providers: Array<{ name: string; phone: string; sent: boolean }>
+  ): Promise<void> {
+    try {
+      const docRef = doc(this.db, this.collectionName, requestId);
+      await updateDoc(docRef, {
+        broadcastedProviders: providers,
+        broadcastedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('[saveBroadcastResult] failed', err);
+    }
+  }
 }
 
 export const requestService: RequestService = new FirebaseRequestService();

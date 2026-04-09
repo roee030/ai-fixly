@@ -82,6 +82,12 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
   const radiusMeters = parseInt(env.SEARCH_RADIUS_METERS || '20000', 10);
   const cacheTtl = parseInt(env.PLACES_CACHE_TTL_SECONDS || '86400', 10);
 
+  const isDryRun = (env.DRY_RUN || 'false').toLowerCase() === 'true';
+  console.log(
+    `[broadcast] requestId=${body.requestId} professions=${body.professions.join(',')} ` +
+      `lat=${body.location.lat} lng=${body.location.lng} dryRun=${isDryRun}`
+  );
+
   // Find providers for each profession via Google Places (cached via KV)
   const allProviders: PlacesProvider[] = [];
   const seenPlaceIds = new Set<string>();
@@ -99,6 +105,11 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
         ttlSeconds: cacheTtl,
       });
 
+      console.log(`[places] ${profession}: found ${found.length} providers`);
+      for (const p of found) {
+        console.log(`  - ${p.name} | ${p.phone} | rating=${p.rating ?? 'n/a'}`);
+      }
+
       for (const p of found) {
         if (!seenPlaceIds.has(p.placeId)) {
           seenPlaceIds.add(p.placeId);
@@ -113,16 +124,28 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
   // Limit to top N providers
   const providers = allProviders.slice(0, maxProviders);
 
+  console.log(`[broadcast] total unique providers: ${providers.length}`);
+
   if (providers.length === 0) {
-    return jsonResponse({ sentCount: 0, providersFound: 0 });
+    return jsonResponse({ sentCount: 0, providersFound: 0, providers: [], dryRun: isDryRun });
   }
 
-  // Send WhatsApp to each provider
+  // Send (or simulate sending) WhatsApp to each provider
   const message = buildProviderMessage(body);
   let sentCount = 0;
+  const results: Array<{ name: string; phone: string; sent: boolean; reason?: string }> = [];
 
   for (const provider of providers) {
-    if (!provider.phone) continue;
+    if (!provider.phone) {
+      results.push({ name: provider.name, phone: '', sent: false, reason: 'no phone' });
+      continue;
+    }
+
+    if (isDryRun) {
+      console.log(`[DRY RUN] would send WhatsApp to ${provider.name} (${provider.phone})`);
+      results.push({ name: provider.name, phone: provider.phone, sent: false, reason: 'dry run' });
+      continue;
+    }
 
     const result = await sendWhatsAppMessage({
       accountSid: env.TWILIO_ACCOUNT_SID,
@@ -135,12 +158,19 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
 
     if (result.success) {
       sentCount++;
+      results.push({ name: provider.name, phone: provider.phone, sent: true });
     } else {
       console.warn(`Failed to WhatsApp ${provider.name}:`, result.error);
+      results.push({ name: provider.name, phone: provider.phone, sent: false, reason: result.error });
     }
   }
 
-  return jsonResponse({ sentCount, providersFound: providers.length });
+  return jsonResponse({
+    sentCount,
+    providersFound: providers.length,
+    providers: results,
+    dryRun: isDryRun,
+  });
 }
 
 async function handleTwilioWebhook(request: Request, env: Env): Promise<Response> {

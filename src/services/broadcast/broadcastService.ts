@@ -9,9 +9,18 @@ export interface BroadcastInput {
   location: { lat: number; lng: number; address: string };
 }
 
+export interface BroadcastProviderResult {
+  name: string;
+  phone: string;
+  sent: boolean;
+  reason?: string;
+}
+
 export interface BroadcastResult {
   sentCount: number;
   providersFound: number;
+  providers: BroadcastProviderResult[];
+  dryRun: boolean;
 }
 
 /**
@@ -39,7 +48,7 @@ export async function broadcastToProviders(input: BroadcastInput): Promise<Broad
       providerCount: 0,
       mock: 'true',
     });
-    return { sentCount: 0, providersFound: 0 };
+    return { sentCount: 0, providersFound: 0, providers: [], dryRun: true };
   }
 
   try {

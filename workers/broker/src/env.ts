@@ -19,4 +19,5 @@ export interface Env {
   MAX_PROVIDERS_PER_REQUEST: string;
   SEARCH_RADIUS_METERS: string;
   PLACES_CACHE_TTL_SECONDS: string;
+  DRY_RUN: string; // "true" = don't actually send WhatsApp
 }

@@ -8,7 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 # Then replace the id below with the one wrangler prints.
 [[kv_namespaces]]
 binding = "PLACES_CACHE"
-id = "REPLACE_WITH_YOUR_KV_ID"
+id = "6b380095b00d4a48ba56be3a3e40f426"
 
 # Secrets (set via `wrangler secret put <NAME>`):
 #   GOOGLE_PLACES_API_KEY
@@ -25,3 +25,8 @@ MAX_PROVIDERS_PER_REQUEST = "5"
 SEARCH_RADIUS_METERS = "20000"
 # Cache Google Places results for this many seconds (24 hours default)
 PLACES_CACHE_TTL_SECONDS = "86400"
+# DRY RUN MODE: when "true", the worker fetches providers from Google Places
+# but does NOT actually send WhatsApp messages. Returns the list in the
+# response so the app can show what WOULD have been sent.
+# Set to "false" when ready to send real messages.
+DRY_RUN = "true"

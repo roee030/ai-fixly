@@ -30,9 +30,16 @@ export interface ServiceRequest {
   updatedAt: Date;
 }
 
+export interface BroadcastedProvider {
+  name: string;
+  phone: string;
+  sent: boolean;
+}
+
 export interface RequestService {
   createRequest(input: CreateRequestInput): Promise<ServiceRequest>;
   getRequest(requestId: string): Promise<ServiceRequest | null>;
   getUserRequests(userId: string): Promise<ServiceRequest[]>;
   updateStatus(requestId: string, status: RequestStatus): Promise<void>;
+  saveBroadcastResult(requestId: string, providers: BroadcastedProvider[]): Promise<void>;
 }
