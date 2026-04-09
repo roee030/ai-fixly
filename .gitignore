@@ -29,9 +29,13 @@ Thumbs.db
 firebase-debug.log
 .firebase/
 
-# Firebase service account files
+# Firebase service account files (NEVER commit these!)
 google-services.json
 GoogleService-Info.plist
+*-firebase-adminsdk-*.json
+firebase-adminsdk-*.json
+serviceAccount*.json
+service-account*.json
 
 # EAS
 .easignore
