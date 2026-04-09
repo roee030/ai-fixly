@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { ScreenContainer } from '../../src/components/layout';
-import { Button, Input } from '../../src/components/ui';
-import { phoneNumberSchema } from '../../src/validators';
+import { Button, Input, FadeInView } from '../../src/components/ui';
 import { authService } from '../../src/services/auth';
+import { normalizePhoneNumber, isValidPhoneNumber } from '../../src/utils/phone';
 import { COLORS } from '../../src/constants';
 
 export default function PhoneScreen() {
@@ -15,58 +15,92 @@ export default function PhoneScreen() {
   const handleSendOtp = async () => {
     setError('');
 
-    const result = phoneNumberSchema.safeParse(phone);
-    if (!result.success) {
-      setError(result.error.errors[0].message);
+    if (!isValidPhoneNumber(phone)) {
+      setError('מספר טלפון לא תקין');
       return;
     }
 
+    const normalizedPhone = normalizePhoneNumber(phone);
+
     setIsLoading(true);
     try {
-      const { verificationId } = await authService.signInWithPhone(phone);
+      const { verificationId } = await authService.signInWithPhone(normalizedPhone);
       router.push({
         pathname: '/(auth)/verify',
-        params: { verificationId, phone },
+        params: { verificationId, phone: normalizedPhone },
       });
     } catch (err: any) {
       console.error('Phone auth error:', err);
-      setError(err?.message || 'שליחת קוד האימות נכשלה. נסה שוב.');
+      setError('שליחת קוד האימות נכשלה. נסה שוב.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const canSubmit = phone.replace(/[^\d]/g, '').length >= 9;
+
   return (
     <ScreenContainer>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, justifyContent: 'center' }}
+        style={styles.container}
       >
-        <Text style={{ fontSize: 28, fontWeight: 'bold', marginBottom: 8, color: COLORS.text }}>
-          ברוכים הבאים
-        </Text>
-        <Text style={{ fontSize: 16, marginBottom: 32, color: COLORS.textSecondary }}>
-          הכנס מספר טלפון לקבלת קוד אימות
-        </Text>
+        <FadeInView>
+          <Text style={styles.title}>ברוכים הבאים</Text>
+          <Text style={styles.subtitle}>
+            הכנס את מספר הטלפון שלך{'\n'}ונשלח לך קוד אימות
+          </Text>
 
-        <Input
-          label="מספר טלפון"
-          placeholder="+972501234567"
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          autoComplete="tel"
-          textContentType="telephoneNumber"
-          error={error}
-        />
+          <Input
+            label="מספר טלפון"
+            placeholder="050-123-4567"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            textContentType="telephoneNumber"
+            error={error}
+          />
 
-        <Button
-          title="שלח קוד"
-          onPress={handleSendOtp}
-          isLoading={isLoading}
-          disabled={phone.length < 10}
-        />
+          <Text style={styles.hint}>
+            לא צריך להזין קידומת מדינה
+          </Text>
+
+          <View style={{ marginTop: 24 }}>
+            <Button
+              title="שלח קוד"
+              onPress={handleSendOtp}
+              isLoading={isLoading}
+              disabled={!canSubmit}
+            />
+          </View>
+        </FadeInView>
       </KeyboardAvoidingView>
     </ScreenContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: COLORS.text,
+  },
+  subtitle: {
+    fontSize: 16,
+    marginBottom: 32,
+    color: COLORS.textSecondary,
+    lineHeight: 22,
+  },
+  hint: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+});

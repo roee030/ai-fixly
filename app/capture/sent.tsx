@@ -1,35 +1,74 @@
+import { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, {
+  FadeIn,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withDelay,
+} from 'react-native-reanimated';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { COLORS } from '../../src/constants';
 
+const AUTO_REDIRECT_MS = 2500;
+
 export default function SentScreen() {
+  const scale = useSharedValue(0);
+  const checkmarkScale = useSharedValue(0);
+
+  useEffect(() => {
+    // Animate icon bounce
+    scale.value = withSequence(
+      withSpring(1.2, { damping: 8, stiffness: 120 }),
+      withSpring(1, { damping: 10 })
+    );
+    checkmarkScale.value = withDelay(200, withSpring(1, { damping: 12, stiffness: 150 }));
+
+    // Auto-redirect after a short moment - don't make user wait
+    const timer = setTimeout(() => {
+      router.replace('/(tabs)/requests');
+    }, AUTO_REDIRECT_MS);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const iconStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const checkStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkmarkScale.value }],
+  }));
+
   return (
     <ScreenContainer>
       <View style={styles.container}>
-        <View style={styles.iconWrap}>
-          <Ionicons name="checkmark-circle" size={80} color={COLORS.success} />
-        </View>
+        <Animated.View style={[styles.iconWrap, iconStyle]}>
+          <View style={styles.iconBg}>
+            <Animated.View style={checkStyle}>
+              <Ionicons name="checkmark" size={64} color="#FFFFFF" />
+            </Animated.View>
+          </View>
+        </Animated.View>
 
-        <Text style={styles.title}>הבקשה נשלחה!</Text>
-        <Text style={styles.subtitle}>
-          אנחנו מחפשים בעלי מקצוע באזור שלך.{'\n'}
-          נעדכן אותך ברגע שיגיעו הצעות.
-        </Text>
+        <Animated.View entering={FadeIn.delay(400).duration(500)}>
+          <Text style={styles.title}>הבקשה נשלחה!</Text>
+          <Text style={styles.subtitle}>
+            אנחנו מחפשים בעלי מקצוע עבורך.{'\n'}
+            נעדכן אותך כשיגיעו הצעות.
+          </Text>
+        </Animated.View>
 
-        <View style={styles.buttons}>
+        <Animated.View entering={FadeIn.delay(800).duration(400)} style={styles.buttons}>
           <Button
-            title="צפה בבקשה"
+            title="צפה בבקשות שלי"
             onPress={() => router.replace('/(tabs)/requests')}
           />
-          <Button
-            title="חזור לבית"
-            onPress={() => router.replace('/(tabs)')}
-            variant="ghost"
-          />
-        </View>
+        </Animated.View>
       </View>
     </ScreenContainer>
   );
@@ -43,10 +82,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   iconWrap: {
-    marginBottom: 24,
+    marginBottom: 32,
+  },
+  iconBg: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: COLORS.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.success,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
   },
   title: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
     color: COLORS.text,
     textAlign: 'center',
@@ -61,6 +113,5 @@ const styles = StyleSheet.create({
   },
   buttons: {
     width: '100%',
-    gap: 12,
   },
 });

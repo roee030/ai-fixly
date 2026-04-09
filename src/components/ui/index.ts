@@ -6,4 +6,5 @@ export { AnimatedCard } from './AnimatedCard';
 export { AnimatedPressable } from './AnimatedPressable';
 export { FadeInView } from './FadeInView';
 export { Skeleton } from './Skeleton';
+export { SkeletonImage } from './SkeletonImage';
 export { RequestCardSkeleton, RequestListSkeleton } from './RequestCardSkeleton';

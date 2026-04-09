@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, Image, Pressable, ActivityIndicator,
-  StyleSheet, Alert, LayoutAnimation, Platform, UIManager,
+  View, Text, ScrollView, Pressable, ActivityIndicator,
+  StyleSheet, Alert, LayoutAnimation, Platform, UIManager, Linking,
 } from 'react-native';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
-import { Button, AnimatedCard, AnimatedPressable } from '../../src/components/ui';
+import { Button, AnimatedCard, AnimatedPressable, SkeletonImage } from '../../src/components/ui';
 import { requestService } from '../../src/services/requests';
 import { bidService } from '../../src/services/bids';
 import { analyticsService } from '../../src/services/analytics';
@@ -189,7 +190,14 @@ export default function RequestDetailsScreen() {
           <View style={styles.detailsContent}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
               {request.media.map((m, i) => (
-                <Image key={i} source={{ uri: m.downloadUrl }} style={styles.mediaThumb} />
+                <SkeletonImage
+                  key={i}
+                  source={{ uri: m.downloadUrl }}
+                  width={80}
+                  height={80}
+                  borderRadius={8}
+                  containerStyle={{ marginRight: 8 }}
+                />
               ))}
             </ScrollView>
             <Text style={styles.summaryText}>{request.aiAnalysis.summary}</Text>
@@ -199,15 +207,18 @@ export default function RequestDetailsScreen() {
           </View>
         )}
 
-        {/* Selected provider card */}
+        {/* Selected provider card - animated in */}
         {selectedBid && (
-          <View style={styles.selectedCard}>
+          <Animated.View
+            entering={FadeInDown.duration(500).springify().damping(14)}
+            style={styles.selectedCard}
+          >
             <View style={styles.selectedHeader}>
-              <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
+              <Ionicons name="checkmark-circle" size={28} color={COLORS.success} />
               <Text style={styles.selectedTitle}>בעל מקצוע נבחר</Text>
             </View>
             <Text style={styles.selectedName}>{selectedBid.providerName}</Text>
-            <View style={styles.selectedDetails}>
+            <View style={[styles.selectedDetails, { justifyContent: 'center' }]}>
               <View style={styles.detailChip}>
                 <Ionicons name="pricetag" size={14} color={COLORS.primary} />
                 <Text style={styles.detailChipText}>{selectedBid.price} ש"ח</Text>
@@ -217,36 +228,37 @@ export default function RequestDetailsScreen() {
                 <Text style={styles.detailChipText}>{selectedBid.availability}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-              <Pressable
-                style={[styles.actionChip, { backgroundColor: COLORS.primary, flex: 1 }]}
+            <Animated.View
+              entering={FadeIn.delay(300).duration(400)}
+              style={styles.contactButtonsRow}
+            >
+              <AnimatedPressable
+                style={[styles.contactBtn, { backgroundColor: COLORS.primary }]}
                 onPress={() => router.push({ pathname: '/chat/[requestId]', params: { requestId: id } })}
               >
-                <Ionicons name="chatbubble" size={16} color="#FFF" />
-                <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>צ'אט</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.actionChip, { backgroundColor: COLORS.success, flex: 1 }]}
+                <Ionicons name="chatbubble" size={20} color="#FFF" />
+                <Text style={styles.contactBtnText}>צ'אט</Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                style={[styles.contactBtn, { backgroundColor: COLORS.success }]}
                 onPress={() => {
                   const phone = selectedBid.providerPhone;
                   if (phone) {
-                    import('react-native').then(({ Linking }) => {
-                      Linking.openURL(`tel:${phone}`);
-                    });
+                    Linking.openURL(`tel:${phone}`);
                   }
                 }}
               >
-                <Ionicons name="call" size={16} color="#FFF" />
-                <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 13 }}>התקשר</Text>
-              </Pressable>
-            </View>
+                <Ionicons name="call" size={20} color="#FFF" />
+                <Text style={styles.contactBtnText}>התקשר</Text>
+              </AnimatedPressable>
+            </Animated.View>
             <Pressable
-              style={[styles.actionChip, { backgroundColor: COLORS.error + '15', alignSelf: 'center', marginTop: 8 }]}
+              style={styles.cancelSelectionBtn}
               onPress={handleCancelSelection}
             >
-              <Text style={{ color: COLORS.error, fontWeight: '600', fontSize: 13 }}>בטל בחירה</Text>
+              <Text style={styles.cancelSelectionText}>בטל בחירה</Text>
             </Pressable>
-          </View>
+          </Animated.View>
         )}
 
         {/* Bids list */}
@@ -336,22 +348,38 @@ const styles = StyleSheet.create({
   summaryText: { color: COLORS.text, fontSize: 14, lineHeight: 20, marginBottom: 8 },
   descText: { color: COLORS.textSecondary, fontSize: 13, fontStyle: 'italic' },
   selectedCard: {
-    backgroundColor: COLORS.success + '10', borderRadius: 16, padding: 16,
+    backgroundColor: COLORS.success + '10', borderRadius: 20, padding: 20,
     marginBottom: 16, borderWidth: 1, borderColor: COLORS.success + '30',
+    alignItems: 'center',
   },
-  selectedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  selectedTitle: { color: COLORS.success, fontSize: 14, fontWeight: '600' },
-  selectedName: { color: COLORS.text, fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
-  selectedDetails: { flexDirection: 'row', gap: 12 },
+  selectedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, justifyContent: 'center' },
+  selectedTitle: { color: COLORS.success, fontSize: 15, fontWeight: '600' },
+  selectedName: { color: COLORS.text, fontSize: 20, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
+  selectedDetails: { flexDirection: 'row', gap: 10, marginBottom: 4 },
   detailChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: COLORS.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  detailChipText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  detailChipText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
   actionChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
   },
+  contactButtonsRow: {
+    flexDirection: 'row', gap: 12, marginTop: 20, width: '100%', justifyContent: 'center',
+  },
+  contactBtn: {
+    flex: 1, maxWidth: 150,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderRadius: 14, paddingVertical: 14,
+  },
+  contactBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold' },
+  cancelSelectionBtn: {
+    marginTop: 16, paddingHorizontal: 20, paddingVertical: 8, borderRadius: 8,
+    backgroundColor: COLORS.error + '15',
+  },
+  cancelSelectionText: { color: COLORS.error, fontSize: 13, fontWeight: '600' },
   bidsHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 8 },
   bidsTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, flex: 1 },
   bidCount: {

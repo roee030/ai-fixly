@@ -1,49 +1,75 @@
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { COLORS } from '../src/constants';
 import { useAppStore } from '../src/stores/useAppStore';
 
-const { width } = Dimensions.get('window');
+interface Example {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+}
 
-const slides = [
+interface Slide {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  examples: Example[];
+  color: string;
+}
+
+const slides: Slide[] = [
   {
-    icon: 'camera-outline' as const,
+    icon: 'camera-outline',
     title: 'צלם את הבעיה',
-    subtitle: 'צלם תמונה והAI שלנו יזהה\nאת סוג התקלה אוטומטית',
+    subtitle: 'פתח את המצלמה, צלם את התקלה\nוכתוב כמה מילים על מה קרה',
+    examples: [
+      { icon: 'water-outline', label: 'נזילות' },
+      { icon: 'flash-outline', label: 'חשמל' },
+      { icon: 'snow-outline', label: 'מיזוג' },
+    ],
     color: COLORS.primary,
   },
   {
-    icon: 'people-outline' as const,
-    title: 'קבל הצעות מחיר',
-    subtitle: 'בעלי מקצוע באזור שלך ישלחו\nהצעות מחיר תוך דקות',
-    color: COLORS.success,
+    icon: 'sparkles-outline',
+    title: 'ה-AI מזהה הכל',
+    subtitle: 'הבינה המלאכותית שלנו מנתחת את התמונה\nומבינה איזה בעל מקצוע אתה צריך',
+    examples: [
+      { icon: 'scan-outline', label: 'ניתוח מיידי' },
+      { icon: 'list-outline', label: 'סיווג מדויק' },
+      { icon: 'checkmark-done-outline', label: 'דיוק גבוה' },
+    ],
+    color: COLORS.warning,
   },
   {
-    icon: 'checkmark-circle-outline' as const,
-    title: 'בחר ותתחיל',
-    subtitle: 'השוווה מחירים, בחר את הטוב ביותר\nוהתחל לתקשר ישירות',
-    color: COLORS.warning,
+    icon: 'people-outline',
+    title: 'בחר את הטוב ביותר',
+    subtitle: 'בעלי מקצוע באזור שלך ישלחו הצעות\nהשווה מחירים, בחר ודבר ישירות',
+    examples: [
+      { icon: 'pricetag-outline', label: 'מחירים' },
+      { icon: 'time-outline', label: 'זמינות' },
+      { icon: 'star-outline', label: 'דירוג' },
+    ],
+    color: COLORS.success,
   },
 ];
 
 export default function OnboardingScreen() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const setHasSeenOnboarding = useAppStore((s) => s.setHasSeenOnboarding);
-  const translateX = useSharedValue(0);
 
   const goNext = () => {
     if (currentSlide < slides.length - 1) {
       setCurrentSlide(currentSlide + 1);
-      translateX.value = withTiming(-(currentSlide + 1) * width, { duration: 300 });
     } else {
       finish();
+    }
+  };
+
+  const goBack = () => {
+    if (currentSlide > 0) {
+      setCurrentSlide(currentSlide - 1);
     }
   };
 
@@ -54,20 +80,53 @@ export default function OnboardingScreen() {
 
   const slide = slides[currentSlide];
   const isLast = currentSlide === slides.length - 1;
+  const isFirst = currentSlide === 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: COLORS.background }]}>
-      <Pressable onPress={finish} style={styles.skipBtn}>
-        <Text style={styles.skipText}>דלג</Text>
-      </Pressable>
+    <View style={styles.container}>
+      {/* Top bar */}
+      <View style={styles.topBar}>
+        {!isFirst ? (
+          <Pressable onPress={goBack} style={styles.backBtn} hitSlop={20}>
+            <Ionicons name="chevron-forward" size={24} color={COLORS.textSecondary} />
+          </Pressable>
+        ) : (
+          <View style={styles.backBtn} />
+        )}
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={finish} hitSlop={20}>
+          <Text style={styles.skipText}>דלג</Text>
+        </Pressable>
+      </View>
 
-      <View style={styles.content}>
+      {/* Slide content */}
+      <Animated.View
+        key={currentSlide}
+        entering={FadeIn.duration(400)}
+        exiting={FadeOut.duration(150)}
+        style={styles.content}
+      >
         <View style={[styles.iconWrap, { backgroundColor: slide.color + '20' }]}>
-          <Ionicons name={slide.icon} size={64} color={slide.color} />
+          <Ionicons name={slide.icon} size={80} color={slide.color} />
         </View>
+
         <Text style={styles.title}>{slide.title}</Text>
         <Text style={styles.subtitle}>{slide.subtitle}</Text>
-      </View>
+
+        {/* Example chips */}
+        <View style={styles.examples}>
+          {slide.examples.map((ex, i) => (
+            <Animated.View
+              key={`${currentSlide}-${i}`}
+              entering={FadeIn.delay(200 + i * 100).duration(400)}
+              style={[styles.exampleChip, { borderColor: slide.color + '50' }]}
+            >
+              <Ionicons name={ex.icon} size={18} color={slide.color} />
+              <Text style={styles.exampleText}>{ex.label}</Text>
+            </Animated.View>
+          ))}
+        </View>
+      </Animated.View>
 
       {/* Dots */}
       <View style={styles.dots}>
@@ -76,41 +135,119 @@ export default function OnboardingScreen() {
             key={i}
             style={[
               styles.dot,
-              { backgroundColor: i === currentSlide ? COLORS.primary : COLORS.textTertiary },
-              i === currentSlide && styles.dotActive,
+              i === currentSlide && { backgroundColor: slide.color, width: 28 },
             ]}
           />
         ))}
       </View>
 
-      {/* Button */}
-      <Pressable onPress={goNext} style={styles.nextBtn}>
+      {/* Next button */}
+      <Pressable onPress={goNext} style={[styles.nextBtn, { backgroundColor: slide.color }]}>
         <Text style={styles.nextText}>{isLast ? 'בוא נתחיל' : 'הבא'}</Text>
-        <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={20} color="#FFF" />
+        <Ionicons name={isLast ? 'checkmark' : 'arrow-back'} size={22} color="#FFF" />
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 24 },
-  skipBtn: { position: 'absolute', top: 60, left: 24, zIndex: 10 },
-  skipText: { color: COLORS.textSecondary, fontSize: 16 },
-  content: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24 },
-  iconWrap: {
-    width: 140, height: 140, borderRadius: 70,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+  container: {
+    flex: 1,
+    paddingHorizontal: 24,
+    backgroundColor: COLORS.background,
   },
-  title: { fontSize: 28, fontWeight: 'bold', color: COLORS.text, textAlign: 'center' },
-  subtitle: { fontSize: 16, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 24 },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 32 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  dotActive: { width: 24 },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingBottom: 16,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skipText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  content: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+  },
+  iconWrap: {
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    paddingHorizontal: 8,
+  },
+  examples: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+  },
+  exampleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  exampleText: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 32,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.textTertiary,
+  },
   nextBtn: {
-    backgroundColor: COLORS.primary, borderRadius: 16,
-    paddingVertical: 16, flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderRadius: 16,
+    paddingVertical: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     marginBottom: 40,
   },
-  nextText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  nextText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
 });

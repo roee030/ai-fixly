@@ -31,8 +31,11 @@ export default function CaptureScreen() {
     }
   }, [images.length]);
 
+  const MIN_DESCRIPTION_LENGTH = 10;
+  const isDescriptionValid = description.trim().length >= MIN_DESCRIPTION_LENGTH;
+
   const handleAnalyze = async () => {
-    if (!hasImages) return;
+    if (!hasImages || !isDescriptionValid) return;
     setIsAnalyzing(true);
     try {
       const base64Images = await getBase64Images();
@@ -41,7 +44,7 @@ export default function CaptureScreen() {
         params: {
           images: JSON.stringify(images),
           base64Images: JSON.stringify(base64Images),
-          description,
+          description: description.trim(),
         },
       });
     } catch (err) {
@@ -98,17 +101,30 @@ export default function CaptureScreen() {
           </View>
         )}
 
-        {/* Text description */}
-        <Text style={styles.descLabel}>תאר את הבעיה (אופציונלי)</Text>
+        {/* Text description - MANDATORY */}
+        <View style={styles.descLabelRow}>
+          <Text style={styles.descLabel}>תאר את הבעיה</Text>
+          <Text style={styles.required}> *</Text>
+        </View>
         <TextInput
           value={description}
           onChangeText={setDescription}
-          placeholder="למשל: יש נזילה מתחת לכיור במטבח..."
+          placeholder="למשל: יש נזילה מתחת לכיור במטבח, הצינור מטפטף כבר כמה ימים..."
           placeholderTextColor={COLORS.textTertiary}
           multiline
           numberOfLines={4}
-          style={styles.descInput}
+          style={[
+            styles.descInput,
+            description.length > 0 && !isDescriptionValid && { borderColor: COLORS.warning }
+          ]}
         />
+        <Text style={styles.descHint}>
+          {description.length === 0
+            ? 'תיאור מפורט יעזור לבעלי המקצוע להבין את הבעיה'
+            : !isDescriptionValid
+            ? `נדרשות לפחות ${MIN_DESCRIPTION_LENGTH} תווים (${description.length}/${MIN_DESCRIPTION_LENGTH})`
+            : `${description.length} תווים`}
+        </Text>
       </ScrollView>
 
       {/* Fixed bottom button */}
@@ -117,7 +133,7 @@ export default function CaptureScreen() {
           title="שלח לניתוח"
           onPress={handleAnalyze}
           isLoading={isAnalyzing}
-          disabled={!hasImages}
+          disabled={!hasImages || !isDescriptionValid}
         />
       </View>
 
@@ -205,10 +221,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  descLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   descLabel: {
     fontSize: 14,
     color: COLORS.textSecondary,
-    marginBottom: 8,
+    fontWeight: '600',
+  },
+  required: {
+    color: COLORS.error,
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   descInput: {
     backgroundColor: COLORS.surface,
@@ -220,6 +246,12 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  descHint: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    marginTop: 6,
+    marginBottom: 4,
   },
   bottomBar: {
     paddingVertical: 16,

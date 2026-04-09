@@ -59,10 +59,21 @@ class FirebaseChatService implements ChatService {
       orderBy('createdAt', 'asc')
     );
 
-    return onSnapshot(q, (snapshot) => {
-      const messages = snapshot.docs.map((d) => this.docToMessage(d));
-      callback(messages);
-    });
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot || !snapshot.docs) {
+          callback([]);
+          return;
+        }
+        const messages = snapshot.docs.map((d) => this.docToMessage(d));
+        callback(messages);
+      },
+      (error) => {
+        console.warn('[onNewMessages] snapshot error', error);
+        callback([]);
+      }
+    );
   }
 
   async sendSystemMessage(requestId: string, text: string): Promise<void> {

@@ -45,38 +45,56 @@ class FirebaseRequestService implements RequestService {
   }
 
   async getRequest(requestId: string): Promise<ServiceRequest | null> {
-    const docRef = doc(this.db, this.collectionName, requestId);
-    const snapshot = await getDoc(docRef);
+    try {
+      const docRef = doc(this.db, this.collectionName, requestId);
+      const snapshot = await getDoc(docRef);
 
-    if (!snapshot.exists) return null;
+      if (!snapshot || !snapshot.exists) return null;
 
-    const data = snapshot.data()!;
-    return {
-      id: snapshot.id,
-      ...data,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-    } as ServiceRequest;
-  }
-
-  async getUserRequests(userId: string): Promise<ServiceRequest[]> {
-    const q = query(
-      collection(this.db, this.collectionName),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map((d) => {
-      const data = d.data();
+      const data = snapshot.data();
+      if (!data) return null;
       return {
-        id: d.id,
+        id: snapshot.id,
         ...data,
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
       } as ServiceRequest;
-    });
+    } catch (err) {
+      console.warn('[getRequest] failed', err);
+      return null;
+    }
+  }
+
+  async getUserRequests(userId: string): Promise<ServiceRequest[]> {
+    try {
+      // Simple query without orderBy - sort client-side to avoid index requirement
+      const q = query(
+        collection(this.db, this.collectionName),
+        where('userId', '==', userId)
+      );
+
+      const snapshot = await getDocs(q);
+      if (!snapshot || !snapshot.docs) return [];
+
+      return snapshot.docs
+        .map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            ...data,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            updatedAt: data.updatedAt?.toDate() || new Date(),
+          } as ServiceRequest;
+        })
+        .sort((a, b) => {
+          const timeA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+          const timeB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+          return timeB - timeA;
+        });
+    } catch (err) {
+      console.warn('[getUserRequests] failed', err);
+      return [];
+    }
   }
 
   async updateStatus(requestId: string, status: string): Promise<void> {
