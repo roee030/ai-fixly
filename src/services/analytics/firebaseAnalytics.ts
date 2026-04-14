@@ -1,13 +1,22 @@
-import analytics from '@react-native-firebase/analytics';
+import { getApp } from '@react-native-firebase/app';
+import { getAnalytics, logEvent, setUserId } from '@react-native-firebase/analytics';
 import { AnalyticsService, AnalyticsEvent } from './types';
 
+/**
+ * Firebase Analytics using the v22+ modular API.
+ * The namespaced API (analytics().xxx) was deprecated in v22.
+ */
 class FirebaseAnalyticsService implements AnalyticsService {
+  private get analytics() {
+    return getAnalytics(getApp());
+  }
+
   trackEvent(event: AnalyticsEvent, params?: Record<string, string | number>): void {
-    analytics().logEvent(event, params).catch(() => {});
+    logEvent(this.analytics, event, params).catch(() => {});
   }
 
   setUserId(userId: string): void {
-    analytics().setUserId(userId).catch(() => {});
+    setUserId(this.analytics, userId).catch(() => {});
   }
 }
 

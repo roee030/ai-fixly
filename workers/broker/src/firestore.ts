@@ -14,6 +14,8 @@ export interface RequestDoc {
   selectedBidId?: string;
   selectedProviderPhone?: string;
   selectedProviderName?: string;
+  /** URL of the first media item (used as notification hero image) */
+  heroImageUrl?: string;
 }
 
 export class FirestoreClient {
@@ -23,6 +25,54 @@ export class FirestoreClient {
   constructor(projectId: string, serviceAccountJson: string) {
     this.projectId = projectId;
     this.serviceAccountJson = serviceAccountJson;
+  }
+
+  /**
+   * Query: return the set of provider phone numbers that are currently
+   * busy with an active (in_progress) request. Used by /broadcast to
+   * exclude them from new broadcasts.
+   */
+  async getBusyProviderPhones(): Promise<Set<string>> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents:runQuery`;
+
+      const body = {
+        structuredQuery: {
+          from: [{ collectionId: 'serviceRequests' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'status' },
+              op: 'EQUAL',
+              value: { stringValue: 'in_progress' },
+            },
+          },
+          select: { fields: [{ fieldPath: 'selectedProviderPhone' }] },
+        },
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) return new Set();
+
+      const data = (await response.json()) as any[];
+      const phones = new Set<string>();
+      for (const row of data) {
+        const phone = row?.document?.fields?.selectedProviderPhone?.stringValue;
+        if (phone) phones.add(phone);
+      }
+      return phones;
+    } catch (err) {
+      console.error('getBusyProviderPhones failed:', err);
+      return new Set();
+    }
   }
 
   /**
@@ -47,6 +97,19 @@ export class FirestoreClient {
       const data = (await response.json()) as any;
       const fields = data.fields || {};
 
+      // Extract the first media downloadUrl to use as the notification
+      // hero image. Tolerates missing/empty media arrays.
+      let heroImageUrl: string | undefined;
+      try {
+        const mediaValues = fields.media?.arrayValue?.values;
+        if (Array.isArray(mediaValues) && mediaValues.length > 0) {
+          const first = mediaValues[0]?.mapValue?.fields;
+          heroImageUrl = first?.downloadUrl?.stringValue;
+        }
+      } catch {
+        // ignore — heroImageUrl stays undefined
+      }
+
       return {
         id: requestId,
         userId: fields.userId?.stringValue || '',
@@ -54,6 +117,7 @@ export class FirestoreClient {
         selectedBidId: fields.selectedBidId?.stringValue,
         selectedProviderPhone: fields.selectedProviderPhone?.stringValue,
         selectedProviderName: fields.selectedProviderName?.stringValue,
+        heroImageUrl,
       };
     } catch (err) {
       console.error('getRequest failed:', err);
@@ -170,9 +234,16 @@ export class FirestoreClient {
     bidId: string;
     data: {
       providerName: string;
+      displayName?: string;
       providerPhone: string;
       price: number | null;
       availability: string | null;
+      /**
+       * Canonical UTC ISO timestamp when the provider said they could
+       * start. Enables date-aware display on the customer side (so
+       * "tomorrow morning" becomes concrete and ages gracefully).
+       */
+      availabilityStartAt?: string | null;
       rating?: number | null;
       address?: string;
       rawReply: string;
@@ -202,11 +273,19 @@ export class FirestoreClient {
       },
     };
 
+    if (data.availabilityStartAt) {
+      firestoreDoc.fields.availabilityStartAt = {
+        timestampValue: data.availabilityStartAt,
+      };
+    }
     if (data.rating !== undefined && data.rating !== null) {
       firestoreDoc.fields.rating = { doubleValue: data.rating };
     }
     if (data.address) {
       firestoreDoc.fields.address = { stringValue: data.address };
+    }
+    if (data.displayName) {
+      firestoreDoc.fields.displayName = { stringValue: data.displayName };
     }
 
     const response = await fetch(url, {
@@ -221,6 +300,292 @@ export class FirestoreClient {
     if (!response.ok) {
       const errText = await response.text();
       throw new Error(`createBid error ${response.status}: ${errText}`);
+    }
+  }
+
+  async updateRequestWave(params: {
+    requestId: string;
+    wave: number;
+    nextWaveAt: string | null;
+  }): Promise<void> {
+    const accessToken = await this.getToken();
+    const url =
+      `https://firestore.googleapis.com/v1/projects/${this.projectId}` +
+      `/databases/(default)/documents/serviceRequests/${params.requestId}` +
+      `?updateMask.fieldPaths=broadcastWave&updateMask.fieldPaths=nextWaveAt`;
+
+    const fields: Record<string, unknown> = {
+      broadcastWave: { integerValue: params.wave.toString() },
+    };
+
+    if (params.nextWaveAt) {
+      fields.nextWaveAt = { stringValue: params.nextWaveAt };
+    } else {
+      fields.nextWaveAt = { nullValue: null };
+    }
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fields }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`updateRequestWave error ${response.status}: ${errText}`);
+    }
+  }
+
+  async getRequestsForReviewReminder(): Promise<Array<{ id: string; selectedProviderName: string }>> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents:runQuery`;
+
+      const body = {
+        structuredQuery: {
+          from: [{ collectionId: 'serviceRequests' }],
+          where: {
+            compositeFilter: {
+              op: 'AND',
+              filters: [
+                {
+                  fieldFilter: {
+                    field: { fieldPath: 'status' },
+                    op: 'EQUAL',
+                    value: { stringValue: 'in_progress' },
+                  },
+                },
+              ],
+            },
+          },
+          select: {
+            fields: [
+              { fieldPath: 'selectedProviderName' },
+              { fieldPath: 'updatedAt' },
+              { fieldPath: 'reviewReminderSent' },
+              { fieldPath: 'hasReview' },
+              { fieldPath: 'userId' },
+            ],
+          },
+        },
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      if (!Array.isArray(data)) return [];
+
+      const now = Date.now();
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+
+      return data
+        .filter((item: any) => {
+          const doc = item.document;
+          if (!doc) return false;
+
+          const fields = doc.fields || {};
+
+          if (fields.reviewReminderSent?.booleanValue) return false;
+          if (fields.hasReview?.booleanValue) return false;
+
+          const updatedAt = fields.updatedAt?.timestampValue;
+          if (!updatedAt) return false;
+          const updatedTime = new Date(updatedAt).getTime();
+          if (now - updatedTime < TWENTY_FOUR_HOURS) return false;
+
+          return true;
+        })
+        .map((item: any) => {
+          const doc = item.document;
+          const docPath = doc.name.split('/');
+          const id = docPath[docPath.length - 1];
+          return {
+            id,
+            selectedProviderName: doc.fields?.selectedProviderName?.stringValue || 'בעל מקצוע',
+          };
+        });
+    } catch (err) {
+      console.error('getRequestsForReviewReminder failed:', err);
+      return [];
+    }
+  }
+
+  async markReviewReminderSent(requestId: string): Promise<void> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}?updateMask.fieldPaths=reviewReminderSent`;
+
+      await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fields: {
+            reviewReminderSent: { booleanValue: true },
+          },
+        }),
+      });
+    } catch (err) {
+      console.error('markReviewReminderSent failed:', err);
+    }
+  }
+
+  async getStaleRequestsWithNoBids(minHours: number): Promise<Array<{ id: string; userId: string; profession: string; hoursOpen: number }>> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents:runQuery`;
+
+      const body = {
+        structuredQuery: {
+          from: [{ collectionId: 'serviceRequests' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'status' },
+              op: 'EQUAL',
+              value: { stringValue: 'open' },
+            },
+          },
+          select: {
+            fields: [
+              { fieldPath: 'userId' },
+              { fieldPath: 'createdAt' },
+              { fieldPath: 'aiAnalysis' },
+              { fieldPath: 'alertSentNoBids' },
+            ],
+          },
+        },
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      if (!Array.isArray(data)) return [];
+
+      const now = Date.now();
+      const cutoff = minHours * 60 * 60 * 1000;
+
+      return data
+        .filter((item: any) => {
+          const doc = item.document;
+          if (!doc) return false;
+          const fields = doc.fields || {};
+
+          if (fields.alertSentNoBids?.booleanValue) return false;
+
+          const createdAt = fields.createdAt?.timestampValue;
+          if (!createdAt) return false;
+          const age = now - new Date(createdAt).getTime();
+          return age >= cutoff;
+        })
+        .map((item: any) => {
+          const doc = item.document;
+          const fields = doc.fields || {};
+          const docPath = doc.name.split('/');
+          const id = docPath[docPath.length - 1];
+          const age = now - new Date(fields.createdAt.timestampValue).getTime();
+
+          let profession = '';
+          try {
+            const profs = fields.aiAnalysis?.mapValue?.fields?.professionLabelsHe?.arrayValue?.values;
+            if (profs && profs.length > 0) profession = profs[0].stringValue || '';
+          } catch { /* ignore */ }
+
+          return {
+            id,
+            userId: fields.userId?.stringValue || '',
+            profession,
+            hoursOpen: Math.round(age / (60 * 60 * 1000)),
+          };
+        });
+    } catch (err) {
+      console.error('getStaleRequestsWithNoBids failed:', err);
+      return [];
+    }
+  }
+
+  async createAdminAlert(alert: {
+    type: string;
+    severity: string;
+    message: string;
+    metadata: Record<string, any>;
+  }): Promise<void> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/admin_alerts`;
+
+      const metadataFields: Record<string, any> = {};
+      for (const [key, value] of Object.entries(alert.metadata)) {
+        if (typeof value === 'string') {
+          metadataFields[key] = { stringValue: value };
+        } else if (typeof value === 'number') {
+          metadataFields[key] = { integerValue: value.toString() };
+        }
+      }
+
+      const firestoreDoc = {
+        fields: {
+          type: { stringValue: alert.type },
+          severity: { stringValue: alert.severity },
+          message: { stringValue: alert.message },
+          metadata: { mapValue: { fields: metadataFields } },
+          read: { booleanValue: false },
+          createdAt: { timestampValue: new Date().toISOString() },
+        },
+      };
+
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(firestoreDoc),
+      });
+    } catch (err) {
+      console.error('createAdminAlert failed:', err);
+    }
+  }
+
+  async markAlertSentNoBids(requestId: string): Promise<void> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}?updateMask.fieldPaths=alertSentNoBids`;
+
+      await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fields: { alertSentNoBids: { booleanValue: true } },
+        }),
+      });
+    } catch {
+      // ignore
     }
   }
 

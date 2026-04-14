@@ -30,6 +30,7 @@ export interface BroadcastInput {
   shortSummary: string;
   mediaUrls: string[];
   location: { lat: number; lng: number; address: string };
+  urgency?: string;  // from AI analysis, drives search aggressiveness
 }
 
 export interface BroadcastProviderResult {

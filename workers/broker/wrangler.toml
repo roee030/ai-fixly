@@ -30,3 +30,16 @@ PLACES_CACHE_TTL_SECONDS = "86400"
 # response so the app can show what WOULD have been sent.
 # Set to "false" when ready to send real messages.
 DRY_RUN = "true"
+
+# TEST PHONE OVERRIDE: when set to an E.164 phone number, the worker sends
+# exactly ONE real WhatsApp per broadcast to this number (impersonating the
+# first provider found). Replies from this number are routed as provider
+# replies via the normal webhook flow. Lets you test the full end-to-end
+# WhatsApp flow against YOUR own phone without bothering real providers.
+# Overrides DRY_RUN when set. Leave empty to disable.
+# Example: TEST_PHONE_OVERRIDE = "+972501234567"
+TEST_PHONE_OVERRIDE = "+972546651088"
+
+# Cron: check for pending wave broadcasts every 5 minutes
+[triggers]
+crons = ["*/5 * * * *"]

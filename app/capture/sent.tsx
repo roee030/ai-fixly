@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -18,6 +19,7 @@ import { COLORS } from '../../src/constants';
 // (Earlier we had auto-redirect but it felt jarring.)
 
 export default function SentScreen() {
+  const { t } = useTranslation();
   const scale = useSharedValue(0);
   const checkmarkScale = useSharedValue(0);
 
@@ -40,6 +42,15 @@ export default function SentScreen() {
 
   return (
     <ScreenContainer>
+      <View style={{ paddingTop: 16, paddingHorizontal: 16 }}>
+        <Pressable
+          onPress={() => router.replace('/(tabs)')}
+          style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center' }}
+          accessibilityLabel="Home"
+        >
+          <Ionicons name="home-outline" size={22} color={COLORS.text} />
+        </Pressable>
+      </View>
       <View style={styles.container}>
         <Animated.View style={[styles.iconWrap, iconStyle]}>
           <View style={styles.iconBg}>
@@ -50,16 +61,15 @@ export default function SentScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeIn.delay(400).duration(500)}>
-          <Text style={styles.title}>הבקשה נשלחה!</Text>
+          <Text style={styles.title}>{t('sent.title')}</Text>
           <Text style={styles.subtitle}>
-            אנחנו מחפשים בעלי מקצוע עבורך.{'\n'}
-            נעדכן אותך כשיגיעו הצעות.
+            {t('sent.subtitle')}
           </Text>
         </Animated.View>
 
         <Animated.View entering={FadeIn.delay(800).duration(400)} style={styles.buttons}>
           <Button
-            title="צפה בבקשות שלי"
+            title={t('sent.backToRequests')}
             onPress={() => router.replace('/(tabs)/requests')}
           />
         </Animated.View>

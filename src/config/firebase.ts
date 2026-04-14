@@ -1,4 +1,4 @@
-import { getFirestore } from '@react-native-firebase/firestore';
+import { getFirestore } from '../services/firestore/imports';
 import { getAuth } from '@react-native-firebase/auth';
 
 export const db = getFirestore();

@@ -1,9 +1,22 @@
-import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  FlatList,
+  Platform,
+  useWindowDimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+} from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { COLORS } from '../src/constants';
 import { useAppStore } from '../src/stores/useAppStore';
+
+const DESKTOP_MAX_WIDTH = 480;
 
 interface Example {
   icon: keyof typeof Ionicons.glyphMap;
@@ -18,57 +31,62 @@ interface Slide {
   color: string;
 }
 
-const slides: Slide[] = [
-  {
-    icon: 'camera-outline',
-    title: 'צלם את הבעיה',
-    subtitle: 'פתח את המצלמה, צלם את התקלה\nוכתוב כמה מילים על מה קרה',
-    examples: [
-      { icon: 'water-outline', label: 'נזילות' },
-      { icon: 'flash-outline', label: 'חשמל' },
-      { icon: 'snow-outline', label: 'מיזוג' },
-    ],
-    color: COLORS.primary,
-  },
-  {
-    icon: 'sparkles-outline',
-    title: 'ה-AI מזהה הכל',
-    subtitle: 'הבינה המלאכותית שלנו מנתחת את התמונה\nומבינה איזה בעל מקצוע אתה צריך',
-    examples: [
-      { icon: 'scan-outline', label: 'ניתוח מיידי' },
-      { icon: 'list-outline', label: 'סיווג מדויק' },
-      { icon: 'checkmark-done-outline', label: 'דיוק גבוה' },
-    ],
-    color: COLORS.warning,
-  },
-  {
-    icon: 'people-outline',
-    title: 'בחר את הטוב ביותר',
-    subtitle: 'בעלי מקצוע באזור שלך ישלחו הצעות\nהשווה מחירים, בחר ודבר ישירות',
-    examples: [
-      { icon: 'pricetag-outline', label: 'מחירים' },
-      { icon: 'time-outline', label: 'זמינות' },
-      { icon: 'star-outline', label: 'דירוג' },
-    ],
-    color: COLORS.success,
-  },
-];
-
 export default function OnboardingScreen() {
+  const { t } = useTranslation();
   const [currentSlide, setCurrentSlide] = useState(0);
   const setHasSeenOnboarding = useAppStore((s) => s.setHasSeenOnboarding);
+  const flatListRef = useRef<FlatList>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && windowWidth >= 768;
+  // On desktop, constrain the slide width to phone-like dimensions
+  const SCREEN_WIDTH = isDesktop ? Math.min(windowWidth, DESKTOP_MAX_WIDTH) : windowWidth;
+
+  const slides: Slide[] = [
+    {
+      icon: 'camera-outline',
+      title: t('onboarding.slide1Title'),
+      subtitle: t('onboarding.slide1Subtitle'),
+      examples: [
+        { icon: 'camera-outline', label: t('onboarding.slide1Photo') },
+        { icon: 'videocam-outline', label: t('onboarding.slide1Video') },
+        { icon: 'text-outline', label: t('onboarding.slide1Description') },
+      ],
+      color: COLORS.primary,
+    },
+    {
+      icon: 'sparkles-outline',
+      title: t('onboarding.slide2Title'),
+      subtitle: t('onboarding.slide2Subtitle'),
+      examples: [
+        { icon: 'star-outline', label: t('onboarding.slide2Rated') },
+        { icon: 'pricetag-outline', label: t('onboarding.slide2Prices') },
+        { icon: 'shield-checkmark-outline', label: t('onboarding.slide2Verified') },
+      ],
+      color: COLORS.warning,
+    },
+    {
+      icon: 'people-outline',
+      title: t('onboarding.slide3Title'),
+      subtitle: t('onboarding.slide3Subtitle'),
+      examples: [
+        { icon: 'flash-outline', label: t('onboarding.slide3Fast') },
+        { icon: 'chatbubbles-outline', label: t('onboarding.slide3Chat') },
+        { icon: 'happy-outline', label: t('onboarding.slide3Simple') },
+      ],
+      color: COLORS.success,
+    },
+  ];
+
+  const goToIndex = (index: number) => {
+    flatListRef.current?.scrollToIndex({ index, animated: true });
+    setCurrentSlide(index);
+  };
 
   const goNext = () => {
     if (currentSlide < slides.length - 1) {
-      setCurrentSlide(currentSlide + 1);
+      goToIndex(currentSlide + 1);
     } else {
       finish();
-    }
-  };
-
-  const goBack = () => {
-    if (currentSlide > 0) {
-      setCurrentSlide(currentSlide - 1);
     }
   };
 
@@ -77,68 +95,108 @@ export default function OnboardingScreen() {
     router.replace('/(auth)/phone');
   };
 
+  // Track which slide is visible as the user swipes
+  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / SCREEN_WIDTH);
+    if (index !== currentSlide) {
+      setCurrentSlide(index);
+    }
+  };
+
   const slide = slides[currentSlide];
   const isLast = currentSlide === slides.length - 1;
-  const isFirst = currentSlide === 0;
 
   return (
-    <View style={styles.container}>
-      {/* Top bar */}
+    <View style={[styles.container, isDesktop && { alignItems: 'center' }]}>
+    <View style={isDesktop ? { width: DESKTOP_MAX_WIDTH, flex: 1 } : { flex: 1 }}>
+      {/* Top bar - skip button only. No back button \u2014 users swipe to go back. */}
       <View style={styles.topBar}>
-        {!isFirst ? (
-          <Pressable onPress={goBack} style={styles.backBtn} hitSlop={20}>
-            <Ionicons name="chevron-forward" size={24} color={COLORS.textSecondary} />
-          </Pressable>
-        ) : (
-          <View style={styles.backBtn} />
-        )}
         <View style={{ flex: 1 }} />
         <Pressable onPress={finish} hitSlop={20}>
-          <Text style={styles.skipText}>דלג</Text>
+          <Text style={styles.skipText}>{t('common.skip')}</Text>
         </Pressable>
       </View>
 
-      {/* Slide content - no animations to avoid render loops */}
-      <View style={styles.content}>
-        <View style={[styles.iconWrap, { backgroundColor: slide.color + '20' }]}>
-          <Ionicons name={slide.icon} size={80} color={slide.color} />
-        </View>
+      {/* Swipeable carousel */}
+      <FlatList
+        ref={flatListRef}
+        data={slides}
+        keyExtractor={(_, i) => `slide-${i}`}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={handleScrollEnd}
+        renderItem={({ item }) => <SlideView slide={item} width={SCREEN_WIDTH} />}
+        style={styles.carousel}
+        // Skip scroll-to-index misses by providing an item size
+        getItemLayout={(_, index) => ({
+          length: SCREEN_WIDTH,
+          offset: SCREEN_WIDTH * index,
+          index,
+        })}
+      />
 
-        <Text style={styles.title}>{slide.title}</Text>
-        <Text style={styles.subtitle}>{slide.subtitle}</Text>
-
-        {/* Example chips */}
-        <View style={styles.examples}>
-          {slide.examples.map((ex, i) => (
-            <View
-              key={`${currentSlide}-${i}`}
-              style={[styles.exampleChip, { borderColor: slide.color + '50' }]}
-            >
-              <Ionicons name={ex.icon} size={18} color={slide.color} />
-              <Text style={styles.exampleText}>{ex.label}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* Dots */}
+      {/* Dots - tappable */}
       <View style={styles.dots}>
         {slides.map((_, i) => (
-          <View
-            key={i}
-            style={[
-              styles.dot,
-              i === currentSlide && { backgroundColor: slide.color, width: 28 },
-            ]}
-          />
+          <Pressable key={i} onPress={() => goToIndex(i)} hitSlop={8}>
+            <View
+              style={[
+                styles.dot,
+                i === currentSlide && {
+                  backgroundColor: slide.color,
+                  width: 28,
+                  height: 8,
+                  borderRadius: 4,
+                },
+              ]}
+            />
+          </Pressable>
         ))}
       </View>
+      <Text style={{ color: COLORS.textTertiary, fontSize: 12, textAlign: 'center', marginBottom: 16 }}>
+        {currentSlide + 1}/{slides.length}
+      </Text>
 
       {/* Next button */}
-      <Pressable onPress={goNext} style={[styles.nextBtn, { backgroundColor: slide.color }]}>
-        <Text style={styles.nextText}>{isLast ? 'בוא נתחיל' : 'הבא'}</Text>
-        <Ionicons name={isLast ? 'checkmark' : 'arrow-back'} size={22} color="#FFF" />
+      <Pressable
+        onPress={goNext}
+        style={[styles.nextBtn, { backgroundColor: slide.color }]}
+      >
+        <Text style={styles.nextText}>{isLast ? t('onboarding.letsStart') : t('common.next')}</Text>
+        <Ionicons
+          name={isLast ? 'checkmark' : 'arrow-back'}
+          size={22}
+          color="#FFF"
+        />
       </Pressable>
+    </View>{/* close inner desktop container */}
+    </View>
+  );
+}
+
+function SlideView({ slide, width }: { slide: Slide; width: number }) {
+  return (
+    <View style={[styles.slide, { width }]}>
+      <View style={[styles.iconWrap, { backgroundColor: slide.color + '20' }]}>
+        <Ionicons name={slide.icon} size={56} color={slide.color} />
+      </View>
+
+      <Text style={styles.title}>{slide.title}</Text>
+      <Text style={styles.subtitle}>{slide.subtitle}</Text>
+
+      <View style={styles.examples}>
+        {slide.examples.map((ex, i) => (
+          <View
+            key={i}
+            style={[styles.exampleChip, { borderColor: slide.color + '50' }]}
+          >
+            <Ionicons name={ex.icon} size={18} color={slide.color} />
+            <Text style={styles.exampleText}>{ex.label}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -146,7 +204,6 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
     backgroundColor: COLORS.background,
   },
   topBar: {
@@ -154,33 +211,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 60,
     paddingBottom: 16,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 24,
   },
   skipText: {
     color: COLORS.textSecondary,
     fontSize: 15,
     fontWeight: '600',
   },
-  content: {
+  carousel: {
     flex: 1,
+  },
+  slide: {
+    // width is passed dynamically via style prop (responsive to desktop/mobile)
+    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 20,
   },
   iconWrap: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   title: {
     fontSize: 30,
@@ -222,11 +278,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     marginBottom: 32,
+    marginTop: 24,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: COLORS.textTertiary,
   },
   nextBtn: {
@@ -237,6 +294,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     marginBottom: 40,
+    marginHorizontal: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   nextText: {
     color: '#FFF',

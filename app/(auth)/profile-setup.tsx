@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { View, Text, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button, Input, FadeInView } from '../../src/components/ui';
+import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { useAuthStore } from '../../src/stores/useAuthStore';
-import { getFirestore, doc, setDoc, serverTimestamp } from '@react-native-firebase/firestore';
-import * as Location from 'expo-location';
+import { getFirestore, doc, setDoc, serverTimestamp } from '../../src/services/firestore/imports';
+// Only import expo-location on native — web uses the browser Geolocation API
+const Location = Platform.OS !== 'web' ? require('expo-location') : null;
 import { COLORS } from '../../src/constants';
 import { logger } from '../../src/services/logger';
+import { isInServiceZone } from '../../src/utils/geoFence';
 
 interface LocationData {
   lat: number;
@@ -17,6 +21,7 @@ interface LocationData {
 }
 
 export default function ProfileSetupScreen() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const setHasCompletedProfile = useAuthStore((s) => s.setHasCompletedProfile);
 
@@ -25,16 +30,47 @@ export default function ProfileSetupScreen() {
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const handleGetLocation = async () => {
     setIsLoadingLocation(true);
+
+    // Web: use the browser's built-in Geolocation API
+    if (Platform.OS === 'web') {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false,
+            timeout: 10000,
+          })
+        );
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLocation({
+          lat,
+          lng,
+          address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+        });
+        if (!isInServiceZone(lat, lng)) {
+          router.replace('/(auth)/out-of-area' as any);
+          return;
+        }
+      } catch (err) {
+        Alert.alert(t('common.error'), t('auth.locationHint'));
+      } finally {
+        setIsLoadingLocation(false);
+      }
+      return;
+    }
+
+    // Native: use expo-location
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
-          'הרשאה נדרשת',
-          'כדי למצוא בעלי מקצוע קרובים, אנחנו צריכים גישה למיקום שלך',
-          [{ text: 'בסדר' }]
+          t('auth.locationLabel'),
+          t('auth.locationHint'),
+          [{ text: t('common.ok') }]
         );
         return;
       }
@@ -46,17 +82,19 @@ export default function ProfileSetupScreen() {
       });
 
       const addressStr = addr
-        ? [addr.city, addr.street].filter(Boolean).join(', ') || 'המיקום שלי'
-        : 'המיקום שלי';
+        ? [addr.city, addr.street].filter(Boolean).join(', ') || t('auth.myLocation')
+        : t('auth.myLocation');
 
-      setLocation({
-        lat: loc.coords.latitude,
-        lng: loc.coords.longitude,
-        address: addressStr,
-      });
+      const lat = loc.coords.latitude;
+      const lng = loc.coords.longitude;
+      setLocation({ lat, lng, address: addressStr });
+      if (!isInServiceZone(lat, lng)) {
+        router.replace('/(auth)/out-of-area' as any);
+        return;
+      }
     } catch (err) {
       logger.error('Location fetch failed', err as Error);
-      Alert.alert('שגיאה', 'לא הצלחנו לקבל את המיקום. נסה שוב.');
+      Alert.alert(t('common.error'), t('auth.locationHint'));
     } finally {
       setIsLoadingLocation(false);
     }
@@ -67,12 +105,12 @@ export default function ProfileSetupScreen() {
     setError('');
 
     if (name.trim().length < 2) {
-      setError('השם צריך להכיל לפחות 2 תווים');
+      setError(t('auth.nameTooShort'));
       return;
     }
 
     if (!location) {
-      setError('אנא אפשר גישה למיקום');
+      setError(t('auth.locationRequired'));
       return;
     }
 
@@ -89,7 +127,7 @@ export default function ProfileSetupScreen() {
       router.replace('/(tabs)');
     } catch (err) {
       logger.error('Save profile failed', err as Error);
-      setError('שגיאה בשמירת הפרופיל. נסה שוב.');
+      setError(t('auth.saveProfileFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -105,16 +143,16 @@ export default function ProfileSetupScreen() {
       >
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <FadeInView>
-            <Text style={styles.title}>בוא נכיר</Text>
+            <Text style={styles.title}>{t('auth.profileTitle')}</Text>
             <Text style={styles.subtitle}>
-              עוד כמה פרטים ואתה מוכן
+              {t('auth.profileSubtitle')}
             </Text>
 
             {/* Name field */}
             <View style={styles.fieldGroup}>
               <Input
-                label="איך נקרא לך?"
-                placeholder="השם שלך"
+                label={t('auth.nameLabel')}
+                placeholder={t('auth.namePlaceholder')}
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
@@ -125,7 +163,7 @@ export default function ProfileSetupScreen() {
 
             {/* Location field */}
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>המיקום שלך</Text>
+              <Text style={styles.fieldLabel}>{t('auth.locationLabel')}</Text>
               {location ? (
                 <Pressable onPress={handleGetLocation} style={styles.locationCardActive}>
                   <View style={styles.locationIconActive}>
@@ -147,29 +185,43 @@ export default function ProfileSetupScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.locationTitle}>
-                      {isLoadingLocation ? 'מזהה מיקום...' : 'שתף את המיקום שלי'}
+                      {isLoadingLocation ? t('auth.detectingLocation') : t('auth.shareLocation')}
                     </Text>
                     <Text style={styles.locationHint}>
-                      כדי שנוכל למצוא בעלי מקצוע קרובים
+                      {t('auth.locationHint')}
                     </Text>
                   </View>
                 </Pressable>
               )}
             </View>
 
-            {error && <Text style={styles.error}>{error}</Text>}
+            {error !== '' && (
+              <>
+                <Text style={styles.error}>{error}</Text>
+                <Pressable onPress={() => setShowFeedback(true)} style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={14} color={COLORS.textTertiary} />
+                  <Text style={{ color: COLORS.textTertiary, fontSize: 12 }}>{t('common.reportProblem')}</Text>
+                </Pressable>
+              </>
+            )}
           </FadeInView>
         </ScrollView>
 
         <View style={styles.bottomBar}>
           <Button
-            title="בוא נתחיל"
+            title={t('auth.letsGo')}
             onPress={handleSave}
             isLoading={isLoading}
             disabled={!canSubmit}
           />
         </View>
       </KeyboardAvoidingView>
+      <FeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+        screen="profile_setup"
+        errorMessage="Profile save failed"
+      />
     </ScreenContainer>
   );
 }

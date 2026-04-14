@@ -4,3 +4,4 @@ export * from './animation';
 export * from './limits';
 export * from './categories';
 export * from './status';
+export * from './serviceZone';

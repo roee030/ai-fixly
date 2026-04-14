@@ -20,4 +20,12 @@ export interface Env {
   SEARCH_RADIUS_METERS: string;
   PLACES_CACHE_TTL_SECONDS: string;
   DRY_RUN: string; // "true" = don't actually send WhatsApp
+  /**
+   * Test mode: when set to an E.164 phone number (e.g. "+972501234567"),
+   * the worker sends exactly ONE real WhatsApp to this number per broadcast
+   * (impersonating the first provider found). Replies from this number are
+   * routed as provider replies via the normal webhook flow.
+   * Overrides DRY_RUN when set. Leave empty for normal behavior.
+   */
+  TEST_PHONE_OVERRIDE: string;
 }

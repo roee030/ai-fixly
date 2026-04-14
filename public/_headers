@@ -1,0 +1,51 @@
+# ================================================
+# ai-fixly Security Headers
+# ================================================
+
+# All pages
+/*
+  # Prevent MIME sniffing
+  X-Content-Type-Options: nosniff
+  # Prevent clickjacking — only allow our own frames
+  X-Frame-Options: DENY
+  # Strict referrer — don't leak full URLs to third parties
+  Referrer-Policy: strict-origin-when-cross-origin
+  # Content Security Policy — the big one
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.firebaseapp.com https://*.googleapis.com https://www.gstatic.com https://apis.google.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleapis.com https://*.gstatic.com https://www.googletagmanager.com; font-src 'self' data:; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://ai-fixly-broker.mr-roee-angel.workers.dev https://*.supabase.co https://*.google-analytics.com https://www.googletagmanager.com wss://*.firebaseio.com; frame-src https://*.firebaseapp.com https://accounts.google.com; object-src 'none'; base-uri 'self'
+  # Enforce HTTPS (Cloudflare already does this but the header helps browsers)
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  # Prevent DNS prefetch abuse
+  X-DNS-Prefetch-Control: off
+  # Disable browser features we don't use
+  Permissions-Policy: camera=self, microphone=(), geolocation=self, payment=()
+
+# SEO pages — allow indexing + long cache
+/services/*
+  Cache-Control: public, max-age=86400
+  X-Robots-Tag: index, follow
+
+# Font files
+/*.ttf
+  Content-Type: font/ttf
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000
+
+/*.woff
+  Content-Type: font/woff
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000
+
+/*.woff2
+  Content-Type: font/woff2
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000
+
+# Admin routes — no caching, no indexing
+/admin/*
+  Cache-Control: no-store, no-cache, must-revalidate
+  X-Robots-Tag: noindex, nofollow
+  Pragma: no-cache
+
+# API proxy — prevent caching of dynamic data
+/api/*
+  Cache-Control: no-store

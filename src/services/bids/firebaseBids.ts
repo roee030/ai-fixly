@@ -1,7 +1,7 @@
 import {
   getFirestore, collection, doc, setDoc, getDocs, query,
   where, serverTimestamp, updateDoc, onSnapshot,
-} from '@react-native-firebase/firestore';
+} from '../firestore/imports';
 import { BidService, Bid, BidSource } from './types';
 import { REQUEST_STATUS } from '../../constants/status';
 
@@ -39,7 +39,10 @@ class FirebaseBidService implements BidService {
         const bids = snapshot.docs.map((d: any) => this.docToBid(d)).sort(byNewestFirst);
         // Only call back if the serialized content actually changed
         const json = JSON.stringify(
-          bids.map((b) => `${b.id}:${b.price}:${b.availability}:${b.createdAt.getTime()}`)
+          bids.map(
+            (b) =>
+              `${b.id}:${b.price}:${b.availability}:${b.availabilityStartAt || ''}:${b.createdAt.getTime()}`
+          )
         );
         if (json !== lastJson) {
           lastJson = json;
@@ -82,9 +85,11 @@ class FirebaseBidService implements BidService {
       id: d.id,
       requestId: data.requestId || '',
       providerName: data.providerName || 'בעל מקצוע',
+      displayName: data.displayName || undefined,
       providerPhone: data.providerPhone || '',
       price: typeof data.price === 'number' ? data.price : 0,
       availability: data.availability || '',
+      availabilityStartAt: toIsoOrNull(data.availabilityStartAt),
       rating: typeof data.rating === 'number' ? data.rating : null,
       address: data.address,
       isReal: data.isReal === true,
@@ -113,6 +118,27 @@ function parseDate(firestoreTimestamp: any, isoString: string | undefined): Date
     if (!isNaN(d.getTime())) return d;
   }
   return new Date();
+}
+
+/**
+ * Convert a Firestore timestamp field (or raw ISO string) into a canonical
+ * ISO string, or null if invalid/missing. Used for availabilityStartAt
+ * which is a Firestore timestampValue from the worker.
+ */
+function toIsoOrNull(value: any): string | null {
+  if (!value) return null;
+  if (value.toDate && typeof value.toDate === 'function') {
+    try {
+      return value.toDate().toISOString();
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
 }
 
 export const bidService: BidService = new FirebaseBidService();

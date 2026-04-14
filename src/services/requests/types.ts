@@ -43,4 +43,9 @@ export interface RequestService {
   updateStatus(requestId: string, status: RequestStatus): Promise<void>;
   saveBroadcastResult(requestId: string, providers: BroadcastedProvider[]): Promise<void>;
   onRequestChanged(requestId: string, callback: (req: ServiceRequest | null) => void): () => void;
+  /** Real-time listener for all of a user's requests. Sorted newest first. */
+  onUserRequestsChanged(
+    userId: string,
+    callback: (requests: ServiceRequest[]) => void
+  ): () => void;
 }

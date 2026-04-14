@@ -1,1 +1,5 @@
-export { broadcastToProviders } from './broadcastService';
+export {
+  broadcastToProviders,
+  notifyProviderSelected,
+  forwardChatMessage,
+} from './broadcastService';

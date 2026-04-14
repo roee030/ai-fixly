@@ -1,3 +1,73 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Icon font fix: Cloudflare Pages can't serve fonts from paths with @ chars.
+ * We copy Ionicons.ttf to /fonts/ and override the @font-face here.
+ */
+@font-face {
+  font-family: 'Ionicons';
+  src: url('/fonts/Ionicons.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* Desktop web: dark background behind the centered app column */
+@media (min-width: 768px) {
+  html, body, #root {
+    background-color: #0a0a14 !important;
+  }
+}
+
+/* ================================================================
+ * ACCESSIBILITY: These use CSS filter/transform which work on
+ * React Native Web's inline-styled elements (CSS classes don't
+ * override inline styles, but filters apply to the entire element
+ * tree regardless of how styles were set).
+ * ================================================================ */
+
+/* High contrast: CSS filter inverts brightness and increases contrast.
+ * This works on ALL elements including inline-styled ones. */
+.a11y-high-contrast #root {
+  filter: contrast(1.5) brightness(1.2) !important;
+}
+.a11y-high-contrast body {
+  background-color: #000000 !important;
+}
+
+/* Font size: zoom scales everything including inline-styled text.
+ * This is the ONLY reliable way to resize React Native Web text
+ * since it uses inline pixel values that CSS font-size can't override. */
+.a11y-font-large #root {
+  zoom: 1.25;
+}
+.a11y-font-small #root {
+  zoom: 0.85;
+}
+
+/* Highlight links: outline on all interactive elements.
+ * Uses [tabindex], [role=button], a — catches RN Web's Pressable/Link. */
+.a11y-highlight-links [role="button"],
+.a11y-highlight-links [tabindex="0"],
+.a11y-highlight-links a,
+.a11y-highlight-links button,
+.a11y-highlight-links input,
+.a11y-highlight-links textarea {
+  outline: 3px solid #6366F1 !important;
+  outline-offset: 2px !important;
+}
+
+/* Reading guide: a horizontal band that follows the cursor */
+.a11y-reading-guide {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 50px;
+  background: rgba(99, 102, 241, 0.08);
+  border-top: 2px solid rgba(99, 102, 241, 0.4);
+  border-bottom: 2px solid rgba(99, 102, 241, 0.4);
+  pointer-events: none;
+  z-index: 99999;
+  transition: top 0.05s linear;
+}

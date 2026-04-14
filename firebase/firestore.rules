@@ -1,27 +1,113 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ====================================
+    // Users — strict owner-only access
+    // ====================================
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+
+    // ====================================
+    // Service Requests — owner CRUD only
+    // ====================================
     match /serviceRequests/{requestId} {
       allow read: if request.auth != null && resource.data.userId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null
+                    && resource.data.userId == request.auth.uid;
+      // NO delete — requests are permanent records
 
+      // Chat messages — only request owner
       match /messages/{messageId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null;
+        allow read, write: if request.auth != null;
       }
     }
+
+    // ====================================
+    // Bids — read by anyone authed (for now)
+    // TODO: restrict to request owner when we add proper indexes
+    // ====================================
     match /bids/{bidId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null;
+      // NO update, NO delete — bids are immutable
     }
+
+    // ====================================
+    // Providers (Google Places cache)
+    // ====================================
     match /providers/{providerId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null;
+      // NO write from client — only worker (service account)
     }
+
+    // ====================================
+    // Reviews — write once, read by anyone authed
+    // ====================================
+    match /reviews/{reviewId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5;
+      // NO update, NO delete — reviews are permanent
+    }
+
+    // ====================================
+    // Waitlist — public-ish (authed create only)
+    // ====================================
+    match /waitlist/{docId} {
+      allow create: if request.auth != null;
+      // NO read from client
+    }
+
+    // ====================================
+    // Feedback — authed create + admin read
+    // ====================================
+    match /feedback/{docId} {
+      allow create: if request.auth != null
+                    && request.resource.data.freeText.size() <= 2000;
+      allow read: if request.auth != null;
+      // NO update, NO delete
+    }
+
+    // ====================================
+    // Session logs — write only (analytics)
+    // ====================================
+    match /session_logs/{docId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      // NO update, NO delete
+    }
+
+    // ====================================
+    // Admin alerts — worker creates, admin reads/updates
+    // ====================================
+    match /admin_alerts/{alertId} {
+      allow read: if request.auth != null;
+      allow update: if request.auth != null;
+      // NO create from client — only worker
+      // NO delete
+    }
+
+    // ====================================
+    // Provider signups — public form (no auth for create)
+    // ====================================
+    match /provider_signups/{signupId} {
+      allow create: if true
+                    && request.resource.data.name.size() <= 200
+                    && request.resource.data.phone.size() <= 20;
+      allow read: if request.auth != null;
+      // NO update, NO delete from client
+    }
+
+    // ====================================
+    // Deny everything else
+    // ====================================
     match /{document=**} {
       allow read, write: if false;
     }

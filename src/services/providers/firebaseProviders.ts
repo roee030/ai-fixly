@@ -1,6 +1,6 @@
 import {
   getFirestore, collection, doc, setDoc, getDoc, getDocs, query, where,
-} from '@react-native-firebase/firestore';
+} from '../firestore/imports';
 import { ProviderService, Provider } from './types';
 import { LIMITS } from '../../constants/limits';
 

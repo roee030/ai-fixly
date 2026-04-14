@@ -10,7 +10,7 @@ import {
   updateDoc,
   serverTimestamp,
   onSnapshot,
-} from '@react-native-firebase/firestore';
+} from '../firestore/imports';
 import { RequestService, CreateRequestInput, ServiceRequest } from './types';
 import { REQUEST_STATUS } from '../../constants/status';
 
@@ -115,6 +115,63 @@ class FirebaseRequestService implements RequestService {
     } catch (err) {
       console.warn('[saveBroadcastResult] failed', err);
     }
+  }
+
+  /**
+   * Subscribe to real-time updates of ALL of a user's requests.
+   * Used by the requests store to keep the list and tab-bar badge fresh
+   * without re-fetching on every navigation focus.
+   */
+  onUserRequestsChanged(
+    userId: string,
+    callback: (requests: ServiceRequest[]) => void
+  ): () => void {
+    const q = query(
+      collection(this.db, this.collectionName),
+      where('userId', '==', userId)
+    );
+
+    let lastSignature = '';
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot || !Array.isArray(snapshot.docs)) {
+          if (lastSignature !== '[]') {
+            lastSignature = '[]';
+            callback([]);
+          }
+          return;
+        }
+        const requests = snapshot.docs
+          .map((d: any) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              ...data,
+              createdAt: toDateSafe(data.createdAt),
+              updatedAt: toDateSafe(data.updatedAt),
+            } as ServiceRequest;
+          })
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+        // Signature tracks the fields we care about for rerendering
+        const signature = requests
+          .map(
+            (r) =>
+              `${r.id}:${r.status}:${(r as any).selectedBidId || ''}:${r.updatedAt.getTime()}`
+          )
+          .join('|');
+
+        if (signature !== lastSignature) {
+          lastSignature = signature;
+          callback(requests);
+        }
+      },
+      (error) => {
+        console.warn('[onUserRequestsChanged] error', error);
+      }
+    );
   }
 
   /**

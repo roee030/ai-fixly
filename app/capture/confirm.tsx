@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Image, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Image, ActivityIndicator, Pressable } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { aiAnalysisService } from '../../src/services/ai';
@@ -8,15 +10,18 @@ import { mediaService } from '../../src/services/media';
 import { requestService } from '../../src/services/requests';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
+import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { REQUEST_STATUS } from '../../src/constants/status';
 import { analyticsService } from '../../src/services/analytics';
+import { logAction } from '../../src/services/analytics/sessionLogger';
 import { broadcastToProviders } from '../../src/services/broadcast';
 import { logger } from '../../src/services/logger';
-import * as Location from 'expo-location';
+import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports';
 
 import type { AIAnalysisResult } from '../../src/services/ai';
 
 export default function ConfirmScreen() {
+  const { t } = useTranslation();
   const { images, base64Images, description } = useLocalSearchParams<{
     images: string;
     base64Images: string;
@@ -28,6 +33,7 @@ export default function ConfirmScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const imageUris: string[] = JSON.parse(images || '[]');
 
@@ -46,6 +52,7 @@ export default function ConfirmScreen() {
       });
       setAnalysis(result);
       analyticsService.trackEvent('ai_analysis_completed', { profession: result.professions[0] });
+      logAction('ai_analysis_completed', 'confirm', { profession: result.professions[0] });
     } catch (err: any) {
       console.error('AI analysis error:', err);
       analyticsService.trackEvent('ai_analysis_failed');
@@ -59,20 +66,19 @@ export default function ConfirmScreen() {
     if (!analysis || !user) return;
     setIsSending(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      // Use the user's saved profile location instead of re-requesting GPS.
+      // This saves 1-5 seconds per request. The location was already collected
+      // during profile setup and is accurate enough for provider search (20km radius).
       let location = { lat: 32.0853, lng: 34.7818, address: 'Tel Aviv, Israel' };
-
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({});
-        const [addr] = await Location.reverseGeocodeAsync({
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-        });
-        location = {
-          lat: loc.coords.latitude,
-          lng: loc.coords.longitude,
-          address: addr ? `${addr.street || ''} ${addr.city || ''}`.trim() : 'Unknown',
-        };
+      try {
+        const db = getFirestore();
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userData = userDoc.data?.() || {};
+        if (userData.location?.lat && userData.location?.lng) {
+          location = userData.location;
+        }
+      } catch {
+        // Fall back to default location
       }
 
       const tempId = `req_${Date.now()}`;
@@ -90,10 +96,13 @@ export default function ConfirmScreen() {
 
       await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
       analyticsService.trackEvent('request_created', { requestId: request.id });
+      logAction('request_confirmed', 'confirm');
+
+      // Navigate IMMEDIATELY — don't wait for broadcast
+      router.replace('/capture/sent');
 
       // Fire-and-forget: the worker handles everything in the background
       // (finding providers, sending WhatsApp, saving bids + broadcastedProviders).
-      // Don't block the UI on this — navigate immediately.
       broadcastToProviders({
         requestId: request.id,
         professions: analysis.professions,
@@ -101,8 +110,6 @@ export default function ConfirmScreen() {
         mediaUrls: uploadedMedia.map((m) => m.downloadUrl),
         location,
       }).catch((err) => logger.error('Broadcast failed', err as Error));
-
-      router.replace('/capture/sent');
     } catch (err: any) {
       console.error('Send error:', err);
       setHasError(true);
@@ -117,7 +124,7 @@ export default function ConfirmScreen() {
       <ScreenContainer>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={{ color: COLORS.text, marginTop: 16, fontSize: 18 }}>מנתח את הבעיה...</Text>
+          <Text style={{ color: COLORS.text, marginTop: 16, fontSize: 18 }}>{t('confirm.analyzing')}</Text>
         </View>
       </ScreenContainer>
     );
@@ -128,15 +135,25 @@ export default function ConfirmScreen() {
       <ScreenContainer>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: COLORS.text, fontSize: 18, textAlign: 'center', marginBottom: 8 }}>
-            לא הצלחנו לנתח את הבעיה
+            {t('confirm.analysisFailed')}
           </Text>
           <Text style={{ color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
-            נסה שוב או צלם תמונה ברורה יותר
+            {t('confirm.analysisFailed2')}
           </Text>
-          <Button title="נסה שוב" onPress={analyzeImages} />
+          <Button title={t('common.retry')} onPress={analyzeImages} />
           <View style={{ height: 12 }} />
-          <Button title="חזור" onPress={() => router.back()} variant="ghost" />
+          <Button title={t('common.back')} onPress={() => router.back()} variant="ghost" />
+          <Pressable onPress={() => setShowFeedback(true)} style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color={COLORS.textTertiary} />
+            <Text style={{ color: COLORS.textTertiary, fontSize: 13 }}>{t('common.reportProblem')}</Text>
+          </Pressable>
         </View>
+        <FeedbackModal
+          visible={showFeedback}
+          onClose={() => setShowFeedback(false)}
+          screen="confirm"
+          errorMessage="AI analysis failed"
+        />
       </ScreenContainer>
     );
   }
@@ -144,9 +161,18 @@ export default function ConfirmScreen() {
   return (
     <ScreenContainer>
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.text, marginTop: 16, marginBottom: 24 }}>
-          אישור בקשה
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 24, gap: 12 }}>
+          <Pressable
+            onPress={() => router.back()}
+            style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center' }}
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="arrow-back" size={22} color={COLORS.text} />
+          </Pressable>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: COLORS.text }}>
+            {t('confirm.title')}
+          </Text>
+        </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
           {imageUris.map((uri, i) => (
@@ -154,8 +180,19 @@ export default function ConfirmScreen() {
           ))}
         </ScrollView>
 
+        {description && description.length > 0 && (
+          <View style={{ backgroundColor: COLORS.backgroundLight, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border }}>
+            <Text style={{ color: COLORS.textTertiary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>
+              {t('confirm.whatYouWrote')}
+            </Text>
+            <Text style={{ color: COLORS.text, fontSize: 14, lineHeight: 20 }}>
+              {description}
+            </Text>
+          </View>
+        )}
+
         <View style={{ backgroundColor: COLORS.surface, borderRadius: 16, padding: 20, marginBottom: 16 }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginBottom: 8 }}>בעל מקצוע רלוונטי:</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginBottom: 8 }}>{t('confirm.relevantProfession')}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             {(analysis?.professionLabelsHe || []).map((label, i) => (
               <View key={i} style={{ backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 }}>
@@ -164,24 +201,27 @@ export default function ConfirmScreen() {
             ))}
           </View>
           {analysis?.shortSummary && (
-            <Text style={{ color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, fontStyle: 'italic' }}>
-              {analysis.shortSummary}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+              <Ionicons name="sparkles" size={12} color={COLORS.primary} style={{ marginTop: 4 }} />
+              <Text style={{ color: COLORS.textSecondary, fontSize: 14, lineHeight: 20, fontStyle: 'italic', flex: 1 }}>
+                {analysis.shortSummary}
+              </Text>
+            </View>
           )}
         </View>
 
         {hasError && (
           <View style={{ backgroundColor: COLORS.error + '15', borderRadius: 12, padding: 16, marginBottom: 16 }}>
             <Text style={{ color: COLORS.text, textAlign: 'center' }}>
-              משהו השתבש. נסה שוב.
+              {t('confirm.somethingWentWrong')}
             </Text>
           </View>
         )}
       </ScrollView>
 
       <View style={{ paddingVertical: 16, gap: 12 }}>
-        <Button title="שלח ומצא בעלי מקצוע" onPress={handleConfirmAndSend} isLoading={isSending} />
-        <Button title="ביטול" onPress={() => router.back()} variant="ghost" />
+        <Button title={t('confirm.sendAndFind')} onPress={handleConfirmAndSend} isLoading={isSending} />
+        <Button title={t('common.cancel')} onPress={() => router.back()} variant="ghost" />
       </View>
     </ScreenContainer>
   );

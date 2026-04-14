@@ -1,7 +1,7 @@
 import {
-  getFirestore, collection, doc, setDoc, getDocs, query,
+  getFirestore, collection, doc, setDoc, deleteDoc, getDocs, query,
   orderBy, onSnapshot, serverTimestamp,
-} from '@react-native-firebase/firestore';
+} from '../firestore/imports';
 import { ChatService, ChatMessage } from './types';
 import { logger } from '../logger';
 
@@ -96,6 +96,25 @@ class FirebaseChatService implements ChatService {
       text,
       createdAt: serverTimestamp(),
     });
+  }
+
+  /**
+   * Delete every message in a request's chat subcollection.
+   * Used when the customer cancels a provider selection — we want the next
+   * provider to start with a clean slate, not see the previous conversation.
+   */
+  async clearMessages(requestId: string): Promise<void> {
+    try {
+      const colPath = this.getCollectionPath(requestId);
+      const snapshot = await getDocs(collection(this.db, colPath));
+      if (!snapshot || !snapshot.docs || snapshot.docs.length === 0) return;
+      await Promise.all(
+        snapshot.docs.map((d: any) => deleteDoc(doc(this.db, colPath, d.id)))
+      );
+      logger.info('Chat cleared', { requestId, deleted: snapshot.docs.length });
+    } catch (err) {
+      logger.error('clearMessages failed', err as Error);
+    }
   }
 
   private docToMessage(d: any): ChatMessage {

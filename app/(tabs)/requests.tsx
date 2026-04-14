@@ -1,72 +1,98 @@
-import { useState, useCallback } from 'react';
 import { View, Text, Pressable, FlatList, StyleSheet } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { ScreenContainer } from '../../src/components/layout';
 import { RequestListSkeleton } from '../../src/components/ui';
-import { useAuthStore } from '../../src/stores/useAuthStore';
-import { requestService } from '../../src/services/requests';
-import { REQUEST_STATUS_LABELS } from '../../src/constants/status';
+import { useRequestsStore } from '../../src/stores/useRequestsStore';
+import { REQUEST_STATUS } from '../../src/constants/status';
 import { COLORS } from '../../src/constants';
 
 import type { ServiceRequest } from '../../src/services/requests';
 
+/**
+ * My Requests screen. Reads from the central requests store which maintains
+ * a persistent Firestore listener -- no refetch on every focus.
+ */
 export default function RequestsScreen() {
-  const user = useAuthStore((s) => s.user);
-  const [requests, setRequests] = useState<ServiceRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { t } = useTranslation();
+  const requests = useRequestsStore((s) => s.requests);
+  const isInitialized = useRequestsStore((s) => s.isInitialized);
+  // Subscribe to bidCounts and baseline so the unread badge stays live
+  const bidCounts = useRequestsStore((s) => s.bidCounts);
+  const unreadBaseline = useRequestsStore((s) => s.unreadBaseline);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!user) return;
-      setIsLoading(true);
-      requestService.getUserRequests(user.uid)
-        .then(setRequests)
-        .catch(() => {})
-        .finally(() => setIsLoading(false));
-    }, [user])
-  );
+  const openRequest = (id: string) => {
+    router.push({ pathname: '/request/[id]', params: { id } });
+  };
 
   const renderRequest = ({ item }: { item: ServiceRequest }) => {
-    const statusLabel = REQUEST_STATUS_LABELS[item.status];
     const ai = item.aiAnalysis as any;
-    const professionLabel =
-      ai?.professionLabelsHe?.[0] ||
-      ai?.categories?.[0] || // backward compat with old data
-      'בקשה';
+    // Always use the generic Hebrew title. The Hebrew profession label
+    // appears as a smaller subtitle -- never show English keys like
+    // "general" or "cleaning" that leaked from old AI responses.
+    const professionLabelHe = Array.isArray(ai?.professionLabelsHe)
+      ? ai.professionLabelsHe[0]
+      : null;
     const shortSummary = ai?.shortSummary || ai?.summary || '';
 
+    const bidCount = bidCounts[item.id] || 0;
+    const lastSeen = unreadBaseline[item.id]?.lastSeenBidCount || 0;
+    const unread = Math.max(0, bidCount - lastSeen);
+    const showBadge =
+      unread > 0 &&
+      (item.status === REQUEST_STATUS.OPEN || item.status === REQUEST_STATUS.PAUSED);
+
     return (
-      <Pressable
-        onPress={() => router.push({ pathname: '/request/[id]', params: { id: item.id } })}
-        style={styles.requestCard}
-      >
+      <Pressable onPress={() => openRequest(item.id)} style={styles.requestCard}>
         <View style={styles.requestIcon}>
-          <Ionicons
-            name="build"
-            size={22}
-            color={COLORS.primary}
-          />
+          <Ionicons name="build" size={22} color={COLORS.primary} />
         </View>
+
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.requestTitle}>
-            {professionLabel}
-          </Text>
+          <Text style={styles.requestTitle}>{t('requests.serviceRequest')}</Text>
           <Text style={styles.requestSummary} numberOfLines={1}>
-            {shortSummary}
+            {showBadge
+              ? t('requests.newOffers', { count: unread })
+              : professionLabelHe
+              ? professionLabelHe
+              : shortSummary}
           </Text>
         </View>
-        <View style={[styles.statusBadge, {
-          backgroundColor: item.status === 'open' ? COLORS.success + '20' :
-                          item.status === 'in_progress' ? COLORS.warning + '20' :
-                          COLORS.textTertiary + '20'
-        }]}>
-          <Text style={[styles.statusText, {
-            color: item.status === 'open' ? COLORS.success :
-                   item.status === 'in_progress' ? COLORS.warning :
-                   COLORS.textTertiary
-          }]}>
-            {statusLabel?.he || item.status}
+
+        {showBadge && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadBadgeText}>{unread}</Text>
+          </View>
+        )}
+
+        <View
+          style={[
+            styles.statusBadge,
+            {
+              backgroundColor:
+                item.status === 'open'
+                  ? COLORS.success + '20'
+                  : item.status === 'in_progress'
+                  ? COLORS.warning + '20'
+                  : COLORS.textTertiary + '20',
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.statusText,
+              {
+                color:
+                  item.status === 'open'
+                    ? COLORS.success
+                    : item.status === 'in_progress'
+                    ? COLORS.warning
+                    : COLORS.textTertiary,
+              },
+            ]}
+          >
+            {t(`status.${item.status}`)}
           </Text>
         </View>
       </Pressable>
@@ -75,19 +101,17 @@ export default function RequestsScreen() {
 
   return (
     <ScreenContainer>
-      <Text style={styles.header}>הקריאות שלי</Text>
+      <Text style={styles.header}>{t('requests.title')}</Text>
 
-      {isLoading ? (
+      {!isInitialized ? (
         <View style={{ flex: 1, paddingTop: 8 }}>
           <RequestListSkeleton />
         </View>
       ) : requests.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="document-text-outline" size={64} color={COLORS.textTertiary} />
-          <Text style={styles.emptyTitle}>אין קריאות עדיין</Text>
-          <Text style={styles.emptySubtitle}>
-            כשתדווח על תקלה, היא תופיע כאן
-          </Text>
+          <Text style={styles.emptyTitle}>{t('requests.empty')}</Text>
+          <Text style={styles.emptySubtitle}>{t('requests.emptyHint')}</Text>
         </View>
       ) : (
         <FlatList
@@ -96,15 +120,6 @@ export default function RequestsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
-          refreshing={isLoading}
-          onRefresh={() => {
-            if (!user) return;
-            setIsLoading(true);
-            requestService.getUserRequests(user.uid)
-              .then(setRequests)
-              .catch(() => {})
-              .finally(() => setIsLoading(false));
-          }}
         />
       )}
     </ScreenContainer>
@@ -162,6 +177,23 @@ const styles = StyleSheet.create({
   requestSummary: {
     color: COLORS.textSecondary,
     fontSize: 13,
+  },
+  unreadBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 7,
+    backgroundColor: COLORS.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  unreadBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    lineHeight: 14,
   },
   statusBadge: {
     borderRadius: 8,

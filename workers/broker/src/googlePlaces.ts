@@ -1,14 +1,23 @@
 /**
  * Google Places (New) API integration.
  *
- * We use the "Nearby Search (New)" endpoint which returns businesses matching
- * an `includedType` near a location. Docs:
- *   https://developers.google.com/maps/documentation/places/web-service/nearby-search
+ * Two endpoints are used:
+ *   1. searchNearby — fast, precise category match. Only works for a limited
+ *      set of Google-defined business types.
+ *   2. searchText   — accepts any natural-language query (including Hebrew).
+ *      Used as a fallback for professions that don't map to a Google type.
  *
- * The profession strings we pass in are Google Places business types (e.g.
- * "plumber", "electrician"). The AI returns these directly so we don't need a
- * translation layer.
+ * After fetching, results are filtered to only keep providers whose phone
+ * number is likely WhatsApp-capable (mobile, not landline). See phoneUtils.ts.
+ *
+ * Docs:
+ *   https://developers.google.com/maps/documentation/places/web-service/nearby-search
+ *   https://developers.google.com/maps/documentation/places/web-service/text-search
+ *   https://developers.google.com/maps/documentation/places/web-service/place-types
  */
+
+import { isLikelyWhatsAppCapable, normalizeIsraeliPhone } from './phoneUtils';
+import { getGooglePlacesType, getHebrewSearchQuery } from './professionConfig';
 
 export interface PlacesProvider {
   placeId: string;
@@ -19,7 +28,7 @@ export interface PlacesProvider {
   location: { lat: number; lng: number };
 }
 
-interface NearbySearchResult {
+interface PlacesSearchResponse {
   places?: Array<{
     id: string;
     displayName?: { text: string };
@@ -31,6 +40,10 @@ interface NearbySearchResult {
   }>;
 }
 
+const FIELD_MASK =
+  'places.id,places.displayName,places.nationalPhoneNumber,' +
+  'places.internationalPhoneNumber,places.rating,places.formattedAddress,places.location';
+
 export async function findNearbyProviders(params: {
   apiKey: string;
   profession: string;
@@ -39,17 +52,41 @@ export async function findNearbyProviders(params: {
   radiusMeters: number;
   maxResults: number;
 }): Promise<PlacesProvider[]> {
-  const { apiKey, profession, lat, lng, radiusMeters, maxResults } = params;
+  const googleType = getGooglePlacesType(params.profession);
 
+  // Prefer typed nearby search when we have a valid Google type
+  if (googleType) {
+    try {
+      return await searchNearby({ ...params, googleType });
+    } catch (err) {
+      console.warn(
+        `[places] searchNearby failed for ${params.profession} (${googleType}), falling back to text search:`,
+        err
+      );
+    }
+  }
+
+  // Fall back to Hebrew text search
+  const textQuery = getHebrewSearchQuery(params.profession);
+  return await searchText({ ...params, textQuery });
+}
+
+async function searchNearby(params: {
+  apiKey: string;
+  googleType: string;
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  maxResults: number;
+}): Promise<PlacesProvider[]> {
   const url = 'https://places.googleapis.com/v1/places:searchNearby';
-
   const body = {
-    includedTypes: [profession],
-    maxResultCount: Math.min(maxResults, 20),
+    includedTypes: [params.googleType],
+    maxResultCount: Math.min(params.maxResults, 20),
     locationRestriction: {
       circle: {
-        center: { latitude: lat, longitude: lng },
-        radius: radiusMeters,
+        center: { latitude: params.lat, longitude: params.lng },
+        radius: params.radiusMeters,
       },
     },
   };
@@ -58,53 +95,113 @@ export async function findNearbyProviders(params: {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      // We only need these fields — keeps cost down
-      'X-Goog-FieldMask':
-        'places.id,places.displayName,places.nationalPhoneNumber,places.internationalPhoneNumber,places.rating,places.formattedAddress,places.location',
+      'X-Goog-Api-Key': params.apiKey,
+      'X-Goog-FieldMask': FIELD_MASK,
     },
     body: JSON.stringify(body),
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Google Places error ${response.status}: ${errText}`);
+    throw new Error(`Google Places (nearby) error ${response.status}: ${errText}`);
   }
 
-  const data = (await response.json()) as NearbySearchResult;
+  const data = (await response.json()) as PlacesSearchResponse;
+  return parseProviders(data, params.lat, params.lng);
+}
 
-  if (!data.places) {
-    return [];
+async function searchText(params: {
+  apiKey: string;
+  textQuery: string;
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  maxResults: number;
+}): Promise<PlacesProvider[]> {
+  const url = 'https://places.googleapis.com/v1/places:searchText';
+  const body = {
+    textQuery: params.textQuery,
+    // Bias (not restrict) to the user's area. Text search can return providers
+    // slightly outside the circle but still relevant.
+    locationBias: {
+      circle: {
+        center: { latitude: params.lat, longitude: params.lng },
+        radius: params.radiusMeters,
+      },
+    },
+    pageSize: Math.min(params.maxResults, 20),
+    languageCode: 'he',
+    regionCode: 'IL',
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': params.apiKey,
+      'X-Goog-FieldMask': FIELD_MASK,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Google Places (text) error ${response.status}: ${errText}`);
   }
 
-  return data.places
+  const data = (await response.json()) as PlacesSearchResponse;
+  return parseProviders(data, params.lat, params.lng);
+}
+
+function parseProviders(
+  data: PlacesSearchResponse,
+  fallbackLat: number,
+  fallbackLng: number
+): PlacesProvider[] {
+  if (!data.places) return [];
+
+  let totalWithPhone = 0;
+  let dropped = 0;
+
+  const parsed = data.places
     .map<PlacesProvider | null>((p) => {
       const phone = p.internationalPhoneNumber || p.nationalPhoneNumber || null;
-      if (!phone) return null; // Can't WhatsApp without phone
+      if (!phone) return null; // Can't WhatsApp without a phone
+      totalWithPhone++;
+
+      const normalized = normalizeIsraeliPhone(phone);
+
+      // WhatsApp-capability filter: skip landlines, service numbers, etc.
+      // See phoneUtils.ts for the heuristic. This is the biggest win we can
+      // get for reliability without paying for Twilio Lookup.
+      if (!isLikelyWhatsAppCapable(normalized)) {
+        dropped++;
+        return null;
+      }
+
       return {
         placeId: p.id,
         name: p.displayName?.text || 'ללא שם',
-        phone: normalizePhoneToE164(phone),
+        phone: normalized,
         rating: p.rating ?? null,
         address: p.formattedAddress || '',
         location: {
-          lat: p.location?.latitude ?? lat,
-          lng: p.location?.longitude ?? lng,
+          lat: p.location?.latitude ?? fallbackLat,
+          lng: p.location?.longitude ?? fallbackLng,
         },
       };
     })
     .filter((p): p is PlacesProvider => p !== null)
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+
+  if (dropped > 0) {
+    console.log(
+      `[places] filtered ${dropped}/${totalWithPhone} providers (non-mobile phones)`
+    );
+  }
+
+  return parsed;
 }
 
-/**
- * Normalize a phone number string to E.164 format (e.g. +972501234567).
- * Google Places returns numbers in various formats depending on locale.
- */
-function normalizePhoneToE164(phone: string): string {
-  if (!phone) return phone;
-  // Remove everything except digits and leading +
-  const hasPlus = phone.trim().startsWith('+');
-  const digits = phone.replace(/[^\d]/g, '');
-  return hasPlus ? `+${digits}` : `+${digits}`;
-}
+// Phone normalization is now delegated to normalizeIsraeliPhone in
+// phoneUtils.ts, which handles both E.164 and local-format Israeli numbers.
