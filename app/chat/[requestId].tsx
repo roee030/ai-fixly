@@ -3,27 +3,39 @@ import {
   View, Text, TextInput, Pressable, FlatList, KeyboardAvoidingView,
   Platform, StyleSheet, ActivityIndicator, Linking,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
+import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { chatService, monitorAndUpdateStatus } from '../../src/services/chat';
 import { requestService } from '../../src/services/requests';
 import { forwardChatMessage } from '../../src/services/broadcast';
 import { logger } from '../../src/services/logger';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
+import { REQUEST_STATUS } from '../../src/constants/status';
+import { logAction } from '../../src/services/analytics/sessionLogger';
 
 import type { ChatMessage } from '../../src/services/chat';
 import type { ServiceRequest } from '../../src/services/requests';
 
 export default function ChatScreen() {
+  const { t } = useTranslation();
   const { requestId } = useLocalSearchParams<{ requestId: string }>();
   const user = useAuthStore((s) => s.user);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [request, setRequest] = useState<ServiceRequest | null>(null);
   const flatListRef = useRef<FlatList>(null);
+
+  // Log chat open
+  useEffect(() => {
+    logAction('chat_opened', 'chat');
+  }, []);
 
   // Subscribe to request so we know the selected provider's phone + name
   useEffect(() => {
@@ -44,18 +56,23 @@ export default function ChatScreen() {
   }, [requestId]);
 
   const providerPhone = (request as any)?.selectedProviderPhone || '';
-  const providerName = (request as any)?.selectedProviderName || 'בעל מקצוע';
+  const providerName = (request as any)?.selectedProviderName || t('common.provider');
+  const isClosed = request?.status === REQUEST_STATUS.CLOSED;
 
   const handleSend = async () => {
     if (!input.trim() || !user || !requestId) return;
+    // Guard: a closed request is immutable — no more messages out to the provider.
+    if (isClosed) return;
 
     const text = input.trim();
     setInput('');
     setIsSending(true);
+    setSendError(false);
 
     try {
       // 1. Write to Firestore (app chat history)
       await chatService.sendMessage(requestId, user.uid, 'customer', text);
+      logAction('chat_message_sent', 'chat');
 
       // 2. Forward to provider via WhatsApp through the worker (middleman)
       if (providerPhone) {
@@ -63,7 +80,7 @@ export default function ChatScreen() {
           requestId,
           providerPhone,
           text,
-        }).catch((err) => logger.error('forwardChatMessage failed', err as Error));
+        }).catch((err: unknown) => logger.error('forwardChatMessage failed', err as Error));
       }
 
       // 3. AI monitor checks for completion/cancellation signals
@@ -71,6 +88,7 @@ export default function ChatScreen() {
     } catch (err) {
       console.error('Send message error:', err);
       setInput(text);
+      setSendError(true);
     } finally {
       setIsSending(false);
     }
@@ -96,7 +114,7 @@ export default function ChatScreen() {
     return (
       <View style={[styles.messageBubble, isCustomer ? styles.customerBubble : styles.providerBubble]}>
         {!isCustomer && (
-          <Text style={styles.senderLabel}>בעל מקצוע</Text>
+          <Text style={styles.senderLabel}>{t('common.provider')}</Text>
         )}
         <Text style={[styles.messageText, isCustomer ? styles.customerText : styles.providerText]}>
           {item.text}
@@ -117,7 +135,7 @@ export default function ChatScreen() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle} numberOfLines={1}>{providerName}</Text>
-          <Text style={styles.headerSubtitle}>כל ההודעות מתועדות וחוזרות דרך WhatsApp</Text>
+          <Text style={styles.headerSubtitle}>{t('chat.headerSubtitle')}</Text>
         </View>
         {providerPhone ? (
           <Pressable onPress={handleCall} style={styles.callBtn}>
@@ -142,35 +160,58 @@ export default function ChatScreen() {
           ListEmptyComponent={
             <View style={styles.emptyChat}>
               <Ionicons name="chatbubbles-outline" size={48} color={COLORS.textTertiary} />
-              <Text style={styles.emptyChatText}>שלח הודעה לבעל המקצוע</Text>
+              <Text style={styles.emptyChatText}>{t('chat.sendMessage')}</Text>
             </View>
           }
         />
 
-        {/* Input */}
-        <View style={styles.inputBar}>
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder="כתוב הודעה..."
-            placeholderTextColor={COLORS.textTertiary}
-            style={styles.textInput}
-            multiline
-            maxLength={500}
-          />
-          <Pressable
-            onPress={handleSend}
-            disabled={!input.trim() || isSending}
-            style={[styles.sendBtn, (!input.trim() || isSending) && styles.sendBtnDisabled]}
-          >
-            {isSending ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Ionicons name="send" size={20} color="#FFF" />
-            )}
-          </Pressable>
-        </View>
+        {/* Send error banner */}
+        {sendError && (
+          <View style={styles.sendErrorBanner}>
+            <Text style={styles.sendErrorText}>{t('chat.sendFailed')}</Text>
+            <Pressable onPress={() => setShowFeedback(true)} hitSlop={8}>
+              <Text style={styles.sendErrorReport}>{t('chat.report')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Input — disabled once request is closed */}
+        {isClosed ? (
+          <View style={styles.closedBanner}>
+            <Ionicons name="lock-closed" size={16} color={COLORS.textTertiary} />
+            <Text style={styles.closedBannerText}>{t('chat.closedBanner')}</Text>
+          </View>
+        ) : (
+          <View style={styles.inputBar}>
+            <TextInput
+              value={input}
+              onChangeText={setInput}
+              placeholder={t('chat.placeholder')}
+              placeholderTextColor={COLORS.textTertiary}
+              style={styles.textInput}
+              multiline
+              maxLength={500}
+            />
+            <Pressable
+              onPress={handleSend}
+              disabled={!input.trim() || isSending}
+              style={[styles.sendBtn, (!input.trim() || isSending) && styles.sendBtnDisabled]}
+            >
+              {isSending ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Ionicons name="send" size={20} color="#FFF" />
+              )}
+            </Pressable>
+          </View>
+        )}
       </KeyboardAvoidingView>
+      <FeedbackModal
+        visible={showFeedback}
+        onClose={() => setShowFeedback(false)}
+        screen="chat"
+        errorMessage="Chat message send failed"
+      />
     </ScreenContainer>
   );
 }
@@ -209,6 +250,15 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: COLORS.border,
     backgroundColor: COLORS.backgroundLight,
   },
+  closedBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 16,
+    borderTopWidth: 1, borderTopColor: COLORS.border,
+    backgroundColor: COLORS.backgroundLight,
+  },
+  closedBannerText: {
+    color: COLORS.textTertiary, fontSize: 13, fontWeight: '600',
+  },
   textInput: {
     flex: 1, backgroundColor: COLORS.surface, borderRadius: 20,
     paddingHorizontal: 16, paddingVertical: 10,
@@ -220,4 +270,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { opacity: 0.4 },
+  sendErrorBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 6, backgroundColor: COLORS.error + '15',
+  },
+  sendErrorText: { color: COLORS.error, fontSize: 12 },
+  sendErrorReport: { color: COLORS.textTertiary, fontSize: 12, textDecorationLine: 'underline' },
 });

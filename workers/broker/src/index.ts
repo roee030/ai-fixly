@@ -33,37 +33,83 @@ import { parseProviderReply } from './geminiParser';
 import { FirestoreClient } from './firestore';
 import { sendPush } from './fcm';
 import { recordProviderContact, lookupProviderContact } from './phoneMap';
+import { getUrgencyConfig } from './professionConfig';
+import { shortenProviderName } from './nameUtils';
+import { getProvidersForWave, getNextWaveTime } from './tiering';
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    console.log('[cron] running scheduled tasks...');
+
+    const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
+
+    // Task 1: Send review reminders for requests in_progress for 24h+
+    await handleReviewReminders(firestore, env).catch(err =>
+      console.error('[cron] review reminders failed:', err)
+    );
+
+    // Task 2: Send wave 2/3 broadcasts for requests waiting for next wave
+    await handlePendingWaves(firestore, env).catch(err =>
+      console.error('[cron] wave broadcasts failed:', err)
+    );
+
+    // Task 3: Check for manager alerts (stale requests, unresponsive providers)
+    await handleAlertChecks(firestore, env).catch(err =>
+      console.error('[cron] alert checks failed:', err)
+    );
+
+    console.log('[cron] scheduled tasks complete');
+  },
+
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders() });
+      return new Response(null, { status: 204, headers: corsHeaders(request) });
+    }
+
+    // Reject oversized requests (prevent DoS via large payloads)
+    const contentLength = parseInt(request.headers.get('Content-Length') || '0', 10);
+    if (contentLength > 1_000_000) { // 1MB max
+      return jsonResponse({ error: 'Request too large' }, 413, request);
     }
 
     try {
       if (url.pathname === '/health') {
-        return jsonResponse({ status: 'ok', time: new Date().toISOString() });
+        return jsonResponse({ status: 'ok', time: new Date().toISOString() }, 200, request);
       }
+      const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+
       if (url.pathname === '/broadcast' && request.method === 'POST') {
-        return await handleBroadcast(request, env);
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `broadcast:${clientIp}`, 10, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handleBroadcast(request, env, ctx);
       }
       if (url.pathname === '/provider/selected' && request.method === 'POST') {
-        return await handleProviderSelected(request, env);
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `selected:${clientIp}`, 20, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handleProviderSelected(request, env, ctx);
       }
       if (url.pathname === '/chat/send' && request.method === 'POST') {
-        return await handleChatSend(request, env);
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `chat:${clientIp}`, 120, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handleChatSend(request, env, ctx);
+      }
+      if (url.pathname === '/feedback/critical' && request.method === 'POST') {
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `feedback:${clientIp}`, 5, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handleCriticalFeedback(request, env);
       }
       if (url.pathname === '/webhook/twilio' && request.method === 'POST') {
         return await handleTwilioWebhook(request, env);
       }
-      return jsonResponse({ error: 'Not found' }, 404);
+      return jsonResponse({ error: 'Not found' }, 404, request);
     } catch (err) {
       console.error('Worker error:', err);
       return jsonResponse(
         { error: 'Internal error', message: err instanceof Error ? err.message : 'Unknown' },
-        500
+        500,
+        request
       );
     }
   },
@@ -81,21 +127,41 @@ interface BroadcastBody {
   location: { lat: number; lng: number; address: string };
 }
 
-async function handleBroadcast(request: Request, env: Env): Promise<Response> {
+async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const body = (await request.json()) as BroadcastBody;
-  if (!body.requestId || !body.professions || !body.location) {
-    return jsonResponse({ error: 'Missing required fields' }, 400);
+  if (!body.requestId || typeof body.requestId !== 'string' || body.requestId.length > 100) {
+    return jsonResponse({ error: 'Invalid requestId' }, 400, request);
+  }
+  if (!body.professions || !Array.isArray(body.professions) || body.professions.length === 0) {
+    return jsonResponse({ error: 'Invalid professions' }, 400, request);
+  }
+  if (!body.location) {
+    return jsonResponse({ error: 'Missing location' }, 400, request);
   }
 
-  const isDryRun = (env.DRY_RUN || 'false').toLowerCase() === 'true';
-  const maxProviders = parseInt(env.MAX_PROVIDERS_PER_REQUEST || '5', 10);
-  const radiusMeters = parseInt(env.SEARCH_RADIUS_METERS || '20000', 10);
+  // Test mode takes priority over dry-run. When TEST_PHONE_OVERRIDE is set,
+  // we send exactly one real WhatsApp to that number (impersonating the first
+  // provider) so the user can test the full round-trip from their own phone.
+  const testPhone = (env.TEST_PHONE_OVERRIDE || '').trim();
+  const isTestMode = testPhone.length > 0;
+  const isDryRun = !isTestMode && (env.DRY_RUN || 'false').toLowerCase() === 'true';
+  const urgency = (body as any).urgency || 'normal';
+  const urgencyConfig = getUrgencyConfig(urgency);
+  const maxProviders = isTestMode ? 1 : urgencyConfig.maxProviders;
+  const radiusMeters = urgencyConfig.radiusMeters;
   const cacheTtl = parseInt(env.PLACES_CACHE_TTL_SECONDS || '86400', 10);
 
   console.log(
     `[broadcast] requestId=${body.requestId} professions=${body.professions.join(',')} ` +
-      `lat=${body.location.lat} lng=${body.location.lng} dryRun=${isDryRun}`
+      `lat=${body.location.lat} lng=${body.location.lng} dryRun=${isDryRun} testMode=${isTestMode}`
   );
+
+  const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
+
+  // Fetch the set of provider phones that are already busy with another
+  // in-progress job so we can exclude them from this broadcast.
+  const busyPhones = await firestore.getBusyProviderPhones();
+  console.log(`[broadcast] ${busyPhones.size} providers are currently busy`);
 
   // Find providers via Google Places (cached via KV)
   const allProviders: PlacesProvider[] = [];
@@ -110,29 +176,109 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
         lat: body.location.lat,
         lng: body.location.lng,
         radiusMeters,
-        maxResults: maxProviders,
+        maxResults: maxProviders * 2, // fetch extra so we can filter out busy ones
         ttlSeconds: cacheTtl,
       });
 
       console.log(`[places] ${profession}: found ${found.length} providers`);
       for (const p of found) {
-        if (!seenPlaceIds.has(p.placeId)) {
-          seenPlaceIds.add(p.placeId);
-          allProviders.push(p);
+        if (seenPlaceIds.has(p.placeId)) continue;
+        if (p.phone && busyPhones.has(p.phone)) {
+          console.log(`[skip] ${p.name} is busy with another job`);
+          continue;
         }
+        seenPlaceIds.add(p.placeId);
+        allProviders.push(p);
       }
     } catch (err) {
       console.error(`Places search failed for ${profession}:`, err);
     }
   }
 
-  const providers = allProviders.slice(0, maxProviders);
-  if (providers.length === 0) {
-    return jsonResponse({ sentCount: 0, providersFound: 0, providers: [], dryRun: isDryRun });
+  // Sort by rating descending (best first) for wave tiering
+  allProviders.sort((a, b) => (b.rating ?? 3.0) - (a.rating ?? 3.0));
+
+  // Wave 1: only send to top providers initially (full list in test mode: just 1)
+  const waveProviders = isTestMode
+    ? allProviders.slice(0, 1)
+    : getProvidersForWave(allProviders, 1);
+
+  if (waveProviders.length === 0) {
+    return jsonResponse({ sentCount: 0, providersFound: 0, providers: [], dryRun: isDryRun }, 200, request);
   }
 
-  const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
-  const message = buildProviderMessage(body);
+  const providers = waveProviders;
+
+  const message = urgencyConfig.tonePrefix + buildProviderMessage(body);
+
+  // =================================================================
+  // TEST MODE: send one WhatsApp to TEST_PHONE_OVERRIDE impersonating
+  // the first provider. Record the KV mapping under the test phone so
+  // replies are routed back to this provider/request. Skip the normal
+  // loop entirely — this is a solo testing shortcut, not a real broadcast.
+  // =================================================================
+  if (isTestMode) {
+    const first = providers[0];
+    console.log(`[test-mode] impersonating ${first.name} → sending to ${testPhone}`);
+
+    // Mark the mapping under the test phone so inbound webhook routes
+    // the reply back to this request + this provider.
+    await recordProviderContact(env.PLACES_CACHE, testPhone, {
+      requestId: body.requestId,
+      providerName: first.name,
+      providerPhone: first.phone || testPhone,
+    });
+
+    // Store refCode mapping for precise reply routing
+    const testRefCode = body.requestId.slice(0, 6).toUpperCase();
+    await recordProviderContact(env.PLACES_CACHE, `ref:${testRefCode}`, {
+      requestId: body.requestId,
+      providerName: 'refCode-lookup',
+      providerPhone: 'refCode-lookup',
+    });
+
+    const testBody =
+      `🧪 *מצב בדיקה*\n` +
+      `אתה מדמה את: *${first.name}*\n` +
+      `(שלח תגובה בפורמט רגיל — מחיר + זמינות)\n` +
+      `━━━━━━━━━━━━━━\n\n` +
+      message;
+
+    const result = await sendWhatsAppMessage({
+      accountSid: env.TWILIO_ACCOUNT_SID,
+      authToken: env.TWILIO_AUTH_TOKEN,
+      from: env.TWILIO_WHATSAPP_FROM,
+      to: testPhone,
+      body: testBody,
+      mediaUrls: body.mediaUrls?.slice(0, 5),
+    });
+
+    // Denormalize broadcast result so the app shows "1 provider contacted"
+    try {
+      await firestore.updateRequestBroadcast({
+        requestId: body.requestId,
+        providers: [{ name: first.name, phone: testPhone, sent: result.success }],
+      });
+    } catch (err) {
+      console.error('Save broadcast result failed:', err);
+    }
+
+    return jsonResponse({
+      sentCount: result.success ? 1 : 0,
+      providersFound: providers.length,
+      providers: [
+        {
+          name: first.name,
+          phone: testPhone,
+          sent: result.success,
+          reason: result.success ? 'test-mode' : result.error,
+        },
+      ],
+      dryRun: false,
+      testMode: true,
+    }, 200, request);
+  }
+
   let sentCount = 0;
   const results: Array<{ name: string; phone: string; sent: boolean; reason?: string }> = [];
 
@@ -149,6 +295,14 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
       providerPhone: provider.phone,
     });
 
+    // Store refCode mapping for precise reply routing
+    const providerRefCode = body.requestId.slice(0, 6).toUpperCase();
+    await recordProviderContact(env.PLACES_CACHE, `ref:${providerRefCode}`, {
+      requestId: body.requestId,
+      providerName: 'refCode-lookup',
+      providerPhone: 'refCode-lookup',
+    });
+
     if (isDryRun) {
       console.log(`[DRY RUN] demo bid for ${provider.name}`);
       try {
@@ -157,6 +311,7 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
           bidId: crypto.randomUUID(),
           data: {
             providerName: provider.name,
+            displayName: shortenProviderName(provider.name),
             providerPhone: provider.phone,
             price: simulatePrice(),
             availability: simulateAvailability(),
@@ -210,11 +365,25 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
     console.error('Save broadcast result failed:', err);
   }
 
+  // Schedule next wave if there are more providers to contact
+  if (!isTestMode && allProviders.length > waveProviders.length) {
+    try {
+      await firestore.updateRequestWave({
+        requestId: body.requestId,
+        wave: 1,
+        nextWaveAt: getNextWaveTime(1),
+      });
+    } catch (err) {
+      console.error('Failed to schedule next wave:', err);
+    }
+  }
+
   // Push notification to customer (if we sent demo bids, they'll see them now)
   if (isDryRun && results.some((r) => r.reason === 'demo bid')) {
     await pushToCustomer({
       env,
       requestId: body.requestId,
+      type: 'new_bid',
       title: 'יש הצעות חדשות!',
       body: `${providers.length} בעלי מקצוע באזור שלך שלחו הצעות`,
     });
@@ -225,7 +394,7 @@ async function handleBroadcast(request: Request, env: Env): Promise<Response> {
     providersFound: providers.length,
     providers: results,
     dryRun: isDryRun,
-  });
+  }, 200, request);
 }
 
 // =========================================================================
@@ -241,20 +410,35 @@ interface ProviderSelectedBody {
   customerAddress?: string;
 }
 
-async function handleProviderSelected(request: Request, env: Env): Promise<Response> {
+async function handleProviderSelected(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const body = (await request.json()) as ProviderSelectedBody;
   if (!body.requestId || !body.providerPhone) {
-    return jsonResponse({ error: 'Missing required fields' }, 400);
+    return jsonResponse({ error: 'Missing required fields' }, 400, request);
   }
+  // Truncate to prevent abuse
+  body.providerName = (body.providerName || '').slice(0, 200);
+  body.customerName = body.customerName?.slice(0, 200);
+  body.customerAddress = body.customerAddress?.slice(0, 500);
 
-  const isDryRun = (env.DRY_RUN || 'false').toLowerCase() === 'true';
-  console.log(`[selected] ${body.providerName} for request ${body.requestId} (dryRun=${isDryRun})`);
+  // Test mode overrides DRY_RUN. In test mode we send a real WhatsApp to
+  // the tester's own phone and treat it as if it were the provider.
+  const testPhone = (env.TEST_PHONE_OVERRIDE || '').trim();
+  const isTestMode = testPhone.length > 0;
+  const isDryRun = !isTestMode && (env.DRY_RUN || 'false').toLowerCase() === 'true';
 
-  // Make sure the phone→requestId mapping is fresh (extends TTL)
-  await recordProviderContact(env.PLACES_CACHE, body.providerPhone, {
+  console.log(
+    `[selected] ${body.providerName} for request ${body.requestId} ` +
+      `(dryRun=${isDryRun}, testMode=${isTestMode})`
+  );
+
+  // The phone we actually talk to. In test mode, always the tester's phone
+  // so inbound webhook routing matches (KV entry keyed by TEST_PHONE too).
+  const destinationPhone = isTestMode ? testPhone : body.providerPhone;
+
+  await recordProviderContact(env.PLACES_CACHE, destinationPhone, {
     requestId: body.requestId,
     providerName: body.providerName,
-    providerPhone: body.providerPhone,
+    providerPhone: destinationPhone,
   });
 
   const text = buildSelectionMessage(body);
@@ -262,57 +446,32 @@ async function handleProviderSelected(request: Request, env: Env): Promise<Respo
   if (isDryRun) {
     console.log(`[DRY RUN] would WhatsApp ${body.providerName}:\n${text}`);
 
-    // Simulation: pretend the provider approved and sent a chat message.
-    // This lets the customer see the full middleman chat flow without
-    // actually sending any WhatsApp messages.
-    try {
-      const firestore = new FirestoreClient(
-        env.FIREBASE_PROJECT_ID,
-        env.FIREBASE_SERVICE_ACCOUNT_JSON
-      );
+    // Schedule the simulation in the background so we can return immediately.
+    // ctx.waitUntil keeps the worker alive until the promise resolves.
+    ctx.waitUntil(simulateProviderApproval(env, body));
 
-      // Wait 2s to simulate real-world delay
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // System message: "provider confirmed"
-      await firestore.addChatMessage({
-        requestId: body.requestId,
-        senderId: 'system',
-        senderType: 'system',
-        text: `${body.providerName} אישר את העבודה ומוכן להתחיל`,
-      });
-
-      // Simulated provider greeting message
-      await firestore.addChatMessage({
-        requestId: body.requestId,
-        senderId: body.providerPhone,
-        senderType: 'provider',
-        text: `שלום! אני ${body.providerName}. קיבלתי את הפרטים ואני מוכן להגיע בזמן שסיכמנו. אם יש שאלות - כתוב לי כאן.`,
-      });
-
-      // Push notification to customer
-      await pushToCustomer({
-        env,
-        requestId: body.requestId,
-        title: `${body.providerName} אישר את העבודה`,
-        body: 'שלח הודעה דרך הצ\'אט או התקשר ישירות',
-      });
-    } catch (err) {
-      console.error('Simulation failed:', err);
-    }
-
-    return jsonResponse({ ok: true, dryRun: true });
+    return jsonResponse({ ok: true, dryRun: true, simulating: true }, 200, request);
   }
+
+  // Real mode or test mode: send via Twilio. In test mode, wrap the body
+  // with a clear "test mode" header so the tester knows who they're
+  // impersonating and that this is a test flow.
+  const outboundBody = isTestMode
+    ? `🧪 *מצב בדיקה — אתה מדמה את ${body.providerName}*\n` +
+      `ענה כאילו אתה בעל המקצוע (מחיר / זמינות / הודעות צ'אט).\n` +
+      `━━━━━━━━━━━━━━\n\n` +
+      text
+    : text;
 
   const result = await sendWhatsAppMessage({
     accountSid: env.TWILIO_ACCOUNT_SID,
     authToken: env.TWILIO_AUTH_TOKEN,
     from: env.TWILIO_WHATSAPP_FROM,
-    to: body.providerPhone,
-    body: text,
+    to: destinationPhone,
+    body: outboundBody,
   });
 
-  return jsonResponse({ ok: result.success, error: result.error });
+  return jsonResponse({ ok: result.success, error: result.error, testMode: isTestMode }, 200, request);
 }
 
 // =========================================================================
@@ -325,71 +484,150 @@ interface ChatSendBody {
   text: string;
 }
 
-async function handleChatSend(request: Request, env: Env): Promise<Response> {
+async function handleChatSend(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const body = (await request.json()) as ChatSendBody;
   if (!body.requestId || !body.providerPhone || !body.text) {
-    return jsonResponse({ error: 'Missing required fields' }, 400);
+    return jsonResponse({ error: 'Missing required fields' }, 400, request);
+  }
+  // Truncate to prevent abuse
+  body.text = body.text.slice(0, 2000);
+
+  // Guard: refuse to forward any message if the request is closed.
+  // A closed request is immutable — the customer or a stale client must
+  // not be able to keep reaching the provider after the customer closed.
+  const firestore = new FirestoreClient(
+    env.FIREBASE_PROJECT_ID,
+    env.FIREBASE_SERVICE_ACCOUNT_JSON
+  );
+  const requestDoc = await firestore.getRequest(body.requestId).catch(() => null);
+  if (requestDoc && requestDoc.status === 'closed') {
+    return jsonResponse(
+      { ok: false, error: 'request_closed', message: 'Request is closed; chat forwarding blocked.' },
+      409,
+      request
+    );
   }
 
-  const isDryRun = (env.DRY_RUN || 'false').toLowerCase() === 'true';
+  const testPhone = (env.TEST_PHONE_OVERRIDE || '').trim();
+  const isTestMode = testPhone.length > 0;
+  const isDryRun = !isTestMode && (env.DRY_RUN || 'false').toLowerCase() === 'true';
 
-  // Keep the mapping fresh
-  await recordProviderContact(env.PLACES_CACHE, body.providerPhone, {
+  // In test mode we always forward to the tester's phone — ignores the
+  // (possibly stale) providerPhone from the bid. This lets the stuck-state
+  // recover without the user having to cancel and re-pick.
+  const destinationPhone = isTestMode ? testPhone : body.providerPhone;
+
+  // Refresh the KV mapping. Preserve the existing providerName rather than
+  // overwriting with a hardcoded 'Provider' string (which the old code did).
+  const existing = await lookupProviderContact(env.PLACES_CACHE, destinationPhone);
+  await recordProviderContact(env.PLACES_CACHE, destinationPhone, {
     requestId: body.requestId,
-    providerName: 'Provider',
-    providerPhone: body.providerPhone,
+    providerName: existing?.providerName || 'בעל מקצוע',
+    providerPhone: destinationPhone,
   });
 
   if (isDryRun) {
     console.log(`[DRY RUN] would forward chat to ${body.providerPhone}: ${body.text}`);
 
-    // Simulation: pretend the provider replies after a short delay
-    // so the customer sees both sides of the conversation working.
-    try {
-      const firestore = new FirestoreClient(
-        env.FIREBASE_PROJECT_ID,
-        env.FIREBASE_SERVICE_ACCOUNT_JSON
-      );
+    // Background simulation via waitUntil
+    ctx.waitUntil(simulateChatReply(env, body));
 
-      // Fetch request to get provider name
-      const reqDoc = await firestore.getRequest(body.requestId);
-      const providerName = reqDoc?.selectedProviderName || 'בעל מקצוע';
-
-      // Wait 3s
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      const reply = simulateProviderReply(body.text);
-      await firestore.addChatMessage({
-        requestId: body.requestId,
-        senderId: body.providerPhone,
-        senderType: 'provider',
-        text: reply,
-      });
-
-      await pushToCustomer({
-        env,
-        requestId: body.requestId,
-        title: `הודעה חדשה מ-${providerName}`,
-        body: reply.slice(0, 80),
-      });
-    } catch (err) {
-      console.error('Chat simulation failed:', err);
-    }
-
-    return jsonResponse({ ok: true, dryRun: true });
+    return jsonResponse({ ok: true, dryRun: true, simulating: true }, 200, request);
   }
 
-  // Real mode: forward the message via WhatsApp
-  const text = `💬 ${body.text}\n\n_- מהלקוח דרך ai-fixly_`;
+  // Real mode or test mode: forward the message via WhatsApp
+  const outboundBody = isTestMode
+    ? `🧪 *[בדיקה] הלקוח כותב:*\n${body.text}\n\n_ענה כאילו אתה בעל המקצוע_`
+    : `💬 ${body.text}\n\n_- מהלקוח דרך ai-fixly_`;
+
   const result = await sendWhatsAppMessage({
     accountSid: env.TWILIO_ACCOUNT_SID,
     authToken: env.TWILIO_AUTH_TOKEN,
     from: env.TWILIO_WHATSAPP_FROM,
-    to: body.providerPhone,
-    body: text,
+    to: destinationPhone,
+    body: outboundBody,
   });
 
-  return jsonResponse({ ok: result.success, error: result.error });
+  return jsonResponse({ ok: result.success, error: result.error, testMode: isTestMode }, 200, request);
+}
+
+// =========================================================================
+// Dry-run simulations
+// =========================================================================
+
+async function simulateProviderApproval(
+  env: Env,
+  body: ProviderSelectedBody
+): Promise<void> {
+  try {
+    const firestore = new FirestoreClient(
+      env.FIREBASE_PROJECT_ID,
+      env.FIREBASE_SERVICE_ACCOUNT_JSON
+    );
+
+    // Wait ~20s to simulate a realistic provider response time.
+    // This lets the user test backgrounding the app and receiving a real
+    // push notification (not just a foreground toast).
+    await new Promise((resolve) => setTimeout(resolve, 20000));
+
+    await firestore.addChatMessage({
+      requestId: body.requestId,
+      senderId: 'system',
+      senderType: 'system',
+      text: `${body.providerName} אישר את העבודה ומוכן להתחיל`,
+    });
+
+    await firestore.addChatMessage({
+      requestId: body.requestId,
+      senderId: body.providerPhone,
+      senderType: 'provider',
+      text: `שלום! אני ${body.providerName}. קיבלתי את הפרטים. אם יש שאלות - כתוב לי כאן.`,
+    });
+
+    await pushToCustomer({
+      env,
+      requestId: body.requestId,
+      type: 'selection',
+      title: `${body.providerName} אישר את העבודה`,
+      body: 'שלח הודעה דרך הצ\'אט או התקשר ישירות',
+    });
+  } catch (err) {
+    console.error('[simulateProviderApproval] failed', err);
+  }
+}
+
+async function simulateChatReply(env: Env, body: ChatSendBody): Promise<void> {
+  try {
+    const firestore = new FirestoreClient(
+      env.FIREBASE_PROJECT_ID,
+      env.FIREBASE_SERVICE_ACCOUNT_JSON
+    );
+
+    const reqDoc = await firestore.getRequest(body.requestId);
+    const providerName = reqDoc?.selectedProviderName || 'בעל מקצוע';
+
+    // Wait ~15s so the user has time to background the app before the
+    // simulated reply arrives, giving them a chance to see a system notification.
+    await new Promise((resolve) => setTimeout(resolve, 15000));
+
+    const reply = simulateProviderReply(body.text);
+    await firestore.addChatMessage({
+      requestId: body.requestId,
+      senderId: body.providerPhone,
+      senderType: 'provider',
+      text: reply,
+    });
+
+    await pushToCustomer({
+      env,
+      requestId: body.requestId,
+      type: 'chat',
+      title: `הודעה חדשה מ-${providerName}`,
+      body: reply.slice(0, 80),
+    });
+  } catch (err) {
+    console.error('[simulateChatReply] failed', err);
+  }
 }
 
 // Simple heuristic replies for the chat simulation in dry-run mode
@@ -426,9 +664,32 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
     return twimlResponse('');
   }
 
+  // Try to extract a reference code from the reply.
+  // The outbound message includes "📋 מספר בקשה: #A1B2C3" — if the provider
+  // includes #XXXXXX in their reply, we can use it to route precisely even
+  // if the KV mapping was overwritten by a newer request.
+  const refCodeMatch = body.match(/#([A-Za-z0-9]{4,8})/);
+  const refCode = refCodeMatch ? refCodeMatch[1].toUpperCase() : null;
+
+  if (refCode) {
+    console.log(`[webhook] extracted refCode: #${refCode}`);
+  }
+
   // Look up which request this provider is tied to
   const providerPhone = from.replace(/^whatsapp:/, '');
-  const entry = await lookupProviderContact(env.PLACES_CACHE, providerPhone);
+  let entry = await lookupProviderContact(env.PLACES_CACHE, providerPhone);
+
+  // If we have a refCode, verify it matches the KV entry.
+  // If not, the KV was overwritten by a newer request — use the refCode to find the right one.
+  if (entry && refCode && !entry.requestId.toUpperCase().startsWith(refCode)) {
+    console.log(`[webhook] refCode #${refCode} doesn't match KV entry ${entry.requestId.slice(0, 6)} — trying refCode lookup`);
+
+    const refEntry = await lookupProviderContact(env.PLACES_CACHE, `ref:${refCode}`);
+    if (refEntry) {
+      console.log(`[webhook] found request via refCode: ${refEntry.requestId}`);
+      entry = refEntry;
+    }
+  }
 
   if (!entry) {
     console.warn(`[webhook] no active request for ${providerPhone}`);
@@ -445,9 +706,20 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
     return twimlResponse('הבקשה שקיבלת אינה זמינה יותר. תודה!');
   }
 
+  // Chat mode detection. Normal rule: request is in_progress AND the stored
+  // selectedProviderPhone matches the incoming From. In test mode we relax
+  // the phone-match requirement — any reply from the test phone for an
+  // in-progress request is treated as chat. This recovers correctly even
+  // if the selected bid had stale provider phone data from earlier tests.
+  const testPhone = (env.TEST_PHONE_OVERRIDE || '').trim();
+  const isTestMode = testPhone.length > 0;
+
   const isThisProviderSelected =
     requestDoc.status === 'in_progress' &&
-    requestDoc.selectedProviderPhone === providerPhone;
+    (
+      requestDoc.selectedProviderPhone === providerPhone ||
+      (isTestMode && providerPhone === testPhone)
+    );
 
   if (isThisProviderSelected) {
     // CHAT MODE: write the reply as a chat message, not a bid
@@ -462,6 +734,7 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
       await pushToCustomer({
         env,
         requestId: entry.requestId,
+        type: 'chat',
         title: `הודעה חדשה מ-${entry.providerName}`,
         body: body.slice(0, 100),
       });
@@ -492,9 +765,11 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
       bidId: crypto.randomUUID(),
       data: {
         providerName: entry.providerName,
+        displayName: shortenProviderName(entry.providerName),
         providerPhone,
         price: parsed.price,
         availability: parsed.availability,
+        availabilityStartAt: parsed.availabilityStartAt,
         rawReply: parsed.rawText,
         receivedAt: new Date().toISOString(),
         isReal: true,
@@ -505,6 +780,7 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
     await pushToCustomer({
       env,
       requestId: entry.requestId,
+      type: 'new_bid',
       title: `הצעה חדשה מ-${entry.providerName}`,
       body: parsed.price ? `${parsed.price} ש"ח - ${parsed.availability || ''}` : body.slice(0, 100),
     });
@@ -516,12 +792,172 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
 }
 
 // =========================================================================
+// /feedback/critical
+// =========================================================================
+
+async function handleCriticalFeedback(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json()) as { text: string; screen: string; error: string };
+  if (!body.text || typeof body.text !== 'string') {
+    return jsonResponse({ error: 'Missing text' }, 400, request);
+  }
+  // Truncate to prevent abuse
+  const text = body.text.slice(0, 500);
+  const screen = (body.screen || 'unknown').slice(0, 100);
+  const error = (body.error || '').slice(0, 500);
+
+  const ownerPhone = '+972546651088';
+  const message = [
+    '\uD83D\uDEA8 *\u05D3\u05D9\u05D5\u05D5\u05D7 \u05E7\u05E8\u05D9\u05D8\u05D9 \u05DE\u05D4\u05D0\u05E4\u05DC\u05D9\u05E7\u05E6\u05D9\u05D4*',
+    '',
+    `\uD83D\uDCF1 \u05DE\u05E1\u05DA: ${screen}`,
+    error ? `\u274C \u05E9\u05D2\u05D9\u05D0\u05D4: ${error}` : '',
+    `\uD83D\uDCAC ${text}`,
+  ].filter(Boolean).join('\n');
+
+  const isDryRun = (env.DRY_RUN || 'false').toLowerCase() === 'true';
+  const testPhone = (env.TEST_PHONE_OVERRIDE || '').trim();
+
+  if (!isDryRun || testPhone) {
+    await sendWhatsAppMessage({
+      accountSid: env.TWILIO_ACCOUNT_SID,
+      authToken: env.TWILIO_AUTH_TOKEN,
+      from: env.TWILIO_WHATSAPP_FROM,
+      to: testPhone || ownerPhone,
+      body: message,
+    });
+  } else {
+    console.log('[feedback] critical alert (dry run):', message);
+  }
+
+  return jsonResponse({ ok: true }, 200, request);
+}
+
+// =========================================================================
+// Cron handlers
+// =========================================================================
+
+async function handleReviewReminders(firestore: FirestoreClient, env: Env): Promise<void> {
+  const requests = await firestore.getRequestsForReviewReminder();
+  console.log(`[cron] ${requests.length} requests need review reminders`);
+
+  for (const req of requests) {
+    try {
+      await pushToCustomer({
+        env,
+        requestId: req.id,
+        type: 'selection',
+        title: 'איך היה השירות?',
+        body: `דרג את ${req.selectedProviderName || 'בעל המקצוע'} — עוזר ללקוחות הבאים`,
+      });
+
+      await firestore.markReviewReminderSent(req.id);
+      console.log(`[cron] review reminder sent for ${req.id}`);
+    } catch (err) {
+      console.error(`[cron] review reminder failed for ${req.id}:`, err);
+    }
+  }
+}
+
+async function handlePendingWaves(firestore: FirestoreClient, env: Env): Promise<void> {
+  // For now, log that this would run. The full implementation requires:
+  // 1. Querying requests with nextWaveAt < now
+  // 2. For each: count bids, decide if wave 2 or 3 is needed
+  // 3. Re-run the Google Places search for the same professions
+  // 4. Send to the next batch of providers
+  //
+  // This is complex because we need to store the full sorted provider list
+  // from wave 1 to know who to send to in waves 2/3. For MVP, we'll skip
+  // the cron-based approach and instead check on each new bid whether
+  // enough bids have been received (reactive, not proactive).
+  //
+  // TODO: Implement full wave cron when provider volume justifies it.
+  console.log('[cron] wave check: skipping (MVP — reactive approach)');
+}
+
+async function handleAlertChecks(firestore: FirestoreClient, env: Env): Promise<void> {
+  const alerts: Array<{
+    type: string;
+    severity: 'critical' | 'warning' | 'info';
+    message: string;
+    metadata: Record<string, any>;
+  }> = [];
+
+  // Check 1: Requests open >4 hours with 0 bids
+  try {
+    const staleRequests = await firestore.getStaleRequestsWithNoBids(4);
+    for (const req of staleRequests) {
+      alerts.push({
+        type: 'no_bids',
+        severity: 'critical',
+        message: `בקשה ללא הצעות כבר ${req.hoursOpen} שעות (${req.profession || 'לא ידוע'})`,
+        metadata: { requestId: req.id, userId: req.userId },
+      });
+    }
+  } catch (err) {
+    console.error('[alerts] stale requests check failed:', err);
+  }
+
+  // Save alerts to Firestore and mark requests to prevent duplicate alerts
+  for (const alert of alerts) {
+    try {
+      await firestore.createAdminAlert(alert);
+      if (alert.type === 'no_bids' && alert.metadata.requestId) {
+        await firestore.markAlertSentNoBids(alert.metadata.requestId);
+      }
+    } catch (err) {
+      console.error('[alerts] failed to create alert:', err);
+    }
+  }
+
+  // Send WhatsApp for critical/warning alerts
+  const criticalAlerts = alerts.filter(a => a.severity === 'critical' || a.severity === 'warning');
+  if (criticalAlerts.length > 0) {
+    const ownerPhone = '+972546651088';
+    const testPhone = (env.TEST_PHONE_OVERRIDE || '').trim();
+    const isTestMode = testPhone.length > 0;
+
+    const message = [
+      `🚨 *${criticalAlerts.length} התראות חדשות*`,
+      '',
+      ...criticalAlerts.map(a => {
+        const icon = a.severity === 'critical' ? '🔴' : '🟡';
+        return `${icon} ${a.message}`;
+      }),
+    ].join('\n');
+
+    if (!isTestMode) {
+      await sendWhatsAppMessage({
+        accountSid: env.TWILIO_ACCOUNT_SID,
+        authToken: env.TWILIO_AUTH_TOKEN,
+        from: env.TWILIO_WHATSAPP_FROM,
+        to: ownerPhone,
+        body: message,
+      }).catch(err => console.error('[alerts] WhatsApp failed:', err));
+    } else {
+      console.log(`[alerts] would WhatsApp owner: ${message}`);
+    }
+  }
+
+  console.log(`[cron] ${alerts.length} alerts created`);
+}
+
+// =========================================================================
 // Helpers
 // =========================================================================
+
+/**
+ * Push notification type. The app uses this to decide where to navigate
+ * when the user taps the notification.
+ *   - 'new_bid'    → open the request details screen (see offers)
+ *   - 'chat'       → open the chat screen for that request
+ *   - 'selection'  → open the request details screen (provider confirmed)
+ */
+type PushType = 'new_bid' | 'chat' | 'selection';
 
 async function pushToCustomer(params: {
   env: Env;
   requestId: string;
+  type: PushType;
   title: string;
   body: string;
 }): Promise<void> {
@@ -541,7 +977,13 @@ async function pushToCustomer(params: {
       token: fcmToken,
       title: params.title,
       body: params.body,
-      data: { requestId: params.requestId },
+      data: {
+        requestId: params.requestId,
+        type: params.type,
+      },
+      // Use the request's first photo as the notification hero image so
+      // the user sees a visual reminder of what the push is about.
+      imageUrl: requestDoc.heroImageUrl,
     });
   } catch (err) {
     console.error('pushToCustomer failed:', err);
@@ -627,10 +1069,10 @@ function simulateAvailability(): string {
   return SIM_AVAILABILITY[Math.floor(Math.random() * SIM_AVAILABILITY.length)];
 }
 
-function jsonResponse(data: unknown, status: number = 200): Response {
+function jsonResponse(data: unknown, status: number = 200, request?: Request): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(request) },
   });
 }
 
@@ -649,10 +1091,34 @@ function escapeXml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function corsHeaders(): Record<string, string> {
+function corsHeaders(request?: Request): Record<string, string> {
+  const allowedOrigins = [
+    'https://master.ai-fixly-web.pages.dev',
+    'https://ai-fixly-web.pages.dev',
+    'http://localhost:8081',  // dev
+    'http://localhost:19006', // Expo web dev
+  ];
+
+  const origin = request?.headers?.get('Origin') || '';
+  const allowed = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+
   return {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': allowed,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
   };
+}
+
+async function checkRateLimit(
+  kv: KVNamespace,
+  key: string,
+  maxRequests: number,
+  windowSeconds: number
+): Promise<boolean> {
+  const rlKey = `rl:${key}`;
+  const current = parseInt(await kv.get(rlKey) || '0', 10);
+  if (current >= maxRequests) return false;
+  await kv.put(rlKey, String(current + 1), { expirationTtl: windowSeconds });
+  return true;
 }

@@ -1,16 +1,22 @@
-import { View, Pressable, StyleSheet, Platform, Text } from 'react-native';
+import { View, Pressable, StyleSheet, Platform, Text, useWindowDimensions } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { ErrorBoundary } from '../../src/components/ui';
 import { COLORS } from '../../src/constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRequestsStore } from '../../src/stores/useRequestsStore';
+import { REQUEST_STATUS } from '../../src/constants/status';
 
 const CAPTURE_SIZE = 62;
 const NOTCH_SIZE = CAPTURE_SIZE + 36;
 const TAB_HEIGHT = 60;
+const DESKTOP_BREAKPOINT = 768;
+const DESKTOP_MAX_WIDTH = 480;
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   return (
     <ErrorBoundary>
@@ -18,21 +24,41 @@ export default function TabLayout() {
         screenOptions={{ headerShown: false }}
         tabBar={(props) => <CustomTabBar {...props} bottomInset={insets.bottom} />}
       >
-        <Tabs.Screen name="requests" options={{ title: 'הקריאות שלי' }} />
-        <Tabs.Screen name="index" options={{ title: 'בית' }} />
-        <Tabs.Screen name="profile" options={{ title: 'פרופיל' }} />
+        <Tabs.Screen name="requests" options={{ title: t('tabs.myRequests') }} />
+        <Tabs.Screen name="index" options={{ title: t('tabs.home') }} />
+        <Tabs.Screen name="profile" options={{ title: t('tabs.profile') }} />
       </Tabs>
     </ErrorBoundary>
   );
 }
 
 function CustomTabBar({ state, navigation, bottomInset }: any) {
+  const { t } = useTranslation();
   const isLeftFocused = state.index === 0;
   const isCenterFocused = state.index === 1;
   const isRightFocused = state.index === 2;
 
+  // Compute unread count for the requests tab badge.
+  // We subscribe to the store slices (not getTotalUnread() directly) so Zustand
+  // rerenders this component when any relevant field changes.
+  const requests = useRequestsStore((s) => s.requests);
+  const bidCounts = useRequestsStore((s) => s.bidCounts);
+  const unreadBaseline = useRequestsStore((s) => s.unreadBaseline);
+  let unreadTotal = 0;
+  for (const req of requests) {
+    if (req.status !== REQUEST_STATUS.OPEN && req.status !== REQUEST_STATUS.PAUSED) continue;
+    const count = bidCounts[req.id] || 0;
+    const seen = unreadBaseline[req.id]?.lastSeenBidCount || 0;
+    unreadTotal += Math.max(0, count - seen);
+  }
+
+  const { width: windowWidth } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && windowWidth >= DESKTOP_BREAKPOINT;
+
   return (
-    <View style={[styles.wrapper, { paddingBottom: Math.max(bottomInset, 0) }]}>
+    <View style={[styles.wrapper, { paddingBottom: Math.max(bottomInset, 0), alignItems: isDesktop ? 'center' : undefined }]}>
+      {/* Inner container — constrained on desktop */}
+      <View style={isDesktop ? { width: '100%', maxWidth: DESKTOP_MAX_WIDTH, position: 'relative' } : { position: 'relative' }}>
       {/* Raised center button */}
       <View style={styles.captureContainer}>
         <Pressable
@@ -50,13 +76,22 @@ function CustomTabBar({ state, navigation, bottomInset }: any) {
             onPress={() => navigation.navigate(state.routes[0].name)}
             style={styles.tabItem}
           >
-            <Ionicons
-              name={isLeftFocused ? 'document-text' : 'document-text-outline'}
-              size={24}
-              color={isLeftFocused ? COLORS.primary : COLORS.textTertiary}
-            />
+            <View>
+              <Ionicons
+                name={isLeftFocused ? 'document-text' : 'document-text-outline'}
+                size={24}
+                color={isLeftFocused ? COLORS.primary : COLORS.textTertiary}
+              />
+              {unreadTotal > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>
+                    {unreadTotal > 99 ? '99+' : unreadTotal}
+                  </Text>
+                </View>
+              )}
+            </View>
             <Text style={[styles.tabLabel, { color: isLeftFocused ? COLORS.primary : COLORS.textTertiary }]}>
-              הקריאות שלי
+              {t('tabs.myRequests')}
             </Text>
           </Pressable>
         </View>
@@ -76,11 +111,12 @@ function CustomTabBar({ state, navigation, bottomInset }: any) {
               color={isRightFocused ? COLORS.primary : COLORS.textTertiary}
             />
             <Text style={[styles.tabLabel, { color: isRightFocused ? COLORS.primary : COLORS.textTertiary }]}>
-              פרופיל
+              {t('tabs.profile')}
             </Text>
           </Pressable>
         </View>
       </View>
+      </View>{/* close inner desktop container */}
     </View>
   );
 }
@@ -113,6 +149,26 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 10,
     fontWeight: '600',
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    backgroundColor: COLORS.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.backgroundLight,
+  },
+  tabBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    lineHeight: 12,
   },
   captureContainer: {
     position: 'absolute',

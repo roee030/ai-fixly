@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { LIMITS } from '../constants/limits';
 
 export function useImagePicker() {
+  const { t } = useTranslation();
   const [images, setImages] = useState<string[]>([]);
 
   const pickFromCamera = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Camera access is required to take photos.');
+      Alert.alert(t('imagePicker.permissionNeeded'), t('imagePicker.cameraAccessRequired'));
       return;
     }
 
@@ -21,7 +23,10 @@ export function useImagePicker() {
 
     if (!result.canceled && result.assets[0]) {
       if (images.length >= LIMITS.MAX_IMAGES_PER_REQUEST) {
-        Alert.alert('Maximum images', `You can add up to ${LIMITS.MAX_IMAGES_PER_REQUEST} images.`);
+        Alert.alert(
+          t('imagePicker.maxImagesTitle'),
+          t('imagePicker.maxImagesBody', { max: LIMITS.MAX_IMAGES_PER_REQUEST }),
+        );
         return;
       }
       setImages((prev) => [...prev, result.assets[0].uri]);
@@ -31,7 +36,7 @@ export function useImagePicker() {
   const pickFromGallery = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Gallery access is required to select photos.');
+      Alert.alert(t('imagePicker.permissionNeeded'), t('imagePicker.galleryAccessRequired'));
       return;
     }
 
