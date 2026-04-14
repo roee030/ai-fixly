@@ -18,6 +18,20 @@ export interface RequestDoc {
   heroImageUrl?: string;
 }
 
+/**
+ * Public-facing view of a request shown to providers in the quote form.
+ * Includes ALL media URLs and the customer description, but NEVER the
+ * customer's identity (userId, name, phone, exact address are stripped).
+ */
+export interface PublicRequestView {
+  requestId: string;
+  status: string;
+  city: string;
+  textDescription: string;
+  mediaUrls: string[];
+  createdAt: string | null;
+}
+
 export class FirestoreClient {
   private projectId: string;
   private serviceAccountJson: string;
@@ -226,6 +240,94 @@ export class FirestoreClient {
     if (!response.ok) {
       const errText = await response.text();
       throw new Error(`updateRequestBroadcast error ${response.status}: ${errText}`);
+    }
+  }
+
+  /**
+   * Public view of a request — privacy-stripped and safe to expose to
+   * unauthenticated providers via the /provider/quote/[id] form.
+   * Returns null if the request is missing or already CLOSED (no point
+   * letting a provider quote on something the customer abandoned).
+   */
+  async getPublicRequestView(requestId: string): Promise<PublicRequestView | null> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) return null;
+
+      const data = (await response.json()) as any;
+      const fields = data.fields || {};
+      const status = fields.status?.stringValue || 'unknown';
+      if (status === 'closed') return null;
+
+      // Pull the array of media downloadUrls (skip thumbnails / storage paths).
+      const mediaUrls: string[] = [];
+      try {
+        const mediaValues = fields.media?.arrayValue?.values;
+        if (Array.isArray(mediaValues)) {
+          for (const m of mediaValues) {
+            const url = m?.mapValue?.fields?.downloadUrl?.stringValue;
+            if (url) mediaUrls.push(url);
+          }
+        }
+      } catch {
+        // ignore — empty array is fine
+      }
+
+      // Strip the address down to just the city (last comma-separated part).
+      const fullAddress = fields.location?.mapValue?.fields?.address?.stringValue || '';
+      const city = (() => {
+        if (!fullAddress) return '';
+        const parts = fullAddress.split(',').map((p: string) => p.trim()).filter(Boolean);
+        return parts.length >= 2 ? parts[parts.length - 2] : parts[0] || '';
+      })();
+
+      return {
+        requestId,
+        status,
+        city,
+        textDescription: fields.textDescription?.stringValue || '',
+        mediaUrls,
+        createdAt: fields.createdAt?.timestampValue || null,
+      };
+    } catch (err) {
+      console.error('getPublicRequestView failed:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Persist a "this request was a wrong fit" complaint from a provider
+   * (submitted via the public /provider/report form). Stored in a flat
+   * `providerReports` collection — admins triage manually for now.
+   */
+  async writeProviderReport(params: {
+    requestId: string;
+    providerPhone: string;
+    reason: string;
+    receivedAt: string;
+  }): Promise<void> {
+    const accessToken = await this.getToken();
+    const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/providerReports`;
+    const doc = {
+      fields: {
+        requestId: { stringValue: params.requestId },
+        providerPhone: { stringValue: params.providerPhone },
+        reason: { stringValue: params.reason },
+        receivedAt: { timestampValue: params.receivedAt },
+      },
+    };
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(doc),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`writeProviderReport error ${response.status}: ${errText}`);
     }
   }
 

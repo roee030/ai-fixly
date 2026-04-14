@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
+import { usePathname } from 'expo-router';
 import { AppDownloadModal } from './AppDownloadModal.web';
 import { AppBanner } from './AppBanner.web';
 
 const COOKIE_NAME = 'aifixly_app_dismissed';
+
+// Routes intended for service providers (not customers). Showing them an
+// "install our app" prompt is wrong — they are using a one-off link from
+// WhatsApp to submit a quote and have no use for the customer app.
+const SUPPRESS_ON_PATHS = ['/provider/'];
 
 function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
@@ -16,18 +22,27 @@ function setCookie(name: string, value: string, days: number): void {
 }
 
 export function AppModalProvider() {
+  const pathname = usePathname();
+  const isSuppressed = SUPPRESS_ON_PATHS.some((p) => pathname?.startsWith(p));
   const [showModal, setShowModal] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
   useEffect(() => {
+    if (isSuppressed) {
+      setShowModal(false);
+      setShowBanner(false);
+      return;
+    }
     const dismissed = getCookie(COOKIE_NAME);
     if (dismissed) {
       setShowBanner(true);
     } else {
       setShowModal(true);
     }
-  }, []);
+  }, [isSuppressed]);
+
+  if (isSuppressed) return null;
 
   const handleModalDismiss = () => {
     setCookie(COOKIE_NAME, '1', 7);

@@ -16,17 +16,15 @@ class GeminiAnalysisService implements AIAnalysisService {
   }
 
   async analyzeIssue(input: AIAnalysisInput): Promise<AIAnalysisResult> {
-    // TEXT-ONLY analysis for speed. Images/videos are NOT sent to the AI —
-    // they're uploaded to Supabase and forwarded to providers as media
-    // attachments only. The text description + problem matrix is enough
-    // for accurate profession matching, and it's 5x faster (~1s vs ~5s).
+    // MINIMAL analysis: the AI only routes to a profession key. We removed
+    // shortSummary / problemId / urgency to cut response size and latency
+    // — the customer's own text becomes the description shown to providers.
     const textPart = input.textDescription
       ? `\n\nCustomer description: "${input.textDescription}"`
       : '';
 
     const content = [ANALYSIS_PROMPT + textPart];
 
-    // Try models in order, fallback on 503/429
     let lastError: Error | null = null;
     for (const modelName of MODELS) {
       try {
@@ -36,17 +34,17 @@ class GeminiAnalysisService implements AIAnalysisService {
         const jsonStr = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const parsed = JSON.parse(jsonStr);
 
-        const professions = Array.isArray(parsed.professions) && parsed.professions.length > 0
+        const professions: string[] = Array.isArray(parsed.professions) && parsed.professions.length > 0
           ? parsed.professions
           : ['handyman'];
-        const professionLabelsHe = Array.isArray(parsed.professionLabelsHe) && parsed.professionLabelsHe.length > 0
-          ? parsed.professionLabelsHe
-          : ['הנדימן'];
 
         return {
           professions,
-          professionLabelsHe,
-          shortSummary: parsed.shortSummary || '',
+          // Kept for backwards compatibility with existing Firestore docs
+          // and components that still read it. Frontend localizes via
+          // localizeProfession() so the contents here are essentially unused.
+          professionLabelsHe: professions,
+          shortSummary: '',
         };
       } catch (err: any) {
         lastError = err;

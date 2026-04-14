@@ -17,7 +17,7 @@ import { analyticsService } from '../../src/services/analytics';
 import { logAction } from '../../src/services/analytics/sessionLogger';
 import { logger } from '../../src/services/logger';
 import { useRequestsStore } from '../../src/stores/useRequestsStore';
-import { formatAvailability } from '../../src/utils/formatAvailability';
+import { formatAvailability, isAvailabilityExpired } from '../../src/utils/formatAvailability';
 import { confirmDialog } from '../../src/utils/confirm';
 import { localizeProfession } from '../../src/utils/professionLabel';
 import { REQUEST_STATUS } from '../../src/constants/status';
@@ -126,16 +126,24 @@ export default function RequestDetailsScreen() {
 
   const handleClose = async () => {
     if (!request) return;
+    // If a provider was selected, the customer can rate them — go to review.
+    // If no one was selected, skip review entirely (nobody to rate) and go
+    // back to the requests list.
+    const hasSelection = !!(request as any).selectedBidId;
     const confirmed = await confirmDialog(
       t('requestDetails.closeRequest'),
-      t('requestDetails.closeConfirm'),
-      t('requestDetails.closeAndRate'),
+      hasSelection ? t('requestDetails.closeConfirm') : t('requestDetails.closeConfirmNoBid'),
+      hasSelection ? t('requestDetails.closeAndRate') : t('requestDetails.closeRequest'),
       t('common.cancel'),
     );
     if (!confirmed) return;
     await requestService.updateStatus(request.id, REQUEST_STATUS.CLOSED);
     analyticsService.trackEvent('request_closed', { requestId: request.id });
-    router.push({ pathname: '/review/[requestId]', params: { requestId: request.id } });
+    if (hasSelection) {
+      router.push({ pathname: '/review/[requestId]', params: { requestId: request.id } });
+    } else {
+      router.replace('/(tabs)/requests');
+    }
   };
 
   if (isLoading) {
@@ -279,25 +287,28 @@ export default function RequestDetailsScreen() {
               </View>
             </View>
 
-            {/* Primary CTA — full width, crystal clear */}
+            {/* Phone reveal — only after the customer confirmed the selection */}
+            {selectedBid.providerPhone && (
+              <View style={styles.phoneReveal}>
+                <Ionicons name="call" size={16} color={COLORS.primary} />
+                <Text style={styles.phoneRevealText} selectable>
+                  {selectedBid.providerPhone}
+                </Text>
+              </View>
+            )}
+
+            {/* Primary CTA — call directly. Chat between customer and
+                provider was removed: contact happens by phone. */}
             <Pressable
               style={styles.chatCta}
-              onPress={() => router.push({ pathname: '/chat/[requestId]', params: { requestId: id } })}
-            >
-              <Ionicons name="chatbubbles" size={22} color="#FFFFFF" />
-              <Text style={styles.chatCtaText}>{t('requestDetails.openChat', { name: selectedBid.providerName })}</Text>
-              <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
-            </Pressable>
-
-            <Pressable
-              style={styles.callRow}
               onPress={() => {
                 const phone = selectedBid.providerPhone;
                 if (phone) Linking.openURL(`tel:${phone}`);
               }}
             >
-              <Ionicons name="call-outline" size={16} color={COLORS.success} />
-              <Text style={styles.callRowText}>{t('requestDetails.callDirect')}</Text>
+              <Ionicons name="call" size={22} color="#FFFFFF" />
+              <Text style={styles.chatCtaText}>{t('requestDetails.callProvider', { name: selectedBid.providerName })}</Text>
+              <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
             </Pressable>
 
             <Pressable style={styles.cancelSelectionBtn} onPress={handleCancelSelection}>
@@ -306,8 +317,8 @@ export default function RequestDetailsScreen() {
           </View>
         )}
 
-        {/* Quiet confirmation that we're searching — no scary provider list */}
-        {!selectedBid && (request as any)?.broadcastedProviders?.length > 0 && bids.length === 0 && (
+        {/* Quiet confirmation that we're searching — only while still OPEN. */}
+        {!selectedBid && request.status === REQUEST_STATUS.OPEN && (request as any)?.broadcastedProviders?.length > 0 && bids.length === 0 && (
           <View style={styles.searchingRow}>
             <Ionicons name="radio-outline" size={14} color={COLORS.textTertiary} />
             <Text style={styles.searchingText}>{t('requestDetails.searchingProviders')}</Text>
@@ -315,7 +326,7 @@ export default function RequestDetailsScreen() {
         )}
 
         {/* Bids list */}
-        {!selectedBid && (
+        {!selectedBid && request.status !== REQUEST_STATUS.CLOSED && (
           <>
             <View style={styles.bidsHeader}>
               <Text style={styles.bidsTitle}>
@@ -336,9 +347,16 @@ export default function RequestDetailsScreen() {
                 <Text style={styles.emptyBidsText}>{t('requestDetails.waitingForProviders')}</Text>
               </View>
             ) : (
-              bids.map((bid) => (
-                <Pressable key={bid.id} onPress={() => handleSelectBid(bid)} style={styles.bidCard}>
-                  <View style={styles.bidTop}>
+              bids.map((bid) => {
+                const expired = isAvailabilityExpired(bid, new Date());
+                return (
+                  <Pressable
+                    key={bid.id}
+                    onPress={() => { if (!expired) handleSelectBid(bid); }}
+                    disabled={expired}
+                    style={[styles.bidCard, expired && styles.bidCardDisabled]}
+                  >
+                    <View style={styles.bidTop}>
                       <Text style={styles.bidName} numberOfLines={1}>{bid.displayName || bid.providerName}</Text>
                       {bid.rating !== null && (
                         <View style={styles.ratingBadge}>
@@ -346,29 +364,32 @@ export default function RequestDetailsScreen() {
                           <Text style={styles.ratingText}>{bid.rating.toFixed(1)}</Text>
                         </View>
                       )}
-                  </View>
-                  {!bid.isReal && (
-                    <View style={styles.demoBadge}>
-                      <Ionicons name="flask-outline" size={10} color={COLORS.info} />
-                      <Text style={styles.demoBadgeText}>{t('requestDetails.demoOffer')}</Text>
                     </View>
-                  )}
-                  <View style={styles.bidInfo}>
-                    <View style={styles.bidInfoItem}>
-                      <Text style={styles.bidPrice}>{bid.price}</Text>
-                      <Text style={styles.bidPriceLabel}>{t('requestDetails.shekel')}</Text>
+                    {!bid.isReal && (
+                      <View style={styles.demoBadge}>
+                        <Ionicons name="flask-outline" size={10} color={COLORS.info} />
+                        <Text style={styles.demoBadgeText}>{t('requestDetails.demoOffer')}</Text>
+                      </View>
+                    )}
+                    <View style={styles.bidInfo}>
+                      <View style={styles.bidInfoItem}>
+                        <Text style={styles.bidPrice}>{bid.price}</Text>
+                        <Text style={styles.bidPriceLabel}>{t('requestDetails.shekel')}</Text>
+                      </View>
+                      <View style={styles.bidDivider} />
+                      <View style={styles.bidInfoItem}>
+                        <Ionicons name="time-outline" size={16} color={expired ? COLORS.error : COLORS.success} />
+                        <Text style={[styles.bidAvail, expired && { color: COLORS.error }]}>
+                          {formatAvailability(bid, new Date(), t)}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.bidDivider} />
-                    <View style={styles.bidInfoItem}>
-                      <Ionicons name="time-outline" size={16} color={COLORS.success} />
-                      <Text style={styles.bidAvail}>
-                        {formatAvailability(bid, new Date(), t)}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.bidSelectHint}>{t('requestDetails.tapToSelect')}</Text>
-                </Pressable>
-              ))
+                    <Text style={[styles.bidSelectHint, expired && { color: COLORS.error }]}>
+                      {expired ? t('requestDetails.bidExpired') : t('requestDetails.tapToSelect')}
+                    </Text>
+                  </Pressable>
+                );
+              })
             )}
           </>
         )}
@@ -480,6 +501,22 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   detailChipText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  phoneReveal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary + '15',
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  phoneRevealText: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
   chatCta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -557,6 +594,9 @@ const styles = StyleSheet.create({
   bidCard: {
     backgroundColor: COLORS.surface, borderRadius: 16, padding: 16,
     marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
+  },
+  bidCardDisabled: {
+    opacity: 0.55, borderColor: COLORS.error + '40',
   },
   bidTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   bidName: { color: COLORS.text, fontSize: 16, fontWeight: '600', flex: 1 },

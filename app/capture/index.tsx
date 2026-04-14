@@ -26,38 +26,9 @@ export default function CaptureScreen() {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
 
-  const handleRecordVideo = async () => {
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['videos'],
-        videoMaxDuration: 60,
-        videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
-      });
-      if (!result.canceled && result.assets?.[0]) {
-        setVideoUri(result.assets[0].uri);
-        analyticsService.trackEvent('capture_video_recorded');
-        logAction('video_recorded', 'capture');
-      }
-    } catch (err) {
-      console.warn('Video recording failed:', err);
-    }
-  };
-
-  const handleUploadVideo = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['videos'],
-        videoMaxDuration: 60,
-        quality: 0.7,
-      });
-      if (!result.canceled && result.assets?.[0]) {
-        setVideoUri(result.assets[0].uri);
-        analyticsService.trackEvent('capture_video_uploaded');
-      }
-    } catch (err) {
-      console.warn('Video upload failed:', err);
-    }
-  };
+  // Note: video recording / uploading flows now happen through pickFromCamera
+  // and pickFromGallery in the hook (they accept both photos and videos
+  // natively). The old separate handlers were removed.
 
   useEffect(() => {
     analyticsService.trackEvent('capture_started');
@@ -191,9 +162,14 @@ export default function CaptureScreen() {
         {/* Two clean buttons: Camera and Gallery */}
         <View style={styles.mediaRow}>
           <Pressable
-            onPress={() => {
-              // Open camera — user chooses photo or video in the camera UI
-              pickFromCamera();
+            onPress={async () => {
+              // Camera natively shows a switcher between photo and video.
+              // The hook returns whichever the user picked.
+              const result = await pickFromCamera();
+              if (result?.videoUri) {
+                setVideoUri(result.videoUri);
+                logAction('video_recorded', 'capture');
+              }
             }}
             style={styles.mediaBtn}
           >
@@ -206,33 +182,10 @@ export default function CaptureScreen() {
 
           <Pressable
             onPress={async () => {
-              // Open gallery — supports both photos and videos
-              try {
-                const result = await ImagePicker.launchImageLibraryAsync({
-                  mediaTypes: ['images', 'videos'],
-                  allowsMultipleSelection: true,
-                  selectionLimit: LIMITS.MAX_IMAGES_PER_REQUEST,
-                  quality: 0.8,
-                  videoMaxDuration: 60,
-                });
-                if (!result.canceled && result.assets) {
-                  for (const asset of result.assets) {
-                    if (asset.type === 'video') {
-                      setVideoUri(asset.uri);
-                      analyticsService.trackEvent('capture_video_uploaded');
-                    }
-                    // Photos are handled by the useImagePicker hook
-                    // but since we're using ImagePicker directly here,
-                    // we'd need to add them manually
-                  }
-                  // For photos, use the existing pickFromGallery
-                  if (result.assets.some(a => a.type !== 'video')) {
-                    pickFromGallery();
-                  }
-                }
-              } catch {
-                // Fallback to standard gallery picker
-                pickFromGallery();
+              const result = await pickFromGallery();
+              if (result?.videoUri) {
+                setVideoUri(result.videoUri);
+                logAction('video_uploaded', 'capture');
               }
             }}
             style={styles.mediaBtn}

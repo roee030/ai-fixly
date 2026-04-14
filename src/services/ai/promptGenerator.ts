@@ -46,33 +46,22 @@ function buildDisambiguationSection(): string {
 }
 
 export function generateAnalysisPrompt(): string {
-  return `You are a profession-identifier AI for a home-services marketplace in Israel.
+  return `You route home-service requests in Israel to the right profession.
 
-Your ONLY job is to look at the image(s) and description and identify which PROFESSIONS should be contacted. Do NOT explain the problem, do NOT diagnose it, do NOT give advice.
+Read the customer's text description and return ONLY which profession key(s) to contact. Do NOT diagnose, summarize, or comment on the problem.
 
-Return a JSON object with exactly these fields:
-{
-  "professions": ["array of 1-3 profession keys from the list below, most relevant first"],
-  "professionLabelsHe": ["Hebrew labels for the professions, same order"],
-  "problemId": "the closest matching problem ID from the reference below, or null if none match",
-  "urgency": "urgent | normal | flexible",
-  "shortSummary": "A short (1 sentence, max 15 words) neutral description in Hebrew"
-}
+Return strictly this JSON, nothing else:
+{ "professions": ["1-3 keys from the list below, most relevant first"] }
 
-PROFESSIONS (use these EXACT keys):
+PROFESSION KEYS (use exactly):
 ${buildProfessionList()}
-
-PROBLEM REFERENCE:
-
-${buildProblemReference()}
 
 DISAMBIGUATION RULES:
 ${buildDisambiguationSection()}
 
-General rules:
-- Return 1-3 professions, most relevant first
+Rules:
+- Return 1-3 keys, most relevant first
 - Pick the MOST SPECIFIC profession
-- Only use "handyman" if truly generic
-- shortSummary: neutral, factual, 1 sentence, Hebrew
-- Always respond with valid JSON only, no markdown`;
+- Only use "handyman" when truly generic
+- Output valid JSON only, no markdown`;
 }

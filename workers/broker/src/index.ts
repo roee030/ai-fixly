@@ -103,6 +103,23 @@ export default {
       if (url.pathname === '/webhook/twilio' && request.method === 'POST') {
         return await handleTwilioWebhook(request, env);
       }
+      // Public provider-facing endpoints (called from /provider/* web routes).
+      // Rate-limited by IP because these are unauthenticated.
+      if (url.pathname.startsWith('/provider/request/') && request.method === 'GET') {
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `pubreq:${clientIp}`, 60, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handlePublicRequestSummary(request, env, url);
+      }
+      if (url.pathname === '/provider/bid' && request.method === 'POST') {
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `pubbid:${clientIp}`, 30, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handleProviderQuoteSubmission(request, env);
+      }
+      if (url.pathname === '/provider/report' && request.method === 'POST') {
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `pubrep:${clientIp}`, 30, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handleProviderReportSubmission(request, env);
+      }
       return jsonResponse({ error: 'Not found' }, 404, request);
     } catch (err) {
       console.error('Worker error:', err);
@@ -209,7 +226,8 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
 
   const providers = waveProviders;
 
-  const message = urgencyConfig.tonePrefix + buildProviderMessage(body);
+  // Built per-provider below so we can personalize the form URL with their phone.
+  const messagePrefix = urgencyConfig.tonePrefix;
 
   // =================================================================
   // TEST MODE: send one WhatsApp to TEST_PHONE_OVERRIDE impersonating
@@ -237,12 +255,12 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       providerPhone: 'refCode-lookup',
     });
 
+    const testMessage = messagePrefix + buildProviderMessage(body, env, testPhone);
     const testBody =
       `🧪 *מצב בדיקה*\n` +
       `אתה מדמה את: *${first.name}*\n` +
-      `(שלח תגובה בפורמט רגיל — מחיר + זמינות)\n` +
       `━━━━━━━━━━━━━━\n\n` +
-      message;
+      testMessage;
 
     const result = await sendWhatsAppMessage({
       accountSid: env.TWILIO_ACCOUNT_SID,
@@ -336,7 +354,8 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       continue;
     }
 
-    // Real mode: send WhatsApp
+    // Real mode: send WhatsApp with personalized form URLs for THIS provider.
+    const message = messagePrefix + buildProviderMessage(body, env, provider.phone);
     const result = await sendWhatsAppMessage({
       accountSid: env.TWILIO_ACCOUNT_SID,
       authToken: env.TWILIO_AUTH_TOKEN,
@@ -990,28 +1009,157 @@ async function pushToCustomer(params: {
   }
 }
 
-function buildProviderMessage(body: BroadcastBody): string {
+// =========================================================================
+// Public provider-form endpoints
+// =========================================================================
+
+/**
+ * GET /provider/request/:requestId
+ * Returns the privacy-stripped public view a service provider needs to
+ * decide whether to quote (city + description + media). Never exposes
+ * the customer identity or precise address.
+ */
+async function handlePublicRequestSummary(
+  request: Request,
+  env: Env,
+  url: URL,
+): Promise<Response> {
+  const requestId = url.pathname.split('/').pop() || '';
+  if (!requestId) {
+    return jsonResponse({ error: 'Missing requestId' }, 400, request);
+  }
+  const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  const view = await firestore.getPublicRequestView(requestId);
+  if (!view) {
+    return jsonResponse({ error: 'Not found or closed' }, 404, request);
+  }
+  return jsonResponse(view, 200, request);
+}
+
+interface ProviderQuoteBody {
+  requestId: string;
+  providerPhone: string;
+  providerName?: string;
+  price: string;            // arrives as numeric string from the form
+  isVisitFee: boolean;
+  availabilityStartAt: string;
+  availabilityText: string;
+  notes?: string;
+}
+
+/**
+ * POST /provider/bid
+ * Accepts a quote submission from the public web form and writes a bid
+ * to Firestore (same schema as bids parsed from WhatsApp replies).
+ */
+async function handleProviderQuoteSubmission(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json()) as ProviderQuoteBody;
+  if (!body.requestId || !body.providerPhone || !body.price || !body.availabilityStartAt) {
+    return jsonResponse({ error: 'Missing required fields' }, 400, request);
+  }
+
+  const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  // Reject quotes for closed requests so providers can't keep bidding
+  // after the customer abandoned the request.
+  const view = await firestore.getPublicRequestView(body.requestId);
+  if (!view) {
+    return jsonResponse({ error: 'Request not available' }, 410, request);
+  }
+
+  const priceInt = parseInt(body.price.replace(/[^0-9]/g, ''), 10);
+  const price = isNaN(priceInt) ? null : priceInt;
+
+  const availabilityText = body.isVisitFee
+    ? `${body.availabilityText} • מחיר ביקור (יתכנו עלויות נוספות)`
+    : body.availabilityText;
+
+  await firestore.createBid({
+    requestId: body.requestId,
+    bidId: crypto.randomUUID(),
+    data: {
+      providerName: body.providerName?.trim() || body.providerPhone,
+      displayName: body.providerName?.trim(),
+      providerPhone: body.providerPhone,
+      price,
+      availability: availabilityText,
+      availabilityStartAt: body.availabilityStartAt,
+      rating: null,
+      rawReply: `[web-form] ${body.notes || ''}`.slice(0, 500),
+      receivedAt: new Date().toISOString(),
+      isReal: true,
+      source: 'whatsapp',
+    },
+  });
+
+  return jsonResponse({ ok: true }, 200, request);
+}
+
+interface ProviderReportBody {
+  requestId: string;
+  providerPhone: string;
+  reason: string;
+}
+
+/**
+ * POST /provider/report
+ * Records a "wrong fit" complaint from a provider. We log it for now
+ * (no UI in v1 — admin reviews the Firestore collection manually).
+ */
+async function handleProviderReportSubmission(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json()) as ProviderReportBody;
+  if (!body.requestId || !body.providerPhone || !body.reason) {
+    return jsonResponse({ error: 'Missing required fields' }, 400, request);
+  }
+
+  const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  await firestore.writeProviderReport({
+    requestId: body.requestId,
+    providerPhone: body.providerPhone,
+    reason: body.reason.slice(0, 1000),
+    receivedAt: new Date().toISOString(),
+  });
+  return jsonResponse({ ok: true }, 200, request);
+}
+
+/**
+ * Base URL for the public provider forms (web). Defined as an env var so
+ * preview/staging deployments can override it without changing code.
+ */
+function getProviderBaseUrl(env: any): string {
+  return (env.PROVIDER_FORM_BASE_URL || 'https://ai-fixly-web.pages.dev').replace(/\/+$/, '');
+}
+
+function buildProviderMessage(body: BroadcastBody, env?: any, providerPhone?: string): string {
   const city = extractCity(body.location.address);
   const refCode = body.requestId.slice(0, 6).toUpperCase();
+
+  // Personalize the URLs so the form can pre-fill the provider's phone.
+  // Without it, the form would force the provider to type their own number.
+  const baseUrl = env ? getProviderBaseUrl(env) : 'https://ai-fixly-web.pages.dev';
+  const phoneParam = providerPhone ? `?phone=${encodeURIComponent(providerPhone)}` : '';
+  const quoteUrl = `${baseUrl}/provider/quote/${body.requestId}${phoneParam}`;
+  const reportUrl = `${baseUrl}/provider/report/${body.requestId}${phoneParam}`;
 
   return [
     `🔧 *ai-fixly* - בקשת שירות חדשה`,
     ``,
     `📍 אזור: ${city}`,
     ``,
-    `📝 הבעיה:`,
+    `📝 תיאור הלקוח:`,
     body.shortSummary || 'בקשת שירות',
     ``,
     body.mediaUrls && body.mediaUrls.length > 0
-      ? `📷 צורף ${body.mediaUrls.length} תמונות (ראה למעלה)`
+      ? `📷 צורפו ${body.mediaUrls.length} תמונות / סרטונים`
       : '',
     ``,
-    `*מעוניין? אנא השב בהודעה הבאה עם:*`,
-    `1️⃣ מחיר משוער`,
-    `2️⃣ מתי תוכל להגיע (יום + שעה)`,
+    `🟢 הצעת מחיר:`,
+    quoteUrl,
     ``,
-    `📋 מספר בקשה: #${refCode}`,
-    `_פרטי הלקוח יישלחו אליך לאחר שתיבחר_`,
+    `🔴 דווח על בעיה בקריאה:`,
+    reportUrl,
+    ``,
+    `📋 מספר קריאה: #${refCode}`,
+    `_פרטי הלקוח (שם, טלפון, כתובת מדויקת) יישלחו אליך רק אם תיבחר._`,
   ]
     .filter((line) => line !== '')
     .join('\n');

@@ -11,7 +11,24 @@ export type ProfessionKey =
   | 'gas_technician' | 'exterminator' | 'shutter_technician'
   | 'waterproofing_specialist' | 'tiler' | 'plasterer'
   | 'metalworker' | 'solar_water_heater_tech' | 'renovator'
-  | 'door_installer' | 'security_camera_installer';
+  | 'door_installer' | 'security_camera_installer'
+  // Newly added (April 2026): expanded provider catalog.
+  | 'intercom' | 'electric_water_heater' | 'solar_systems'
+  | 'snake_catcher' | 'mouse_catcher' | 'stone_polishing'
+  | 'electric_barrier' | 'kitchen_installer' | 'mortgage_advisor'
+  | 'aluminum_works' | 'pergola_wood' | 'decking'
+  | 'alarm_systems' | 'maintenance_company' | 'construction_inspector'
+  | 'structural_engineer' | 'concrete_drilling' | 'home_designer'
+  | 'crane_service' | 'marble_works' | 'property_appraiser'
+  | 'damages_appraiser' | 'gates_and_barriers' | 'carpet_repair'
+  | 'carpet_installer' | 'shading_canopies' | 'parquet_installer'
+  | 'car_locksmith' | 'mold_removal' | 'tree_cutting'
+  | 'mosquito_nets' | 'satellite_dishes' | 'shower_doors'
+  | 'glass_design' | 'leak_detection' | 'roof_tarring'
+  | 'office_cleaning' | 'sofa_cleaning' | 'carpet_cleaning'
+  | 'minivan_service' | 'ac_cleaning' | 'pigeon_repellent'
+  | 'window_screens' | 'whitewashing' | 'minivan_transport'
+  | 'sub_floor_humidity' | 'home_inspection' | 'satellite_systems';
 
 export interface Profession {
   key: ProfessionKey;
@@ -66,6 +83,55 @@ export const PROFESSIONS: Profession[] = [
   { key: 'renovator', labelHe: 'שיפוצניק', googlePlacesType: null, hebrewSearchQuery: 'שיפוצניק קבלן שיפוצים' },
   { key: 'door_installer', labelHe: 'מתקין דלתות', googlePlacesType: null, hebrewSearchQuery: 'התקנת דלתות' },
   { key: 'security_camera_installer', labelHe: 'מתקין מצלמות', googlePlacesType: null, hebrewSearchQuery: 'התקנת מצלמות אבטחה' },
+  // Expanded catalog (April 2026)
+  { key: 'intercom', labelHe: 'אינטרקום', googlePlacesType: null, hebrewSearchQuery: 'התקנת אינטרקום' },
+  { key: 'electric_water_heater', labelHe: 'דודי חשמל', googlePlacesType: null, hebrewSearchQuery: 'תיקון דוד חשמל' },
+  { key: 'solar_systems', labelHe: 'מערכות סולאריות', googlePlacesType: null, hebrewSearchQuery: 'התקנת מערכות סולאריות' },
+  { key: 'snake_catcher', labelHe: 'לוכד נחשים', googlePlacesType: null, hebrewSearchQuery: 'לוכד נחשים' },
+  { key: 'mouse_catcher', labelHe: 'לוכד עכברים', googlePlacesType: null, hebrewSearchQuery: 'לוכד מכרסמים' },
+  { key: 'stone_polishing', labelHe: 'ליטוש אבן', googlePlacesType: null, hebrewSearchQuery: 'ליטוש אבן ושיש' },
+  { key: 'electric_barrier', labelHe: 'מחסום חשמלי', googlePlacesType: null, hebrewSearchQuery: 'מחסום חשמלי' },
+  { key: 'kitchen_installer', labelHe: 'התקנת מטבחים', googlePlacesType: null, hebrewSearchQuery: 'נגר מטבחים' },
+  { key: 'mortgage_advisor', labelHe: 'יועץ משכנתאות', googlePlacesType: null, hebrewSearchQuery: 'יועץ משכנתאות' },
+  { key: 'aluminum_works', labelHe: 'עבודות אלומיניום', googlePlacesType: null, hebrewSearchQuery: 'עבודות אלומיניום' },
+  { key: 'pergola_wood', labelHe: 'פרגולות עץ', googlePlacesType: null, hebrewSearchQuery: 'פרגולות עץ' },
+  { key: 'decking', labelHe: 'דקים', googlePlacesType: null, hebrewSearchQuery: 'התקנת דקים' },
+  { key: 'alarm_systems', labelHe: 'מערכות אזעקה', googlePlacesType: null, hebrewSearchQuery: 'מערכות אזעקה' },
+  { key: 'maintenance_company', labelHe: 'חברת אחזקה', googlePlacesType: null, hebrewSearchQuery: 'חברת אחזקה' },
+  { key: 'construction_inspector', labelHe: 'מפקח בניה', googlePlacesType: null, hebrewSearchQuery: 'מפקח בניה' },
+  { key: 'structural_engineer', labelHe: 'קונסטרוקטור', googlePlacesType: null, hebrewSearchQuery: 'קונסטרוקטור' },
+  { key: 'concrete_drilling', labelHe: 'קידוח בטון', googlePlacesType: null, hebrewSearchQuery: 'קידוח בטון יהלום' },
+  { key: 'home_designer', labelHe: 'מעצב בית', googlePlacesType: null, hebrewSearchQuery: 'עיצוב פנים' },
+  { key: 'crane_service', labelHe: 'שירותי מנוף', googlePlacesType: null, hebrewSearchQuery: 'שירותי מנוף' },
+  { key: 'marble_works', labelHe: 'שיש', googlePlacesType: null, hebrewSearchQuery: 'עבודות שיש' },
+  { key: 'property_appraiser', labelHe: 'שמאי מקרקעין', googlePlacesType: null, hebrewSearchQuery: 'שמאי מקרקעין' },
+  { key: 'damages_appraiser', labelHe: 'שמאי רכוש', googlePlacesType: null, hebrewSearchQuery: 'שמאי רכוש' },
+  { key: 'gates_and_barriers', labelHe: 'שערים ומחסומים', googlePlacesType: null, hebrewSearchQuery: 'שערים ומחסומים חשמליים' },
+  { key: 'carpet_repair', labelHe: 'תיקון שטיחים', googlePlacesType: null, hebrewSearchQuery: 'תיקון שטיחים' },
+  { key: 'carpet_installer', labelHe: 'התקנת שטיחים מקיר לקיר', googlePlacesType: null, hebrewSearchQuery: 'שטיחים מקיר לקיר' },
+  { key: 'shading_canopies', labelHe: 'סוככים', googlePlacesType: null, hebrewSearchQuery: 'התקנת סוככים' },
+  { key: 'parquet_installer', labelHe: 'התקנת פרקטים', googlePlacesType: null, hebrewSearchQuery: 'התקנת פרקט' },
+  { key: 'car_locksmith', labelHe: 'מנעולן רכב', googlePlacesType: null, hebrewSearchQuery: 'מנעולן רכב' },
+  { key: 'mold_removal', labelHe: 'הסרת עובש', googlePlacesType: null, hebrewSearchQuery: 'הסרת עובש' },
+  { key: 'tree_cutting', labelHe: 'כריתת עצים', googlePlacesType: null, hebrewSearchQuery: 'כריתת עצים' },
+  { key: 'mosquito_nets', labelHe: 'רשתות יתושים', googlePlacesType: null, hebrewSearchQuery: 'רשתות נגד יתושים' },
+  { key: 'satellite_dishes', labelHe: 'צלחות לווין', googlePlacesType: null, hebrewSearchQuery: 'התקנת צלחת לווין' },
+  { key: 'shower_doors', labelHe: 'מקלחונים', googlePlacesType: null, hebrewSearchQuery: 'התקנת מקלחונים' },
+  { key: 'glass_design', labelHe: 'עיצוב זכוכית', googlePlacesType: null, hebrewSearchQuery: 'עיצוב זכוכית' },
+  { key: 'leak_detection', labelHe: 'איתור נזילות', googlePlacesType: null, hebrewSearchQuery: 'איתור נזילות' },
+  { key: 'roof_tarring', labelHe: 'זיפות גגות', googlePlacesType: null, hebrewSearchQuery: 'זיפות גגות' },
+  { key: 'office_cleaning', labelHe: 'ניקיון משרדים', googlePlacesType: null, hebrewSearchQuery: 'ניקיון משרדים' },
+  { key: 'sofa_cleaning', labelHe: 'ניקוי ספות', googlePlacesType: null, hebrewSearchQuery: 'ניקוי ספות' },
+  { key: 'carpet_cleaning', labelHe: 'ניקוי שטיחים', googlePlacesType: null, hebrewSearchQuery: 'ניקוי שטיחים' },
+  { key: 'minivan_service', labelHe: 'מיניבוס', googlePlacesType: null, hebrewSearchQuery: 'הסעות מיניבוס' },
+  { key: 'ac_cleaning', labelHe: 'ניקוי מזגנים', googlePlacesType: null, hebrewSearchQuery: 'ניקוי מזגנים' },
+  { key: 'pigeon_repellent', labelHe: 'מרחיק יונים', googlePlacesType: null, hebrewSearchQuery: 'מרחיק יונים' },
+  { key: 'window_screens', labelHe: 'רשתות לחלונות', googlePlacesType: null, hebrewSearchQuery: 'התקנת רשתות לחלונות' },
+  { key: 'whitewashing', labelHe: 'סיוד', googlePlacesType: null, hebrewSearchQuery: 'סיוד דירה' },
+  { key: 'minivan_transport', labelHe: 'הובלות קטנות', googlePlacesType: null, hebrewSearchQuery: 'הובלות קטנות' },
+  { key: 'sub_floor_humidity', labelHe: 'רטיבות תת רצפתית', googlePlacesType: null, hebrewSearchQuery: 'רטיבות תת רצפתית' },
+  { key: 'home_inspection', labelHe: 'בדק בית', googlePlacesType: null, hebrewSearchQuery: 'בדק בית' },
+  { key: 'satellite_systems', labelHe: 'קולטי שמש', googlePlacesType: null, hebrewSearchQuery: 'התקנת קולטי שמש' },
 ] as const;
 
 const WATER_PROBLEMS: Problem[] = [

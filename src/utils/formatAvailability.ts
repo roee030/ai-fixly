@@ -34,6 +34,20 @@ const HE_FALLBACK = {
   dayAtTime: (day: string, time: string) => `${day} ${time}`,
 };
 
+/**
+ * Returns true if the bid has a parseable availability timestamp that is
+ * already in the past at `now`. Used to disable bid selection when the
+ * provider's offered slot is no longer relevant. Bids without a timestamp
+ * (free-text only) are NEVER considered expired.
+ */
+export function isAvailabilityExpired(bid: BidAvailability, now: Date): boolean {
+  const iso = bid.availabilityStartAt;
+  if (!iso) return false;
+  const target = new Date(iso);
+  if (isNaN(target.getTime())) return false;
+  return target.getTime() <= now.getTime();
+}
+
 export function formatAvailability(bid: BidAvailability, now: Date, t?: TFunction): string {
   const soon = t ? t('availability.soon') : HE_FALLBACK.soon;
   const past = t ? t('availability.past') : HE_FALLBACK.past;
