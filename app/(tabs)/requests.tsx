@@ -6,6 +6,7 @@ import { ScreenContainer } from '../../src/components/layout';
 import { RequestListSkeleton } from '../../src/components/ui';
 import { useRequestsStore } from '../../src/stores/useRequestsStore';
 import { REQUEST_STATUS } from '../../src/constants/status';
+import { primaryProfessionLabel } from '../../src/utils/professionLabel';
 import { COLORS } from '../../src/constants';
 
 import type { ServiceRequest } from '../../src/services/requests';
@@ -28,12 +29,9 @@ export default function RequestsScreen() {
 
   const renderRequest = ({ item }: { item: ServiceRequest }) => {
     const ai = item.aiAnalysis as any;
-    // Always use the generic Hebrew title. The Hebrew profession label
-    // appears as a smaller subtitle -- never show English keys like
-    // "general" or "cleaning" that leaked from old AI responses.
-    const professionLabelHe = Array.isArray(ai?.professionLabelsHe)
-      ? ai.professionLabelsHe[0]
-      : null;
+    // Localize the primary profession for the current UI language.
+    // Falls back gracefully if the key or label is unknown.
+    const professionLabel = primaryProfessionLabel(ai, t);
     const shortSummary = ai?.shortSummary || ai?.summary || '';
 
     const bidCount = bidCounts[item.id] || 0;
@@ -54,8 +52,8 @@ export default function RequestsScreen() {
           <Text style={styles.requestSummary} numberOfLines={1}>
             {showBadge
               ? t('requests.newOffers', { count: unread })
-              : professionLabelHe
-              ? professionLabelHe
+              : professionLabel
+              ? professionLabel
               : shortSummary}
           </Text>
         </View>

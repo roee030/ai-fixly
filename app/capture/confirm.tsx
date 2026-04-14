@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
+import { localizeProfession } from '../../src/utils/professionLabel';
 import { aiAnalysisService } from '../../src/services/ai';
 import { mediaService } from '../../src/services/media';
 import { requestService } from '../../src/services/requests';
@@ -194,9 +195,9 @@ export default function ConfirmScreen() {
         <View style={{ backgroundColor: COLORS.surface, borderRadius: 16, padding: 20, marginBottom: 16 }}>
           <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginBottom: 8 }}>{t('confirm.relevantProfession')}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            {(analysis?.professionLabelsHe || []).map((label, i) => (
+            {((analysis as any)?.professions || analysis?.professionLabelsHe || []).map((item: string, i: number) => (
               <View key={i} style={{ backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 }}>
-                <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 14 }}>{label}</Text>
+                <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 14 }}>{localizeProfession(item, t)}</Text>
               </View>
             ))}
           </View>

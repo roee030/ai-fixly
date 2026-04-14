@@ -19,7 +19,8 @@ import { logger } from '../../src/services/logger';
 import { useRequestsStore } from '../../src/stores/useRequestsStore';
 import { formatAvailability } from '../../src/utils/formatAvailability';
 import { confirmDialog } from '../../src/utils/confirm';
-import { REQUEST_STATUS, REQUEST_STATUS_LABELS } from '../../src/constants/status';
+import { localizeProfession } from '../../src/utils/professionLabel';
+import { REQUEST_STATUS } from '../../src/constants/status';
 import { COLORS } from '../../src/constants';
 
 import type { ServiceRequest } from '../../src/services/requests';
@@ -64,7 +65,7 @@ export default function RequestDetailsScreen() {
   // No manual reload needed — onSnapshot listeners handle all updates in real time.
 
   const handleSelectBid = async (bid: Bid) => {
-    const when = formatAvailability(bid, new Date());
+    const when = formatAvailability(bid, new Date(), t);
     const confirmed = await confirmDialog(
       t('requestDetails.selectProvider'),
       t('requestDetails.selectProviderConfirm', { name: bid.providerName, price: bid.price, when }),
@@ -168,13 +169,16 @@ export default function RequestDetailsScreen() {
   }
 
   const ai = request.aiAnalysis as any;
-  // Only show Hebrew labels. If the data has English fallback keys
-  // (e.g. "general", "cleaning"), ignore them — we'll show a generic title.
-  const professionLabels: string[] = Array.isArray(ai?.professionLabelsHe)
+  // Localize profession labels. Prefer stable keys (ai.professions) over
+  // Hebrew labels (ai.professionLabelsHe) because keys translate cleanly
+  // in all 4 UI languages.
+  const professionSource: string[] = Array.isArray(ai?.professions)
+    ? ai.professions
+    : Array.isArray(ai?.professionLabelsHe)
     ? ai.professionLabelsHe
     : [];
+  const professionLabels: string[] = professionSource.map((p) => localizeProfession(p, t));
   const shortSummary = ai?.shortSummary || ai?.summary || '';
-  const statusLabel = REQUEST_STATUS_LABELS[request.status];
   const selectedBid = bids.find((b) => b.id === (request as any).selectedBidId);
 
   return (
@@ -205,7 +209,7 @@ export default function RequestDetailsScreen() {
                      request.status === 'paused' ? COLORS.info :
                      COLORS.textTertiary
             }]}>
-              {statusLabel?.he || request.status}
+              {t(`status.${request.status}`, { defaultValue: request.status })}
             </Text>
           </View>
         </View>
@@ -270,7 +274,7 @@ export default function RequestDetailsScreen() {
               <View style={styles.detailChip}>
                 <Ionicons name="time" size={13} color={COLORS.success} />
                 <Text style={styles.detailChipText}>
-                  {formatAvailability(selectedBid, new Date())}
+                  {formatAvailability(selectedBid, new Date(), t)}
                 </Text>
               </View>
             </View>
@@ -358,7 +362,7 @@ export default function RequestDetailsScreen() {
                     <View style={styles.bidInfoItem}>
                       <Ionicons name="time-outline" size={16} color={COLORS.success} />
                       <Text style={styles.bidAvail}>
-                        {formatAvailability(bid, new Date())}
+                        {formatAvailability(bid, new Date(), t)}
                       </Text>
                     </View>
                   </View>
