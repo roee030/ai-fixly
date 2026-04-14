@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { COLORS } from '../../constants';
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function AppBanner({ onDismiss }: Props) {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const deepLink = `aifixly://${pathname.replace(/^\//, '')}`;
 
@@ -19,10 +21,10 @@ export function AppBanner({ onDismiss }: Props) {
     <View style={styles.banner}>
       <Ionicons name="construct" size={20} color={COLORS.primary} />
       <Text style={styles.bannerText} numberOfLines={1}>
-        ai-fixly עובד יותר טוב באפליקציה
+        {t('appPromo.bannerText')}
       </Text>
       <Pressable style={styles.openBtn} onPress={handleOpen}>
-        <Text style={styles.openBtnText}>פתח</Text>
+        <Text style={styles.openBtnText}>{t('appPromo.bannerOpen')}</Text>
       </Pressable>
       <Pressable onPress={onDismiss} hitSlop={10}>
         <Ionicons name="close" size={18} color={COLORS.textTertiary} />

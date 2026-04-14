@@ -30,6 +30,19 @@ export default {
     dropZoneLimit: 'Up to {{max}} photos • JPG, PNG',
   },
 
+  appPromo: {
+    bannerText: 'ai-fixly works better in the app',
+    bannerOpen: 'Open',
+    modalTitle: 'ai-fixly',
+    modalSubtitle: 'Our app works much better',
+    valueCapture: 'Snap the problem → get quotes',
+    valueNotifications: 'Real-time notifications',
+    valueChat: 'Direct chat with a professional',
+    openInApp: 'Open in app',
+    download: 'Download the app',
+    continueWeb: 'Continue on web →',
+  },
+
   errorFallback: {
     title: 'Something went wrong',
     description: 'We apologize for the issue. Please try again.',

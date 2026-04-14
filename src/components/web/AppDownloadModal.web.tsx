@@ -1,6 +1,7 @@
 import { View, Text, Pressable, StyleSheet, Modal as RNModal } from 'react-native';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { COLORS } from '../../constants';
 
 interface Props {
@@ -12,6 +13,7 @@ const STORE_URL_ANDROID = 'https://play.google.com/store/apps/details?id=com.aif
 const STORE_URL_IOS = 'https://apps.apple.com/app/ai-fixly/id000000000';
 
 export function AppDownloadModal({ visible, onDismiss }: Props) {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const deepLink = `aifixly://${pathname.replace(/^\//, '')}`;
 
@@ -29,9 +31,9 @@ export function AppDownloadModal({ visible, onDismiss }: Props) {
   };
 
   const VALUE_PROPS = [
-    { icon: 'camera-outline' as const, text: 'צלם בעיה ← קבל הצעות' },
-    { icon: 'notifications-outline' as const, text: 'התראות בזמן אמת' },
-    { icon: 'chatbubbles-outline' as const, text: "צ'אט ישיר עם בעל מקצוע" },
+    { icon: 'camera-outline' as const, text: t('appPromo.valueCapture') },
+    { icon: 'notifications-outline' as const, text: t('appPromo.valueNotifications') },
+    { icon: 'chatbubbles-outline' as const, text: t('appPromo.valueChat') },
   ];
 
   return (
@@ -42,8 +44,8 @@ export function AppDownloadModal({ visible, onDismiss }: Props) {
             <Ionicons name="construct" size={40} color={COLORS.primary} />
           </View>
 
-          <Text style={styles.title}>ai-fixly</Text>
-          <Text style={styles.subtitle}>האפליקציה שלנו עובדת הרבה יותר טוב</Text>
+          <Text style={styles.title}>{t('appPromo.modalTitle')}</Text>
+          <Text style={styles.subtitle}>{t('appPromo.modalSubtitle')}</Text>
 
           <View style={styles.props}>
             {VALUE_PROPS.map((prop, i) => (
@@ -56,16 +58,16 @@ export function AppDownloadModal({ visible, onDismiss }: Props) {
 
           <Pressable style={styles.primaryBtn} onPress={handleOpenInApp}>
             <Ionicons name="phone-portrait-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.primaryBtnText}>פתח באפליקציה</Text>
+            <Text style={styles.primaryBtnText}>{t('appPromo.openInApp')}</Text>
           </Pressable>
 
           <Pressable style={styles.secondaryBtn} onPress={handleDownload}>
             <Ionicons name="download-outline" size={18} color={COLORS.primary} />
-            <Text style={styles.secondaryBtnText}>הורד את האפליקציה</Text>
+            <Text style={styles.secondaryBtnText}>{t('appPromo.download')}</Text>
           </Pressable>
 
           <Pressable style={styles.dismissBtn} onPress={onDismiss}>
-            <Text style={styles.dismissText}>{'המשך לאתר ←'}</Text>
+            <Text style={styles.dismissText}>{t('appPromo.continueWeb')}</Text>
           </Pressable>
         </View>
       </View>

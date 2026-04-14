@@ -30,6 +30,19 @@ export default {
     dropZoneLimit: 'עד {{max}} תמונות • JPG, PNG',
   },
 
+  appPromo: {
+    bannerText: 'ai-fixly עובד יותר טוב באפליקציה',
+    bannerOpen: 'פתח',
+    modalTitle: 'ai-fixly',
+    modalSubtitle: 'האפליקציה שלנו עובדת הרבה יותר טוב',
+    valueCapture: 'צלם בעיה ← קבל הצעות',
+    valueNotifications: 'התראות בזמן אמת',
+    valueChat: "צ'אט ישיר עם בעל מקצוע",
+    openInApp: 'פתח באפליקציה',
+    download: 'הורד את האפליקציה',
+    continueWeb: 'המשך לאתר ←',
+  },
+
   errorFallback: {
     title: 'משהו השתבש',
     description: 'אנחנו מתנצלים על התקלה. נסה שוב.',
