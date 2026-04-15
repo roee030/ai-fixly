@@ -23,12 +23,17 @@ function setCookie(name: string, value: string, days: number): void {
 
 export function AppModalProvider() {
   const pathname = usePathname();
-  const isSuppressed = SUPPRESS_ON_PATHS.some((p) => pathname?.startsWith(p));
+  // `mounted` stays false during SSR and the first client render so the
+  // server and client trees match exactly (no hydration mismatch). We
+  // only flip modal/banner on after mount, in a layout effect.
+  const [mounted, setMounted] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const isSuppressed = SUPPRESS_ON_PATHS.some((p) => pathname?.startsWith(p));
 
   useEffect(() => {
+    setMounted(true);
     if (isSuppressed) {
       setShowModal(false);
       setShowBanner(false);
@@ -42,6 +47,9 @@ export function AppModalProvider() {
     }
   }, [isSuppressed]);
 
+  // Render nothing during SSR and the first client render — this matches
+  // whatever the (empty) server tree looks like, so hydration succeeds.
+  if (!mounted) return null;
   if (isSuppressed) return null;
 
   const handleModalDismiss = () => {

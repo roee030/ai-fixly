@@ -4,7 +4,7 @@ import {
   StyleSheet, Modal, Dimensions, Platform,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { ScreenContainer } from '../../src/components/layout';
@@ -19,9 +19,12 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function CaptureScreen() {
   const { t } = useTranslation();
+  const params = useLocalSearchParams<{ prefillDescription?: string }>();
   const { images, pickFromCamera, pickFromGallery, removeImage, getBase64Images, hasImages } =
     useImagePicker();
-  const [description, setDescription] = useState('');
+  // Pre-fill the description from the SEO service-page mini-form so users
+  // coming from /services/[profession] don't have to re-type.
+  const [description, setDescription] = useState(() => (params.prefillDescription || '').slice(0, 500));
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
