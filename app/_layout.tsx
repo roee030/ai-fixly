@@ -151,7 +151,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       // - /admin: has its own UID check + "access denied" screen
       // - /services/*: public SEO pages
       // - /(dev)/*: dev tools with devBypass
-      const selfManagedRoute = ['join', 'admin', 'services', '(dev)', 'legal'].includes(segments[0]);
+      // - /provider/*: public quote / report forms (provider arrives via WhatsApp link)
+      const selfManagedRoute = ['join', 'admin', 'services', '(dev)', 'legal', 'provider'].includes(segments[0]);
       // App routes that require auth but shouldn't trigger redirect loops
       const inAppRoute = ['capture', 'request', 'chat', 'review'].includes(segments[0]);
 

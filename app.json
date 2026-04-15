@@ -74,7 +74,8 @@
           "locationWhenInUsePermission": "The app needs your location to find nearby service providers."
         }
       ],
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,

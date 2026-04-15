@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Image, ActivityIndicator, Pressable } from 'react-native';
+import { useState, useEffect, useMemo } from 'react';
+import { View, Text, ScrollView, Image, ActivityIndicator, Pressable, Modal, FlatList, StyleSheet, Dimensions } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { localizeProfession } from '../../src/utils/professionLabel';
@@ -11,6 +12,7 @@ import { mediaService } from '../../src/services/media';
 import { requestService } from '../../src/services/requests';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
+import { PROFESSIONS } from '../../src/constants/problemMatrix';
 import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { REQUEST_STATUS } from '../../src/constants/status';
 import { analyticsService } from '../../src/services/analytics';
@@ -23,20 +25,25 @@ import type { AIAnalysisResult } from '../../src/services/ai';
 
 export default function ConfirmScreen() {
   const { t } = useTranslation();
-  const { images, base64Images, description } = useLocalSearchParams<{
+  const { images, base64Images, description, videoUris: videoUrisParam } = useLocalSearchParams<{
     images: string;
     base64Images: string;
     description: string;
+    videoUris?: string;
   }>();
 
   const user = useAuthStore((s) => s.user);
   const [analysis, setAnalysis] = useState<AIAnalysisResult | null>(null);
+  const [chosenProfessions, setChosenProfessions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showProfessionPicker, setShowProfessionPicker] = useState(false);
+  const [preview, setPreview] = useState<{ uri: string; kind: 'image' | 'video' } | null>(null);
 
   const imageUris: string[] = JSON.parse(images || '[]');
+  const videoUris: string[] = JSON.parse(videoUrisParam || '[]');
 
   useEffect(() => {
     analyzeImages();
@@ -52,6 +59,8 @@ export default function ConfirmScreen() {
         textDescription: description,
       });
       setAnalysis(result);
+      // Initialize the editable profession list with what the AI chose.
+      setChosenProfessions(((result as any).professions || result.professionLabelsHe || []).slice());
       analyticsService.trackEvent('ai_analysis_completed', { profession: result.professions[0] });
       logAction('ai_analysis_completed', 'confirm', { profession: result.professions[0] });
     } catch (err: any) {
@@ -68,8 +77,6 @@ export default function ConfirmScreen() {
     setIsSending(true);
     try {
       // Use the user's saved profile location instead of re-requesting GPS.
-      // This saves 1-5 seconds per request. The location was already collected
-      // during profile setup and is accurate enough for provider search (20km radius).
       let location = { lat: 32.0853, lng: 34.7818, address: 'Tel Aviv, Israel' };
       try {
         const db = getFirestore();
@@ -87,10 +94,15 @@ export default function ConfirmScreen() {
         imageUris.map((uri) => mediaService.uploadImage(uri, user.uid, tempId))
       );
 
+      // Override AI-chosen professions with whatever the user finalised in
+      // the picker. This preserves the AI's other analysis (urgency, summary)
+      // while honouring the user's correction.
+      const finalAnalysis = { ...analysis, professions: chosenProfessions } as AIAnalysisResult;
+
       const request = await requestService.createRequest({
         userId: user.uid,
         media: uploadedMedia,
-        aiAnalysis: analysis,
+        aiAnalysis: finalAnalysis,
         location,
         textDescription: description,
       });
@@ -99,14 +111,14 @@ export default function ConfirmScreen() {
       analyticsService.trackEvent('request_created', { requestId: request.id });
       logAction('request_confirmed', 'confirm');
 
-      // Navigate IMMEDIATELY — don't wait for broadcast
-      router.replace('/capture/sent');
+      // Navigate IMMEDIATELY — pass the new request id so the sent screen
+      // can offer "view my request".
+      router.replace({ pathname: '/capture/sent', params: { requestId: request.id } });
 
-      // Fire-and-forget: the worker handles everything in the background
-      // (finding providers, sending WhatsApp, saving bids + broadcastedProviders).
+      // Fire-and-forget broadcast.
       broadcastToProviders({
         requestId: request.id,
-        professions: analysis.professions,
+        professions: chosenProfessions,
         shortSummary: analysis.shortSummary,
         mediaUrls: uploadedMedia.map((m) => m.downloadUrl),
         location,
@@ -118,17 +130,8 @@ export default function ConfirmScreen() {
     }
   };
 
-  // AI now returns profession labels in Hebrew directly — no lookup needed
-
   if (isLoading) {
-    return (
-      <ScreenContainer>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={{ color: COLORS.text, marginTop: 16, fontSize: 18 }}>{t('confirm.analyzing')}</Text>
-        </View>
-      </ScreenContainer>
-    );
+    return <AnalyzingView t={t} />;
   }
 
   if (hasError && !analysis) {
@@ -161,7 +164,7 @@ export default function ConfirmScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 24, gap: 12 }}>
           <Pressable
             onPress={() => router.back()}
@@ -175,11 +178,25 @@ export default function ConfirmScreen() {
           </Text>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          {imageUris.map((uri, i) => (
-            <Image key={i} source={{ uri }} style={{ width: 100, height: 100, borderRadius: 8, marginRight: 8 }} />
-          ))}
-        </ScrollView>
+        {(imageUris.length > 0 || videoUris.length > 0) && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+            {imageUris.map((uri, i) => (
+              <Pressable key={`p-${i}`} onPress={() => setPreview({ uri, kind: 'image' })}>
+                <Image source={{ uri }} style={{ width: 100, height: 100, borderRadius: 8, marginRight: 8 }} />
+              </Pressable>
+            ))}
+            {videoUris.map((uri, i) => (
+              <Pressable
+                key={`v-${i}`}
+                onPress={() => setPreview({ uri, kind: 'video' })}
+                style={{ width: 100, height: 100, borderRadius: 8, marginRight: 8, backgroundColor: '#1A1A1F', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Ionicons name="play-circle" size={36} color="#FFFFFF" />
+                <Text style={{ color: '#FFFFFF', fontSize: 11, marginTop: 4 }}>{t('capture.videoTag')}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
 
         {description && description.length > 0 && (
           <View style={{ backgroundColor: COLORS.backgroundLight, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border }}>
@@ -193,9 +210,26 @@ export default function ConfirmScreen() {
         )}
 
         <View style={{ backgroundColor: COLORS.surface, borderRadius: 16, padding: 20, marginBottom: 16 }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginBottom: 8 }}>{t('confirm.relevantProfession')}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ color: COLORS.textSecondary, fontSize: 13 }}>{t('confirm.relevantProfession')}</Text>
+            <Pressable
+              onPress={() => setShowProfessionPicker(true)}
+              hitSlop={10}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            >
+              <Ionicons name="create-outline" size={16} color={COLORS.primary} />
+              <Text style={{ color: COLORS.primary, fontSize: 13, fontWeight: '600' }}>
+                {t('editProfession.editLabel')}
+              </Text>
+            </Pressable>
+          </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            {((analysis as any)?.professions || analysis?.professionLabelsHe || []).map((item: string, i: number) => (
+            {chosenProfessions.length === 0 && (
+              <Text style={{ color: COLORS.textTertiary, fontSize: 13 }}>
+                {t('editProfession.notRight')}
+              </Text>
+            )}
+            {chosenProfessions.map((item: string, i: number) => (
               <View key={i} style={{ backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 }}>
                 <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 14 }}>{localizeProfession(item, t)}</Text>
               </View>
@@ -221,9 +255,227 @@ export default function ConfirmScreen() {
       </ScrollView>
 
       <View style={{ paddingVertical: 16, gap: 12 }}>
-        <Button title={t('confirm.sendAndFind')} onPress={handleConfirmAndSend} isLoading={isSending} />
+        <Button
+          title={t('confirm.sendAndFind')}
+          onPress={handleConfirmAndSend}
+          isLoading={isSending}
+          disabled={chosenProfessions.length === 0}
+        />
         <Button title={t('common.cancel')} onPress={() => router.back()} variant="ghost" />
+      </View>
+
+      <ProfessionPickerModal
+        visible={showProfessionPicker}
+        selected={chosenProfessions}
+        onClose={() => setShowProfessionPicker(false)}
+        onSave={(next) => {
+          setChosenProfessions(next);
+          setShowProfessionPicker(false);
+        }}
+        t={t}
+      />
+
+      <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
+        <View style={previewStyles.overlay}>
+          {preview?.kind === 'video' ? (
+            <VideoPlayer uri={preview.uri} />
+          ) : preview ? (
+            <Pressable style={previewStyles.imgWrap} onPress={() => setPreview(null)}>
+              <Image source={{ uri: preview.uri }} style={previewStyles.image} resizeMode="contain" />
+            </Pressable>
+          ) : null}
+          <Pressable style={previewStyles.close} onPress={() => setPreview(null)} hitSlop={10}>
+            <Ionicons name="close-circle" size={36} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      </Modal>
+    </ScreenContainer>
+  );
+}
+
+function VideoPlayer({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+    p.play();
+  });
+  return (
+    <VideoView
+      style={previewStyles.video}
+      player={player}
+      allowsFullscreen
+      nativeControls
+      contentFit="contain"
+    />
+  );
+}
+
+const PREVIEW_W = Dimensions.get('window').width - 32;
+const previewStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imgWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' },
+  image: { width: PREVIEW_W, height: PREVIEW_W, borderRadius: 12 },
+  video: { width: PREVIEW_W, height: PREVIEW_W * 1.2, borderRadius: 12, backgroundColor: '#000' },
+  close: { position: 'absolute', top: 60, right: 20 },
+});
+
+/**
+ * Loading state with rotating tip messages so the AI wait feels purposeful.
+ * The actual analysis time is dominated by the model + network — we can't
+ * make it faster from the client, but we can make it feel shorter.
+ */
+function AnalyzingView({ t }: { t: (k: string) => string }) {
+  const [tipIndex, setTipIndex] = useState(0);
+  const tips = useMemo(
+    () => [
+      t('confirm.tip1'),
+      t('confirm.tip2'),
+      t('confirm.tip3'),
+    ],
+    [t],
+  );
+  useEffect(() => {
+    const id = setInterval(() => setTipIndex((i) => (i + 1) % tips.length), 2500);
+    return () => clearInterval(id);
+  }, [tips.length]);
+
+  return (
+    <ScreenContainer>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ color: COLORS.text, marginTop: 16, fontSize: 18, fontWeight: '600' }}>
+          {t('confirm.analyzing')}
+        </Text>
+        <Text
+          key={tipIndex}
+          style={{ color: COLORS.textSecondary, marginTop: 12, fontSize: 14, textAlign: 'center', lineHeight: 20 }}
+        >
+          {tips[tipIndex]}
+        </Text>
       </View>
     </ScreenContainer>
   );
 }
+
+function ProfessionPickerModal({
+  visible,
+  selected,
+  onClose,
+  onSave,
+  t,
+}: {
+  visible: boolean;
+  selected: string[];
+  onClose: () => void;
+  onSave: (next: string[]) => void;
+  t: (k: string, o?: any) => string;
+}) {
+  const [draft, setDraft] = useState<string[]>(selected);
+
+  useEffect(() => {
+    if (visible) setDraft(selected);
+  }, [visible, selected]);
+
+  const toggle = (label: string) => {
+    setDraft((prev) =>
+      prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label],
+    );
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={modalStyles.overlay}>
+        <View style={modalStyles.sheet}>
+          <View style={modalStyles.sheetHeader}>
+            <Text style={modalStyles.sheetTitle}>{t('editProfession.selectTitle')}</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Ionicons name="close" size={24} color={COLORS.text} />
+            </Pressable>
+          </View>
+          <FlatList
+            data={PROFESSIONS}
+            keyExtractor={(item) => item.key}
+            ItemSeparatorComponent={() => <View style={{ height: 6 }} />}
+            contentContainerStyle={{ paddingVertical: 8 }}
+            renderItem={({ item }) => {
+              const isOn = draft.includes(item.labelHe);
+              return (
+                <Pressable
+                  onPress={() => toggle(item.labelHe)}
+                  style={[modalStyles.row, isOn && modalStyles.rowActive]}
+                >
+                  <Text style={[modalStyles.rowText, isOn && modalStyles.rowTextActive]}>
+                    {item.labelHe}
+                  </Text>
+                  {isOn && <Ionicons name="checkmark" size={20} color={COLORS.primary} />}
+                </Pressable>
+              );
+            }}
+          />
+          <View style={{ paddingTop: 8 }}>
+            <Button
+              title={t('editProfession.save')}
+              onPress={() => onSave(draft)}
+              disabled={draft.length === 0}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
+    maxHeight: '85%',
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  rowActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + '15',
+  },
+  rowText: {
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  rowTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+});

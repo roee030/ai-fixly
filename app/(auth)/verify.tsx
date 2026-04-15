@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Text, View, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
+import { Text, View, Pressable, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,6 +31,7 @@ export default function VerifyScreen() {
         setError(result.error.issues[0].message);
         return;
       }
+      Keyboard.dismiss();
       setIsLoading(true);
       try {
         await authService.confirmOtp(verificationId, finalCode);

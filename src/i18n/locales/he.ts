@@ -146,11 +146,17 @@ export default {
     videoHero: 'צלם סרטון קצר של הבעיה',
     videoHeroSubtitle: 'סרטון עוזר לבעל המקצוע להבין את הבעיה פי 5 יותר מתמונה',
     images: '{{count}}/{{max}} תמונות',
+    mediaCount: '{{photos}} תמונות, {{videos}} סרטונים (עד {{max}})',
+    videoTag: 'סרטון',
+    cameraSheetTitle: 'מה לצלם?',
   },
 
   confirm: {
     title: 'אישור בקשה',
     analyzing: 'מנתח את הבעיה...',
+    tip1: 'מזהה את סוג הבעיה מהתמונות והתיאור שלך',
+    tip2: 'בודק איזה בעל מקצוע הכי מתאים לטפל בזה',
+    tip3: 'מתכונן לשלוח את הפרטים לבעלי מקצוע באזור',
     analysisFailed: 'לא הצלחנו לנתח את הבעיה',
     analysisFailed2: 'נסה שוב או צלם תמונה ברורה יותר',
     whatYouWrote: 'מה שכתבת:',
@@ -490,6 +496,20 @@ export default {
     title: 'נשלח בהצלחה!',
     subtitle: 'הבקשה שלך נשלחה לבעלי מקצוע באזור',
     backToRequests: 'חזור לקריאות שלי',
+    viewMyRequest: 'צפה בבקשה שלי',
+  },
+
+  exitApp: {
+    title: 'יציאה מהאפליקציה',
+    message: 'האם לצאת מהאפליקציה?',
+    confirm: 'יציאה',
+  },
+
+  editProfession: {
+    notRight: 'לא המקצוע הנכון?',
+    editLabel: 'שנה',
+    selectTitle: 'בחר את בעל המקצוע המתאים',
+    save: 'שמור',
   },
 
   join: {

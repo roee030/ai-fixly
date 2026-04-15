@@ -31,6 +31,7 @@ const SCREENS: ScreenCard[] = [
   { name: 'Verify OTP', nameHe: 'אימות קוד', route: '/(auth)/verify', icon: 'keypad-outline', group: 'אוט׳ והרשמה' },
   { name: 'Profile Setup', nameHe: 'הגדרת פרופיל', route: '/(auth)/profile-setup', icon: 'person-add-outline', group: 'אוט׳ והרשמה' },
   { name: 'Permissions', nameHe: 'הרשאות', route: '/(auth)/permissions', icon: 'shield-checkmark-outline', group: 'אוט׳ והרשמה' },
+  { name: 'Out of Area', nameHe: 'מחוץ לאזור פעילות', route: '/(auth)/out-of-area', icon: 'location-outline', group: 'אוט׳ והרשמה' },
 
   // Main Tabs
   { name: 'Home', nameHe: 'דף הבית', route: '/(tabs)', icon: 'home-outline', group: 'ראשי' },
@@ -42,14 +43,32 @@ const SCREENS: ScreenCard[] = [
   { name: 'Confirm', nameHe: 'אישור בקשה', route: '/capture/confirm', icon: 'checkmark-circle-outline', group: 'תהליך דיווח' },
   { name: 'Sent', nameHe: 'נשלח בהצלחה', route: '/capture/sent', icon: 'paper-plane-outline', group: 'תהליך דיווח' },
 
-  // Request Details & Chat
+  // Request Lifecycle
   { name: 'Request Details', nameHe: 'פרטי בקשה', route: '/request/demo-request', icon: 'list-outline', group: 'בקשות' },
   { name: 'Chat', nameHe: 'צ\'אט', route: '/chat/demo-request', icon: 'chatbubbles-outline', group: 'בקשות' },
+  { name: 'Review', nameHe: 'דירוג בעל מקצוע', route: '/review/demo-request', icon: 'star-outline', group: 'בקשות' },
+
+  // Provider-side
+  { name: 'Provider Quote', nameHe: 'הצעת מחיר (בעל מקצוע)', route: '/provider/quote/demo-request', icon: 'cash-outline', group: 'בעל מקצוע' },
+  { name: 'Provider Report', nameHe: 'דיווח בעיה (בעל מקצוע)', route: '/provider/report/demo-request', icon: 'flag-outline', group: 'בעל מקצוע' },
+  { name: 'Provider Join', nameHe: 'הצטרפות בעל מקצוע', route: '/join', icon: 'briefcase-outline', group: 'בעל מקצוע' },
 
   // SEO / Web
   { name: 'Service: Plumber', nameHe: 'דף שירות: אינסטלטור', route: '/services/plumber', icon: 'water-outline', group: 'דפי שירות (SEO)' },
   { name: 'Service: Electrician', nameHe: 'דף שירות: חשמלאי', route: '/services/electrician', icon: 'flash-outline', group: 'דפי שירות (SEO)' },
   { name: 'Service: Locksmith', nameHe: 'דף שירות: מנעולן', route: '/services/locksmith', icon: 'lock-closed-outline', group: 'דפי שירות (SEO)' },
+
+  // Legal
+  { name: 'Terms of Service', nameHe: 'תנאי שימוש', route: '/legal/terms', icon: 'document-outline', group: 'משפטי' },
+  { name: 'Privacy Policy', nameHe: 'מדיניות פרטיות', route: '/legal/privacy', icon: 'lock-closed-outline', group: 'משפטי' },
+  { name: 'Accessibility', nameHe: 'הצהרת נגישות', route: '/legal/accessibility', icon: 'accessibility-outline', group: 'משפטי' },
+
+  // Admin
+  { name: 'Admin Dashboard', nameHe: 'לוח בקרה', route: '/admin', icon: 'stats-chart-outline', group: 'ניהול' },
+  { name: 'Admin: Funnel', nameHe: 'ניהול: משפך המרה', route: '/admin/funnel', icon: 'funnel-outline', group: 'ניהול' },
+  { name: 'Admin: Geo', nameHe: 'ניהול: מפת גיאו', route: '/admin/geo', icon: 'map-outline', group: 'ניהול' },
+  { name: 'Admin: Providers', nameHe: 'ניהול: בעלי מקצוע', route: '/admin/providers', icon: 'people-outline', group: 'ניהול' },
+  { name: 'Admin: Revenue', nameHe: 'ניהול: הכנסות', route: '/admin/revenue', icon: 'cash-outline', group: 'ניהול' },
 ];
 
 export default function GalleryScreen() {

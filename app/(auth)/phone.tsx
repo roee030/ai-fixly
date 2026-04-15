@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, Pressable, StyleSheet } from 'react-native';
+import { View, Text, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Keyboard } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +19,7 @@ export default function PhoneScreen() {
 
   const handleSendOtp = async () => {
     setError('');
+    Keyboard.dismiss();
 
     if (!isValidPhoneNumber(phone)) {
       setError(t('auth.invalidPhone'));
@@ -66,10 +67,6 @@ export default function PhoneScreen() {
             textContentType="telephoneNumber"
             error={error}
           />
-
-          <Text style={styles.hint}>
-            לא צריך להזין קידומת מדינה
-          </Text>
 
           <View style={{ marginTop: 24 }}>
             <Button
@@ -124,11 +121,5 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     color: COLORS.textSecondary,
     lineHeight: 22,
-  },
-  hint: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-    textAlign: 'center',
-    marginTop: 4,
   },
 });

@@ -1,15 +1,25 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
-  FlatList,
   Platform,
   useWindowDimensions,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
+  I18nManager,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  runOnJS,
+  Easing,
+} from 'react-native-reanimated';
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from 'react-native-gesture-handler';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +27,8 @@ import { COLORS } from '../src/constants';
 import { useAppStore } from '../src/stores/useAppStore';
 
 const DESKTOP_MAX_WIDTH = 480;
+const SWIPE_THRESHOLD = 50;
+const ANIM_DURATION = 280;
 
 interface Example {
   icon: keyof typeof Ionicons.glyphMap;
@@ -35,11 +47,13 @@ export default function OnboardingScreen() {
   const { t } = useTranslation();
   const [currentSlide, setCurrentSlide] = useState(0);
   const setHasSeenOnboarding = useAppStore((s) => s.setHasSeenOnboarding);
-  const flatListRef = useRef<FlatList>(null);
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && windowWidth >= 768;
-  // On desktop, constrain the slide width to phone-like dimensions
   const SCREEN_WIDTH = isDesktop ? Math.min(windowWidth, DESKTOP_MAX_WIDTH) : windowWidth;
+  // RTL-aware direction: in RTL, "next" means going right-to-left visually,
+  // so positive deltaX (swipe right) = previous, negative = next.
+  // In LTR, it's the opposite.
+  const isRTL = I18nManager.isRTL;
 
   const slides: Slide[] = [
     {
@@ -77,17 +91,25 @@ export default function OnboardingScreen() {
     },
   ];
 
-  const goToIndex = (index: number) => {
-    flatListRef.current?.scrollToIndex({ index, animated: true });
+  const opacity = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const pendingIndex = useRef<number | null>(null);
+
+  const applyIndex = (index: number) => {
     setCurrentSlide(index);
+    translateX.value = 0;
+    opacity.value = withTiming(1, { duration: ANIM_DURATION / 2 });
   };
 
-  const goNext = () => {
-    if (currentSlide < slides.length - 1) {
-      goToIndex(currentSlide + 1);
-    } else {
-      finish();
-    }
+  const goToIndex = (index: number) => {
+    if (index === currentSlide) return;
+    pendingIndex.current = index;
+    opacity.value = withTiming(0, { duration: ANIM_DURATION / 2 }, () => {
+      if (pendingIndex.current !== null) {
+        runOnJS(applyIndex)(pendingIndex.current);
+        pendingIndex.current = null;
+      }
+    });
   };
 
   const finish = async () => {
@@ -95,84 +117,100 @@ export default function OnboardingScreen() {
     router.replace('/(auth)/phone');
   };
 
-  // Track which slide is visible as the user swipes
-  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offsetX = e.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / SCREEN_WIDTH);
-    if (index !== currentSlide) {
-      setCurrentSlide(index);
+  const goNext = () => {
+    if (currentSlide < slides.length - 1) {
+      goToIndex(currentSlide + 1);
+    } else {
+      void finish();
     }
   };
+
+  const goPrev = () => {
+    if (currentSlide > 0) goToIndex(currentSlide - 1);
+  };
+
+  // Swipe gesture: in RTL, swiping right (positive translationX) means
+  // "previous", swiping left (negative) means "next". Flipped in LTR.
+  const pan = Gesture.Pan()
+    .activeOffsetX([-10, 10])
+    .onUpdate((e) => {
+      translateX.value = e.translationX;
+    })
+    .onEnd((e) => {
+      const dx = e.translationX;
+      const wentForward = isRTL ? dx < -SWIPE_THRESHOLD : dx > SWIPE_THRESHOLD;
+      const wentBack = isRTL ? dx > SWIPE_THRESHOLD : dx < -SWIPE_THRESHOLD;
+      if (wentForward) runOnJS(goNext)();
+      else if (wentBack) runOnJS(goPrev)();
+      else translateX.value = withTiming(0, { duration: 150 });
+    });
+
+  const slideStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateX: translateX.value }],
+  }));
 
   const slide = slides[currentSlide];
   const isLast = currentSlide === slides.length - 1;
 
   return (
-    <View style={[styles.container, isDesktop && { alignItems: 'center' }]}>
-    <View style={isDesktop ? { width: DESKTOP_MAX_WIDTH, flex: 1 } : { flex: 1 }}>
-      {/* Top bar - skip button only. No back button \u2014 users swipe to go back. */}
-      <View style={styles.topBar}>
-        <View style={{ flex: 1 }} />
-        <Pressable onPress={finish} hitSlop={20}>
-          <Text style={styles.skipText}>{t('common.skip')}</Text>
-        </Pressable>
-      </View>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={[styles.container, isDesktop && { alignItems: 'center' }]}>
+        <View style={isDesktop ? { width: DESKTOP_MAX_WIDTH, flex: 1 } : { flex: 1 }}>
+          {/* Top bar - skip button only */}
+          <View style={styles.topBar}>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={() => void finish()} hitSlop={20}>
+              <Text style={styles.skipText}>{t('common.skip')}</Text>
+            </Pressable>
+          </View>
 
-      {/* Swipeable carousel */}
-      <FlatList
-        ref={flatListRef}
-        data={slides}
-        keyExtractor={(_, i) => `slide-${i}`}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleScrollEnd}
-        renderItem={({ item }) => <SlideView slide={item} width={SCREEN_WIDTH} />}
-        style={styles.carousel}
-        // Skip scroll-to-index misses by providing an item size
-        getItemLayout={(_, index) => ({
-          length: SCREEN_WIDTH,
-          offset: SCREEN_WIDTH * index,
-          index,
-        })}
-      />
+          {/* Swipeable slide */}
+          <GestureDetector gesture={pan}>
+            <Animated.View style={[styles.slideWrap, slideStyle]}>
+              <SlideView slide={slide} width={SCREEN_WIDTH} />
+            </Animated.View>
+          </GestureDetector>
 
-      {/* Dots - tappable */}
-      <View style={styles.dots}>
-        {slides.map((_, i) => (
-          <Pressable key={i} onPress={() => goToIndex(i)} hitSlop={8}>
-            <View
-              style={[
-                styles.dot,
-                i === currentSlide && {
-                  backgroundColor: slide.color,
-                  width: 28,
-                  height: 8,
-                  borderRadius: 4,
-                },
-              ]}
+          {/* Dots - tappable */}
+          <View style={styles.dots}>
+            {slides.map((_, i) => (
+              <Pressable key={i} onPress={() => goToIndex(i)} hitSlop={8}>
+                <View
+                  style={[
+                    styles.dot,
+                    i === currentSlide && {
+                      backgroundColor: slide.color,
+                      width: 28,
+                      height: 8,
+                      borderRadius: 4,
+                    },
+                  ]}
+                />
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.counter}>
+            {currentSlide + 1}/{slides.length}
+          </Text>
+
+          {/* Next / Finish button */}
+          <Pressable
+            onPress={goNext}
+            style={[styles.nextBtn, { backgroundColor: slide.color }]}
+          >
+            <Text style={styles.nextText}>
+              {isLast ? t('onboarding.letsStart') : t('common.next')}
+            </Text>
+            <Ionicons
+              name={isLast ? 'checkmark' : isRTL ? 'arrow-back' : 'arrow-forward'}
+              size={22}
+              color="#FFF"
             />
           </Pressable>
-        ))}
+        </View>
       </View>
-      <Text style={{ color: COLORS.textTertiary, fontSize: 12, textAlign: 'center', marginBottom: 16 }}>
-        {currentSlide + 1}/{slides.length}
-      </Text>
-
-      {/* Next button */}
-      <Pressable
-        onPress={goNext}
-        style={[styles.nextBtn, { backgroundColor: slide.color }]}
-      >
-        <Text style={styles.nextText}>{isLast ? t('onboarding.letsStart') : t('common.next')}</Text>
-        <Ionicons
-          name={isLast ? 'checkmark' : 'arrow-back'}
-          size={22}
-          color="#FFF"
-        />
-      </Pressable>
-    </View>{/* close inner desktop container */}
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -218,11 +256,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  carousel: {
+  slideWrap: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   slide: {
-    // width is passed dynamically via style prop (responsive to desktop/mobile)
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
@@ -277,14 +316,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-    marginBottom: 32,
-    marginTop: 24,
+    marginTop: 8,
+    marginBottom: 12,
   },
   dot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: COLORS.textTertiary,
+  },
+  counter: {
+    color: COLORS.textTertiary,
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 20,
   },
   nextBtn: {
     borderRadius: 16,

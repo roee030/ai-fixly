@@ -5,94 +5,113 @@ import { useTranslation } from 'react-i18next';
 import { LIMITS } from '../constants/limits';
 
 export interface PickResult {
-  imageUri?: string;
-  videoUri?: string;
+  imageUris: string[];
+  videoUris: string[];
 }
 
+/**
+ * Unified media picker hook. Stores photos and videos in separate arrays so
+ * callers can render thumbnails uniformly while still knowing the media type.
+ *
+ * Design note: earlier versions of this hook restricted camera to a combined
+ * "photo or video" mediaType. On some devices this caused video recordings
+ * to be saved as a single still frame (iOS's "mixed" mode sometimes behaves
+ * that way). We now expose `takePhoto` and `recordVideo` as distinct actions
+ * so the caller can make the intent explicit and the system camera always
+ * launches in the correct mode.
+ */
 export function useImagePicker() {
   const { t } = useTranslation();
   const [images, setImages] = useState<string[]>([]);
+  const [videos, setVideos] = useState<string[]>([]);
 
-  /**
-   * Open the camera and let the user choose photo OR video natively.
-   * Returns the captured asset so the caller can route video to its own
-   * state slot (the `images` array stores only photos).
-   */
-  const pickFromCamera = async (): Promise<PickResult | null> => {
+  const ensureCameraPermission = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(t('imagePicker.permissionNeeded'), t('imagePicker.cameraAccessRequired'));
-      return null;
+      return false;
     }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images', 'videos'],
-      quality: 0.8,
-      base64: false,
-      videoMaxDuration: 60,
-    });
-
-    if (result.canceled || !result.assets[0]) return null;
-    const asset = result.assets[0];
-
-    if (asset.type === 'video') {
-      return { videoUri: asset.uri };
-    }
-
-    if (images.length >= LIMITS.MAX_IMAGES_PER_REQUEST) {
-      Alert.alert(
-        t('imagePicker.maxImagesTitle'),
-        t('imagePicker.maxImagesBody', { max: LIMITS.MAX_IMAGES_PER_REQUEST }),
-      );
-      return null;
-    }
-    setImages((prev) => [...prev, asset.uri]);
-    return { imageUri: asset.uri };
+    return true;
   };
 
-  /**
-   * Open the gallery for both photos and videos. Returns the picked video
-   * URI (if any) so the caller can store it; photos are appended to the
-   * internal images array.
-   *
-   * NOTE: previously this used `selectionLimit: MAX - images.length`,
-   * which becomes 0 once the user has 5 images and silently blocks ALL
-   * subsequent picker openings (the cause of the "stuck loop"). We now
-   * just clamp the result to the limit.
-   */
-  const pickFromGallery = async (): Promise<PickResult | null> => {
+  const ensureLibraryPermission = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert(t('imagePicker.permissionNeeded'), t('imagePicker.galleryAccessRequired'));
-      return null;
+      return false;
     }
+    return true;
+  };
 
+  const addImage = (uri: string) =>
+    setImages((prev) => {
+      if (prev.length >= LIMITS.MAX_IMAGES_PER_REQUEST) {
+        Alert.alert(
+          t('imagePicker.maxImagesTitle'),
+          t('imagePicker.maxImagesBody', { max: LIMITS.MAX_IMAGES_PER_REQUEST }),
+        );
+        return prev;
+      }
+      return [...prev, uri];
+    });
+
+  const addVideo = (uri: string) => setVideos((prev) => [...prev, uri]);
+
+  const takePhoto = async (): Promise<PickResult | null> => {
+    if (!(await ensureCameraPermission())) return null;
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      base64: false,
+    });
+    if (result.canceled || !result.assets[0]) return null;
+    addImage(result.assets[0].uri);
+    return { imageUris: [result.assets[0].uri], videoUris: [] };
+  };
+
+  const recordVideo = async (): Promise<PickResult | null> => {
+    if (!(await ensureCameraPermission())) return null;
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['videos'],
+      quality: 0.8,
+      videoMaxDuration: 60,
+    });
+    if (result.canceled || !result.assets[0]) return null;
+    addVideo(result.assets[0].uri);
+    return { imageUris: [], videoUris: [result.assets[0].uri] };
+  };
+
+  const pickFromGallery = async (): Promise<PickResult | null> => {
+    if (!(await ensureLibraryPermission())) return null;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images', 'videos'],
       quality: 0.8,
       allowsMultipleSelection: true,
       videoMaxDuration: 60,
     });
-
     if (result.canceled || !result.assets || result.assets.length === 0) return null;
 
-    let pickedVideo: string | undefined;
     const newImages: string[] = [];
+    const newVideos: string[] = [];
     for (const asset of result.assets) {
-      if (asset.type === 'video') {
-        if (!pickedVideo) pickedVideo = asset.uri;
-      } else {
-        newImages.push(asset.uri);
-      }
+      if (asset.type === 'video') newVideos.push(asset.uri);
+      else newImages.push(asset.uri);
     }
     if (newImages.length > 0) {
       setImages((prev) => [...prev, ...newImages].slice(0, LIMITS.MAX_IMAGES_PER_REQUEST));
     }
-    return { videoUri: pickedVideo, imageUri: newImages[0] };
+    if (newVideos.length > 0) {
+      setVideos((prev) => [...prev, ...newVideos]);
+    }
+    return { imageUris: newImages, videoUris: newVideos };
   };
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeVideo = (index: number) => {
+    setVideos((prev) => prev.filter((_, i) => i !== index));
   };
 
   const getBase64Images = async (): Promise<string[]> => {
@@ -113,5 +132,16 @@ export function useImagePicker() {
     return base64Images;
   };
 
-  return { images, pickFromCamera, pickFromGallery, removeImage, getBase64Images, hasImages: images.length > 0 };
+  return {
+    images,
+    videos,
+    takePhoto,
+    recordVideo,
+    pickFromGallery,
+    removeImage,
+    removeVideo,
+    getBase64Images,
+    hasMedia: images.length > 0 || videos.length > 0,
+    hasImages: images.length > 0,
+  };
 }

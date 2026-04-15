@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, Image, Pressable, TextInput, ScrollView,
-  StyleSheet, Modal, Dimensions, Platform,
+  StyleSheet, Modal, Dimensions, Platform, KeyboardAvoidingView,
+  Alert, ActionSheetIOS,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { useImagePicker } from '../../src/hooks/useImagePicker';
@@ -14,24 +15,31 @@ import { COLORS, LIMITS } from '../../src/constants';
 import { analyticsService } from '../../src/services/analytics';
 import { logAction } from '../../src/services/analytics/sessionLogger';
 
-const THUMB_SIZE = 72;
+const THUMB_SIZE = 84;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function CaptureScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ prefillDescription?: string }>();
-  const { images, pickFromCamera, pickFromGallery, removeImage, getBase64Images, hasImages } =
-    useImagePicker();
-  // Pre-fill the description from the SEO service-page mini-form so users
-  // coming from /services/[profession] don't have to re-type.
+  const {
+    images,
+    videos,
+    takePhoto,
+    recordVideo,
+    pickFromGallery,
+    removeImage,
+    removeVideo,
+    getBase64Images,
+    hasMedia,
+  } = useImagePicker();
   const [description, setDescription] = useState(() => (params.prefillDescription || '').slice(0, 500));
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const [videoUri, setVideoUri] = useState<string | null>(null);
+  // Single preview slot. `kind` tells the modal what to render. Videos use
+  // expo-video; images use the existing <Image> path. One state object means
+  // there's never an inconsistent "image AND video previewed" combination.
+  const [preview, setPreview] = useState<{ uri: string; kind: 'image' | 'video' } | null>(null);
 
-  // Note: video recording / uploading flows now happen through pickFromCamera
-  // and pickFromGallery in the hook (they accept both photos and videos
-  // natively). The old separate handlers were removed.
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     analyticsService.trackEvent('capture_started');
@@ -45,14 +53,49 @@ export default function CaptureScreen() {
     }
   }, [images.length]);
 
+  useEffect(() => {
+    if (videos.length > 0) {
+      logAction('video_added', 'capture', { count: videos.length });
+    }
+  }, [videos.length]);
+
   const [webPhotos, setWebPhotos] = useState<string[]>([]);
   const MIN_DESCRIPTION_LENGTH = 10;
   const isDescriptionValid = description.trim().length >= MIN_DESCRIPTION_LENGTH;
 
+  // Single "Camera" entry point that asks the user whether they want a photo
+  // or a video. This matches a normal camera-button mental model and
+  // guarantees the system camera launches in the right mode (some Android
+  // devices ignore mixed mediaTypes and default to photos).
+  const openCameraSheet = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [t('common.cancel'), t('capture.takePhoto'), t('capture.recordVideo')],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) void takePhoto();
+          else if (buttonIndex === 2) void recordVideo();
+        },
+      );
+      return;
+    }
+    Alert.alert(
+      t('capture.cameraSheetTitle'),
+      undefined,
+      [
+        { text: t('capture.takePhoto'), onPress: () => { void takePhoto(); } },
+        { text: t('capture.recordVideo'), onPress: () => { void recordVideo(); } },
+        { text: t('common.cancel'), style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  };
+
   const handleAnalyze = async () => {
     const photoList = Platform.OS === 'web' ? webPhotos : images;
-    // Allow video-only (no photos) or photos-only (no video) or both
-    if (photoList.length === 0 && !videoUri && !isDescriptionValid) return;
+    if (photoList.length === 0 && videos.length === 0 && !isDescriptionValid) return;
     if (!isDescriptionValid) return;
     setIsAnalyzing(true);
     logAction('capture_submitted', 'capture');
@@ -64,7 +107,7 @@ export default function CaptureScreen() {
             images: JSON.stringify(webPhotos),
             base64Images: JSON.stringify([]),
             description: description.trim(),
-            videoUri: videoUri || '',
+            videoUris: JSON.stringify([]),
           },
         });
       } else {
@@ -75,7 +118,7 @@ export default function CaptureScreen() {
             images: JSON.stringify(images),
             base64Images: JSON.stringify(base64Images),
             description: description.trim(),
-            videoUri: videoUri || '',
+            videoUris: JSON.stringify(videos),
           },
         });
       }
@@ -86,7 +129,7 @@ export default function CaptureScreen() {
     }
   };
 
-  // Web: use drag-and-drop upload zone instead of native camera/gallery
+  // Web: drag-and-drop upload zone (photos only)
   if (Platform.OS === 'web') {
     const { WebUploadZone } = require('../../src/components/web/WebUploadZone.web');
     const webHasPhotos = webPhotos.length > 0;
@@ -149,147 +192,200 @@ export default function CaptureScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-          </Pressable>
-          <Text style={styles.title}>{t('capture.title')}</Text>
-        </View>
-
-        {/* Two clean buttons: Camera and Gallery */}
-        <View style={styles.mediaRow}>
-          <Pressable
-            onPress={async () => {
-              // Camera natively shows a switcher between photo and video.
-              // The hook returns whichever the user picked.
-              const result = await pickFromCamera();
-              if (result?.videoUri) {
-                setVideoUri(result.videoUri);
-                logAction('video_recorded', 'capture');
-              }
-            }}
-            style={styles.mediaBtn}
-          >
-            <View style={styles.mediaBtnIcon}>
-              <Ionicons name="camera" size={28} color={COLORS.primary} />
-            </View>
-            <Text style={styles.mediaBtnTitle}>{t('capture.camera')}</Text>
-            <Text style={styles.mediaBtnHint}>{t('capture.cameraHint')}</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={async () => {
-              const result = await pickFromGallery();
-              if (result?.videoUri) {
-                setVideoUri(result.videoUri);
-                logAction('video_uploaded', 'capture');
-              }
-            }}
-            style={styles.mediaBtn}
-          >
-            <View style={styles.mediaBtnIcon}>
-              <Ionicons name="images" size={28} color={COLORS.primary} />
-            </View>
-            <Text style={styles.mediaBtnTitle}>{t('capture.gallery')}</Text>
-            <Text style={styles.mediaBtnHint}>{t('capture.galleryHint')}</Text>
-          </Pressable>
-        </View>
-
-        {images.length > 0 && (
-          <Text style={styles.imageCount}>
-            {t('capture.images', { count: images.length, max: LIMITS.MAX_IMAGES_PER_REQUEST })}
-          </Text>
-        )}
-
-        {/* Image thumbnails grid */}
-        {images.length > 0 && (
-          <View style={styles.thumbGrid}>
-            {images.map((uri, index) => (
-              <Pressable key={index} onPress={() => setPreviewUri(uri)} style={styles.thumbWrap}>
-                <Image source={{ uri }} style={styles.thumb} />
-                <Pressable onPress={() => removeImage(index)} style={styles.removeBtn}>
-                  <Ionicons name="close" size={14} color="#FFF" />
-                </Pressable>
-              </Pressable>
-            ))}
-          </View>
-        )}
-
-        {/* Video indicator */}
-        {videoUri && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, backgroundColor: COLORS.surface, padding: 10, borderRadius: 10 }}>
-            <Ionicons name="videocam" size={20} color={COLORS.success} />
-            <Text style={{ color: COLORS.text, flex: 1, fontSize: 13 }}>{t('capture.videoAttached')}</Text>
-            <Pressable onPress={() => setVideoUri(null)}>
-              <Ionicons name="close-circle" size={20} color={COLORS.error} />
+        <ScrollView
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <Pressable onPress={() => router.back()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color={COLORS.text} />
             </Pressable>
+            <Text style={styles.title}>{t('capture.title')}</Text>
           </View>
-        )}
 
-        {/* Tip — push for detail + video */}
-        <View style={styles.tipCard}>
-          <Ionicons name="information-circle" size={18} color={COLORS.primary} />
-          <Text style={styles.tipText}>
-            {t('capture.tipBody')}
-          </Text>
-        </View>
+          {/* Two clean entry points: Camera (photo OR video via action sheet)
+              and Gallery (multi-select photos + videos). */}
+          <View style={styles.mediaRow}>
+            <MediaTile icon="camera" title={t('capture.camera')} onPress={openCameraSheet} />
+            <MediaTile
+              icon="images"
+              title={t('capture.gallery')}
+              onPress={async () => { await pickFromGallery(); }}
+            />
+          </View>
 
-        {/* Text description - MANDATORY */}
-        <View style={styles.descLabelRow}>
-          <Text style={styles.descLabel}>{t('capture.describeLabel')}</Text>
-          <Text style={styles.required}> *</Text>
-        </View>
-        <TextInput
-          value={description}
-          onChangeText={setDescription}
-          placeholder={t('capture.describePlaceholder')}
-          placeholderTextColor={COLORS.textTertiary}
-          multiline
-          numberOfLines={4}
-          style={[
-            styles.descInput,
-            description.length > 0 && !isDescriptionValid && { borderColor: COLORS.warning }
-          ]}
-        />
-        <Text style={styles.descHint}>
-          {description.length === 0
-            ? t('capture.descriptionHint')
-            : !isDescriptionValid
-            ? t('capture.minChars', { min: MIN_DESCRIPTION_LENGTH, current: description.length })
-            : t('capture.chars', { count: description.length })}
-        </Text>
-      </ScrollView>
+          {/* Horizontal media strip — keeps thumbnails in a fixed-height row
+              so adding media doesn't push the description off-screen. */}
+          {(images.length > 0 || videos.length > 0) && (
+            <>
+              <Text style={styles.imageCount}>
+                {t('capture.mediaCount', {
+                  photos: images.length,
+                  videos: videos.length,
+                  max: LIMITS.MAX_IMAGES_PER_REQUEST,
+                })}
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.thumbStripContent}
+                style={styles.thumbStrip}
+              >
+                {images.map((uri, index) => (
+                  <Pressable
+                    key={`p-${index}`}
+                    onPress={() => setPreview({ uri, kind: 'image' })}
+                    style={styles.thumbWrap}
+                  >
+                    <Image source={{ uri }} style={styles.thumb} />
+                    <Pressable
+                      onPress={() => removeImage(index)}
+                      style={styles.removeBtn}
+                      hitSlop={6}
+                    >
+                      <Ionicons name="close" size={14} color="#FFF" />
+                    </Pressable>
+                  </Pressable>
+                ))}
+                {videos.map((uri, index) => (
+                  <Pressable
+                    key={`v-${index}`}
+                    onPress={() => setPreview({ uri, kind: 'video' })}
+                    style={styles.thumbWrap}
+                  >
+                    <View style={[styles.thumb, styles.videoThumbBg]}>
+                      <Ionicons name="play-circle" size={36} color="#FFFFFF" />
+                      <View style={styles.videoBadge}>
+                        <Ionicons name="videocam" size={10} color="#FFFFFF" />
+                        <Text style={styles.videoBadgeText}>{t('capture.videoTag')}</Text>
+                      </View>
+                    </View>
+                    <Pressable
+                      onPress={() => removeVideo(index)}
+                      style={styles.removeBtn}
+                      hitSlop={6}
+                    >
+                      <Ionicons name="close" size={14} color="#FFF" />
+                    </Pressable>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </>
+          )}
 
-      {/* Fixed bottom button */}
-      <View style={styles.bottomBar}>
-        <Button
-          title={t('confirm.sendAndFind')}
-          onPress={handleAnalyze}
-          isLoading={isAnalyzing}
-          disabled={(!hasImages && !videoUri) || !isDescriptionValid}
-        />
-      </View>
+          {/* Tip */}
+          <View style={styles.tipCard}>
+            <Ionicons name="information-circle" size={18} color={COLORS.primary} />
+            <Text style={styles.tipText}>{t('capture.tipBody')}</Text>
+          </View>
 
-      {/* Image preview modal */}
-      <Modal visible={!!previewUri} transparent animationType="fade">
-        <Pressable style={styles.modalOverlay} onPress={() => setPreviewUri(null)}>
-          <Image
-            source={{ uri: previewUri || '' }}
-            style={styles.previewImage}
-            resizeMode="contain"
+          {/* Text description - MANDATORY */}
+          <View style={styles.descLabelRow}>
+            <Text style={styles.descLabel}>{t('capture.describeLabel')}</Text>
+            <Text style={styles.required}> *</Text>
+          </View>
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder={t('capture.describePlaceholder')}
+            placeholderTextColor={COLORS.textTertiary}
+            multiline
+            numberOfLines={4}
+            // Scroll the textarea into view when the keyboard appears.
+            // Without this, the keyboard can sit on top of the input.
+            onFocus={() => {
+              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+            }}
+            style={[
+              styles.descInput,
+              description.length > 0 && !isDescriptionValid && { borderColor: COLORS.warning },
+            ]}
           />
-          <Pressable style={styles.modalClose} onPress={() => setPreviewUri(null)}>
+          <Text style={styles.descHint}>
+            {description.length === 0
+              ? t('capture.descriptionHint')
+              : !isDescriptionValid
+              ? t('capture.minChars', { min: MIN_DESCRIPTION_LENGTH, current: description.length })
+              : t('capture.chars', { count: description.length })}
+          </Text>
+        </ScrollView>
+
+        {/* Bottom button */}
+        <View style={styles.bottomBar}>
+          <Button
+            title={t('confirm.sendAndFind')}
+            onPress={handleAnalyze}
+            isLoading={isAnalyzing}
+            disabled={!hasMedia || !isDescriptionValid}
+          />
+        </View>
+      </KeyboardAvoidingView>
+
+      {/* Unified preview modal. Images render with <Image>; videos render with
+          expo-video's <VideoView> + native controls so the user can play,
+          pause, and scrub the recording before submitting. */}
+      <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
+        <View style={styles.modalOverlay}>
+          {preview?.kind === 'video' ? (
+            <VideoPreview uri={preview.uri} />
+          ) : preview ? (
+            <Pressable style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' }} onPress={() => setPreview(null)}>
+              <Image
+                source={{ uri: preview.uri }}
+                style={styles.previewImage}
+                resizeMode="contain"
+              />
+            </Pressable>
+          ) : null}
+          <Pressable style={styles.modalClose} onPress={() => setPreview(null)} hitSlop={10}>
             <Ionicons name="close-circle" size={36} color="#FFFFFF" />
           </Pressable>
-        </Pressable>
+        </View>
       </Modal>
     </ScreenContainer>
+  );
+}
+
+function VideoPreview({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+    p.play();
+  });
+  return (
+    <VideoView
+      style={styles.previewVideo}
+      player={player}
+      allowsFullscreen
+      nativeControls
+      contentFit="contain"
+    />
+  );
+}
+
+function MediaTile({
+  icon,
+  title,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={styles.mediaBtn}>
+      <View style={styles.mediaBtnIcon}>
+        <Ionicons name={icon} size={28} color={COLORS.primary} />
+      </View>
+      <Text style={styles.mediaBtnTitle}>{title}</Text>
+    </Pressable>
   );
 }
 
@@ -298,7 +394,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 16,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   backBtn: {
     marginRight: 16,
@@ -311,22 +407,22 @@ const styles = StyleSheet.create({
   mediaRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 20,
+    marginBottom: 14,
   },
   mediaBtn: {
     flex: 1,
     alignItems: 'center',
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    paddingVertical: 20,
+    borderRadius: 14,
+    paddingVertical: 16,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     gap: 8,
   },
   mediaBtnIcon: {
-    width: 56,
-    height: 56,
+    width: 52,
+    height: 52,
     borderRadius: 16,
     backgroundColor: COLORS.primary + '15',
     alignItems: 'center',
@@ -334,12 +430,8 @@ const styles = StyleSheet.create({
   },
   mediaBtnTitle: {
     color: COLORS.text,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-  },
-  mediaBtnHint: {
-    color: COLORS.textTertiary,
-    fontSize: 12,
   },
   tipCard: {
     flexDirection: 'row',
@@ -357,15 +449,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   imageCount: {
-    fontSize: 13,
+    fontSize: 12,
     color: COLORS.textSecondary,
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  thumbGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  thumbStrip: {
+    marginBottom: 14,
+  },
+  thumbStripContent: {
     gap: 8,
-    marginBottom: 20,
+    paddingRight: 4,
   },
   thumbWrap: {
     position: 'relative',
@@ -373,7 +466,31 @@ const styles = StyleSheet.create({
   thumb: {
     width: THUMB_SIZE,
     height: THUMB_SIZE,
-    borderRadius: 10,
+    borderRadius: 12,
+  },
+  videoThumbBg: {
+    backgroundColor: '#101015',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  videoBadge: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  videoBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
   },
   removeBtn: {
     position: 'absolute',
@@ -419,9 +536,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   bottomBar: {
-    paddingVertical: 16,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     backgroundColor: COLORS.background,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   modalOverlay: {
     flex: 1,
@@ -433,6 +552,12 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH - 32,
     height: SCREEN_WIDTH - 32,
     borderRadius: 12,
+  },
+  previewVideo: {
+    width: SCREEN_WIDTH - 32,
+    height: (SCREEN_WIDTH - 32) * 1.2,
+    borderRadius: 12,
+    backgroundColor: '#000',
   },
   modalClose: {
     position: 'absolute',

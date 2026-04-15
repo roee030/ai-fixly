@@ -105,7 +105,7 @@ export default function ProfileScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         <Text style={styles.header}>{t('profile.title')}</Text>
 
         {/* Avatar placeholder */}
@@ -230,23 +230,28 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
         )}
+
+        <Button
+          title={t('profile.signOut')}
+          onPress={handleSignOut}
+          variant="ghost"
+          style={{ marginTop: 24 }}
+        />
+
+        <View style={styles.legalLinks}>
+          <Pressable onPress={() => router.push('/legal/terms' as any)}>
+            <Text style={styles.legalLink}>{t('profile.termsOfService')}</Text>
+          </Pressable>
+          <Text style={styles.legalSeparator}>•</Text>
+          <Pressable onPress={() => router.push('/legal/privacy' as any)}>
+            <Text style={styles.legalLink}>{t('profile.privacyPolicy')}</Text>
+          </Pressable>
+          <Text style={styles.legalSeparator}>•</Text>
+          <Pressable onPress={() => router.push('/legal/accessibility' as any)}>
+            <Text style={styles.legalLink}>{t('profile.accessibility')}</Text>
+          </Pressable>
+        </View>
       </ScrollView>
-
-      <Button title={t('profile.signOut')} onPress={handleSignOut} variant="ghost" style={{ marginTop: 16 }} />
-
-      <View style={styles.legalLinks}>
-        <Pressable onPress={() => router.push('/legal/terms' as any)}>
-          <Text style={styles.legalLink}>{t('profile.termsOfService')}</Text>
-        </Pressable>
-        <Text style={styles.legalSeparator}>•</Text>
-        <Pressable onPress={() => router.push('/legal/privacy' as any)}>
-          <Text style={styles.legalLink}>{t('profile.privacyPolicy')}</Text>
-        </Pressable>
-        <Text style={styles.legalSeparator}>•</Text>
-        <Pressable onPress={() => router.push('/legal/accessibility' as any)}>
-          <Text style={styles.legalLink}>{t('profile.accessibility')}</Text>
-        </Pressable>
-      </View>
     </ScreenContainer>
   );
 }

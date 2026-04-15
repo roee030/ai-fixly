@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeIn,
@@ -20,6 +20,7 @@ import { COLORS } from '../../src/constants';
 
 export default function SentScreen() {
   const { t } = useTranslation();
+  const { requestId } = useLocalSearchParams<{ requestId?: string }>();
   const scale = useSharedValue(0);
   const checkmarkScale = useSharedValue(0);
 
@@ -68,9 +69,19 @@ export default function SentScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeIn.delay(800).duration(400)} style={styles.buttons}>
+          {requestId && (
+            <Button
+              title={t('sent.viewMyRequest')}
+              onPress={() =>
+                router.replace({ pathname: '/request/[id]', params: { id: requestId } })
+              }
+            />
+          )}
           <Button
             title={t('sent.backToRequests')}
             onPress={() => router.replace('/(tabs)/requests')}
+            variant={requestId ? 'ghost' : 'primary'}
+            style={requestId ? { marginTop: 10 } : undefined}
           />
         </Animated.View>
       </View>
