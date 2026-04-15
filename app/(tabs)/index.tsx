@@ -88,7 +88,9 @@ export default function HomeScreen() {
           <FadeInView delay={200} style={styles.carouselSection}>
             <View style={styles.recentHeader}>
               <Ionicons name="document-text-outline" size={16} color={COLORS.textSecondary} />
-              <Text style={styles.recentLabel}>{t('home.latestRequest')}</Text>
+              <Text style={styles.recentLabel}>
+                {t(recentRequests.length > 1 ? 'home.yourRequests' : 'home.latestRequest')}
+              </Text>
             </View>
             <ScrollView
               horizontal

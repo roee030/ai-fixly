@@ -14,6 +14,7 @@ export default {
     heroSubtitle: 'צלם, תאר, וקבל הצעות תוך דקות',
     heroCta: 'דווח על תקלה',
     latestRequest: 'הבקשה האחרונה שלך',
+    yourRequests: 'הבקשות שלך — החלק לצדדים',
     requestFallback: 'בקשה',
     fast: 'מהיר',
     fastDesc: 'תשובות תוך דקות',

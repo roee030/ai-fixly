@@ -14,6 +14,7 @@ export default {
     heroSubtitle: 'Snap, describe, and get quotes in minutes',
     heroCta: 'Report a problem',
     latestRequest: 'Your latest request',
+    yourRequests: 'Your requests — swipe to see more',
     requestFallback: 'Request',
     fast: 'Fast',
     fastDesc: 'Answers in minutes',

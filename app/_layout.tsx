@@ -10,6 +10,7 @@ import { ThemeProvider } from '../src/contexts/ThemeContext';
 import { useAuth } from '../src/hooks/useAuth';
 import { analyticsService } from '../src/services/analytics';
 import { useNotifications } from '../src/hooks/useNotifications';
+import { useBackToHome } from '../src/hooks/useBackToHome';
 import { useAppStore } from '../src/stores/useAppStore';
 
 // Disable React DevTools in production to prevent inspection
@@ -55,6 +56,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const hasSeenOnboarding = useAppStore((s) => s.hasSeenOnboarding);
   const hasCompletedPermissions = useAppStore((s) => s.hasCompletedPermissions);
   useNotifications();
+  useBackToHome();
 
   // Wait for Expo Router's root navigator to mount before navigating.
   // Calling router.replace() before this is ready throws

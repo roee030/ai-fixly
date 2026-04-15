@@ -1,6 +1,5 @@
-import { useEffect } from 'react';
-import { View, Pressable, StyleSheet, Platform, Text, useWindowDimensions, BackHandler, Alert } from 'react-native';
-import { Tabs, useSegments, router } from 'expo-router';
+import { View, Pressable, StyleSheet, Platform, Text, useWindowDimensions } from 'react-native';
+import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ErrorBoundary } from '../../src/components/ui';
@@ -15,38 +14,12 @@ const TAB_HEIGHT = 60;
 const DESKTOP_BREAKPOINT = 768;
 const DESKTOP_MAX_WIDTH = 480;
 
+// NOTE: Android hardware-back handling lives in src/hooks/useBackToHome.ts,
+// invoked once at the root layout. Don't add a second BackHandler here.
+
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const segments = useSegments();
-
-  // Android back-button behavior: from any non-home tab, back returns to home.
-  // From home, back prompts the user to confirm app exit.
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      // The last segment under (tabs) is the current tab name.
-      // 'index' = home, 'requests' = my requests, 'profile' = profile.
-      const tabName = segments[segments.length - 1];
-      const isOnHome = tabName === 'index' || tabName === '(tabs)';
-
-      if (!isOnHome) {
-        router.replace('/(tabs)');
-        return true; // consume event
-      }
-
-      Alert.alert(
-        t('exitApp.title'),
-        t('exitApp.message'),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('exitApp.confirm'), onPress: () => BackHandler.exitApp() },
-        ],
-      );
-      return true;
-    });
-    return () => sub.remove();
-  }, [segments, t]);
 
   return (
     <ErrorBoundary>
