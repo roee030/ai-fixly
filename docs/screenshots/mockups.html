@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ai-fixly — mockups for flow</title>
+<style>
+  :root {
+    --bg: #0F0F1A; --bg2: #1A1A2E;
+    --surface: rgba(255,255,255,0.06);
+    --surface-solid: #1E1E30;
+    --border: rgba(255,255,255,0.12);
+    --text: #FFFFFF;
+    --text-s: rgba(255,255,255,0.6);
+    --text-t: rgba(255,255,255,0.4);
+    --primary: #6366F1; --primary-l: #818CF8; --primary-d: #4F46E5;
+    --success: #22C55E; --warning: #F59E0B; --error: #EF4444; --info: #3B82F6;
+  }
+  html, body { margin: 0; padding: 0; background: #000; font-family: -apple-system, system-ui, sans-serif; }
+  .screen {
+    width: 430px; height: 900px; margin: 20px; display: inline-block;
+    background: var(--bg); color: var(--text); vertical-align: top;
+    position: relative; overflow: hidden;
+    border-radius: 24px; border: 1px solid var(--border);
+  }
+  .screen-label { position: absolute; top: -20px; left: 0; color: #fff; font-size: 12px; font-weight: 700; }
+  .pad { padding: 20px 16px; }
+  .pt-xl { padding-top: 32px; }
+  .mb-sm { margin-bottom: 8px; }
+  .mb-md { margin-bottom: 16px; }
+  .mb-lg { margin-bottom: 24px; }
+
+  .row { display: flex; align-items: center; gap: 8px; }
+  .col { display: flex; flex-direction: column; }
+  .center { align-items: center; justify-content: center; }
+  .flex1 { flex: 1; }
+  .spread { display: flex; justify-content: space-between; align-items: center; }
+
+  .h1 { font-size: 26px; font-weight: 700; margin: 0 0 4px; }
+  .h2 { font-size: 20px; font-weight: 700; margin: 0 0 12px; }
+  .h3 { font-size: 16px; font-weight: 700; margin: 0 0 8px; }
+  .sub { color: var(--text-s); font-size: 14px; line-height: 1.5; }
+  .label { color: var(--text-t); font-size: 12px; font-weight: 600; }
+  .hint { color: var(--text-t); font-size: 12px; }
+
+  .hero-card {
+    background: var(--primary); border-radius: 20px; padding: 24px 20px;
+    text-align: center;
+  }
+  .hero-icon {
+    width: 64px; height: 64px; border-radius: 20px;
+    background: rgba(255,255,255,0.2); margin: 0 auto 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+  }
+  .hero-title { font-size: 20px; font-weight: 700; color: #fff; margin: 0 0 6px; }
+  .hero-sub { font-size: 14px; color: rgba(255,255,255,0.8); margin: 0 0 20px; }
+  .hero-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.2); color: #fff;
+    padding: 10px 20px; border-radius: 12px; font-weight: 700;
+  }
+
+  .info-row { display: flex; gap: 10px; }
+  .info-card {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 16px 10px; text-align: center;
+  }
+  .info-card .emoji { font-size: 24px; }
+  .info-card .t { font-size: 13px; font-weight: 700; margin: 6px 0 2px; }
+  .info-card .d { font-size: 11px; color: var(--text-s); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 16px;
+  }
+  .tab-bar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 68px; background: var(--bg2); border-top: 1px solid var(--border);
+    display: flex; align-items: center; padding-bottom: 10px;
+  }
+  .tab-item { flex: 1; text-align: center; color: var(--text-t); font-size: 10px; font-weight: 600; }
+  .tab-item.active { color: var(--primary); }
+  .tab-item .ic { display: block; font-size: 20px; margin-bottom: 2px; }
+  .tab-center {
+    position: absolute; top: -25px; left: 50%; transform: translateX(-50%);
+    width: 60px; height: 60px; border-radius: 30px; background: var(--primary);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 24px;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.5);
+  }
+
+  .btn {
+    display: block; text-align: center; font-weight: 700;
+    padding: 14px; border-radius: 14px;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost { color: var(--text-s); }
+
+  .input {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px; color: var(--text); font-size: 15px;
+    display: block; width: 100%;
+  }
+
+  .media-row { display: flex; gap: 12px; margin-bottom: 16px; }
+  .media-btn {
+    flex: 1; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px 12px; text-align: center;
+  }
+  .media-btn .ic {
+    width: 56px; height: 56px; border-radius: 16px;
+    background: rgba(99,102,241,0.15); color: var(--primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; margin: 0 auto 8px;
+  }
+  .media-btn .t { font-size: 15px; font-weight: 700; color: var(--text); }
+  .media-btn .h { font-size: 12px; color: var(--text-t); }
+
+  .status-badge { padding: 5px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; display: inline-block; }
+  .status-open { background: rgba(34,197,94,0.2); color: var(--success); }
+  .status-progress { background: rgba(245,158,11,0.2); color: var(--warning); }
+  .status-closed { background: rgba(155,155,155,0.2); color: #999; }
+
+  .bid-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 16px; margin-bottom: 10px;
+  }
+  .bid-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .bid-name { font-size: 16px; font-weight: 600; }
+  .rating { display: inline-flex; align-items: center; gap: 4px; background: rgba(245,158,11,0.2); padding: 3px 8px; border-radius: 10px; font-size: 11px; color: var(--warning); }
+  .bid-info { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .bid-info-item { display: flex; align-items: center; gap: 4px; }
+  .price { font-size: 22px; font-weight: 700; color: var(--primary); }
+  .price-label { font-size: 12px; color: var(--text-s); }
+  .divider-v { width: 1px; height: 24px; background: var(--border); }
+
+  .star { color: var(--warning); font-size: 28px; margin: 0 4px; }
+  .chip {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 6px 12px;
+    font-size: 12px; font-weight: 600; display: inline-block; margin-right: 6px; margin-bottom: 6px;
+  }
+  .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  .request-list-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 12px;
+    margin-bottom: 8px;
+  }
+  .request-icon {
+    width: 44px; height: 44px; border-radius: 12px; background: rgba(99,102,241,0.15);
+    display: flex; align-items: center; justify-content: center; color: var(--primary); font-size: 22px;
+  }
+  .unread-badge {
+    min-width: 20px; height: 20px; border-radius: 10px; background: var(--error);
+    color: #fff; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; padding: 0 6px;
+  }
+
+  .selected-card {
+    background: var(--surface); border: 1px solid rgba(34,197,94,0.4);
+    border-radius: 16px; padding: 16px;
+  }
+  .phone-reveal {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgba(99,102,241,0.15); padding: 12px; border-radius: 12px;
+    margin-bottom: 12px;
+  }
+  .phone-reveal .num { font-size: 18px; font-weight: 700; letter-spacing: 1px; }
+
+  /* Arrow icon to use */
+  .ic { display: inline-block; }
+
+  /* Chat screen */
+  .chat-msg {
+    max-width: 75%; padding: 10px 14px; border-radius: 16px;
+    margin-bottom: 8px; font-size: 14px;
+  }
+  .chat-msg.me { background: var(--primary); color: #fff; align-self: flex-end; margin-left: auto; border-bottom-right-radius: 4px; }
+  .chat-msg.them { background: var(--surface); color: var(--text); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .chat-input { position: absolute; bottom: 16px; left: 16px; right: 16px; display: flex; gap: 8px; }
+  .send-btn { width: 40px; height: 40px; border-radius: 20px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; }
+
+  /* Tab bar elements */
+  .tab-label { font-size: 10px; margin-top: 2px; }
+
+  /* Greeting */
+  .greeting { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+  .greeting-sub { font-size: 14px; color: var(--text-s); }
+
+  /* AI confirm */
+  .profession-chip {
+    background: var(--primary); color: #fff; padding: 8px 14px; border-radius: 10px;
+    font-weight: 700; display: inline-block;
+  }
+
+  /* Closed banner */
+  .closed-banner {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 14px; background: var(--bg2); color: var(--text-t);
+    border-top: 1px solid var(--border); font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- HOME (Hub) -->
+<!-- ============================================================ -->
+<div class="screen" id="home">
+  <div class="pad pt-xl">
+    <div class="greeting">Hello, Roee!</div>
+    <div class="greeting-sub mb-lg">2 active requests</div>
+
+    <div class="hero-card mb-md">
+      <div class="hero-icon">📷</div>
+      <div class="hero-title">Got a problem? We're here</div>
+      <div class="hero-sub">Snap, describe, and get quotes in minutes</div>
+      <div class="hero-btn">Report a problem <span>→</span></div>
+    </div>
+
+    <div class="card mb-md">
+      <div class="row mb-sm"><span class="label">Your latest request</span></div>
+      <div class="h3" style="margin:0 0 6px">Water leak in kitchen</div>
+      <div class="row">
+        <span style="width:8px;height:8px;border-radius:4px;background:var(--success)"></span>
+        <span class="hint">Open</span>
+      </div>
+    </div>
+
+    <div class="info-row">
+      <div class="info-card"><div class="emoji">⚡</div><div class="t">Fast</div><div class="d">Answers in minutes</div></div>
+      <div class="info-card"><div class="emoji">🛡️</div><div class="t">Reliable</div><div class="d">Verified pros</div></div>
+      <div class="info-card"><div class="emoji">🏷️</div><div class="t">Fair</div><div class="d">Compare prices</div></div>
+    </div>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab-item"><span class="ic">📄</span>My Requests</div>
+    <div class="tab-center">🏠</div>
+    <div class="tab-item active" style="margin-left:40px"><span class="ic">👤</span>Profile</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MY REQUESTS -->
+<!-- ============================================================ -->
+<div class="screen" id="my-requests">
+  <div class="pad pt-xl">
+    <div class="h1 mb-lg">My Requests</div>
+
+    <div class="request-list-item">
+      <div class="request-icon">🔧</div>
+      <div class="flex1">
+        <div class="h3" style="margin:0">Service request</div>
+        <div class="hint">3 new offers</div>
+      </div>
+      <div class="unread-badge">3</div>
+      <div class="status-badge status-open">Open</div>
+    </div>
+
+    <div class="request-list-item">
+      <div class="request-icon">🔧</div>
+      <div class="flex1">
+        <div class="h3" style="margin:0">Service request</div>
+        <div class="hint">Plumber</div>
+      </div>
+      <div class="status-badge status-progress">In Progress</div>
+    </div>
+
+    <div class="request-list-item">
+      <div class="request-icon">🔧</div>
+      <div class="flex1">
+        <div class="h3" style="margin:0">Service request</div>
+        <div class="hint">Electrician</div>
+      </div>
+      <div class="status-badge status-closed">Closed</div>
+    </div>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab-item active"><span class="ic">📄</span>My Requests</div>
+    <div class="tab-center">🏠</div>
+    <div class="tab-item" style="margin-left:40px"><span class="ic">👤</span>Profile</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PROFILE -->
+<!-- ============================================================ -->
+<div class="screen" id="profile-tab">
+  <div class="pad pt-xl">
+    <div class="h1 mb-lg">Profile</div>
+
+    <div class="card mb-md">
+      <div class="label mb-sm">Name</div>
+      <div class="h3" style="margin:0">Roee Angel</div>
+    </div>
+
+    <div class="card mb-md">
+      <div class="label mb-sm">Phone</div>
+      <div class="h3" style="margin:0">+972-54-833-6350</div>
+    </div>
+
+    <div class="card mb-md">
+      <div class="label mb-sm">Address</div>
+      <div class="h3" style="margin:0">Hadera, Israel</div>
+    </div>
+
+    <div class="card mb-md">
+      <div class="label mb-sm">Language</div>
+      <div class="row" style="gap:6px">
+        <div class="chip">🇮🇱 עברית</div>
+        <div class="chip active">🇬🇧 English</div>
+        <div class="chip">🇸🇦 العربية</div>
+        <div class="chip">🇷🇺 Русский</div>
+      </div>
+    </div>
+
+    <div class="btn btn-ghost">Report a problem</div>
+    <div class="btn btn-ghost">Sign out</div>
+
+    <div class="hint" style="text-align:center;margin-top:30px">Terms of Service • Privacy Policy • Accessibility</div>
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab-item"><span class="ic">📄</span>My Requests</div>
+    <div class="tab-center">🏠</div>
+    <div class="tab-item active" style="margin-left:40px"><span class="ic">👤</span>Profile</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- CAPTURE -->
+<!-- ============================================================ -->
+<div class="screen" id="capture">
+  <div class="pad pt-xl">
+    <div class="row mb-lg"><span style="font-size:24px">←</span><div class="h1" style="margin-left:12px">What's the problem?</div></div>
+
+    <div class="media-row">
+      <div class="media-btn">
+        <div class="ic">📷</div>
+        <div class="t">Capture</div>
+        <div class="h">Photo or video</div>
+      </div>
+      <div class="media-btn">
+        <div class="ic">🖼️</div>
+        <div class="t">Gallery</div>
+        <div class="h">Photos &amp; videos</div>
+      </div>
+    </div>
+
+    <div class="card mb-md" style="padding:12px;display:flex;gap:8px;align-items:center">
+      <span style="font-size:18px;color:var(--primary)">ℹ️</span>
+      <div class="hint" style="flex:1">Tip: describe what happened, when it started, and what you tried. A short video helps the pro understand the problem a lot.</div>
+    </div>
+
+    <div class="label mb-sm">Describe the problem *</div>
+    <div class="input" style="min-height:100px">Water leaking from the kitchen tap, started this morning, can't shut it off</div>
+    <div class="hint" style="margin-top:6px">65 characters</div>
+  </div>
+
+  <div style="position:absolute;bottom:16px;left:16px;right:16px">
+    <div class="btn btn-primary">Send for analysis</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- AI CONFIRM -->
+<!-- ============================================================ -->
+<div class="screen" id="confirm">
+  <div class="pad pt-xl">
+    <div class="row mb-lg"><span style="font-size:24px">←</span><div class="h1" style="margin-left:12px">Confirm Request</div></div>
+
+    <div class="card mb-md">
+      <div class="label mb-sm">What you wrote:</div>
+      <div style="font-size:14px;font-style:italic">Water leaking from the kitchen tap, started this morning, can't shut it off</div>
+    </div>
+
+    <div class="card mb-md" style="background:rgba(99,102,241,0.1);border-color:rgba(99,102,241,0.3)">
+      <div class="row mb-sm">
+        <span style="color:var(--primary);font-size:14px;font-weight:700">✨ AI Analysis</span>
+      </div>
+      <div class="label mb-sm">Relevant professional:</div>
+      <div class="profession-chip">Plumber</div>
+    </div>
+  </div>
+
+  <div style="position:absolute;bottom:16px;left:16px;right:16px">
+    <div class="btn btn-primary">Send &amp; find professionals</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SENT -->
+<!-- ============================================================ -->
+<div class="screen" id="sent">
+  <div class="pad" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center">
+    <div style="font-size:96px;color:var(--success);margin-bottom:24px">✓</div>
+    <div class="h1" style="font-size:32px">Sent Successfully!</div>
+    <div class="sub" style="max-width:320px;margin-top:12px">Your request was sent to professionals in your area</div>
+    <div style="margin-top:48px" class="btn btn-primary">Back to my requests</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- REQUEST DETAILS -->
+<!-- ============================================================ -->
+<div class="screen" id="request-details">
+  <div class="pad pt-xl">
+    <div class="spread mb-lg">
+      <div class="row"><span style="font-size:24px">←</span><div style="margin-left:12px"><div class="h3" style="margin:0">Service Request</div><div class="hint">Plumber</div></div></div>
+      <div class="status-badge status-open">Open</div>
+    </div>
+
+    <div class="spread mb-md">
+      <div class="h2" style="margin:0">Price Offers</div>
+      <div style="background:var(--primary);border-radius:12px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">3</div>
+    </div>
+
+    <div class="bid-card">
+      <div class="bid-top">
+        <div class="bid-name">Yossi plumbing</div>
+        <div class="rating">★ 4.8</div>
+      </div>
+      <div class="bid-info">
+        <div class="bid-info-item"><span class="price">350</span><span class="price-label">ILS</span></div>
+        <div class="divider-v"></div>
+        <div class="bid-info-item"><span style="color:var(--success)">⏱</span><span>Tomorrow 14:00</span></div>
+      </div>
+      <div class="hint">Tap to select</div>
+    </div>
+
+    <div class="bid-card">
+      <div class="bid-top">
+        <div class="bid-name">Express Plumbing</div>
+        <div class="rating">★ 4.9</div>
+      </div>
+      <div class="bid-info">
+        <div class="bid-info-item"><span class="price">420</span><span class="price-label">ILS</span></div>
+        <div class="divider-v"></div>
+        <div class="bid-info-item"><span style="color:var(--success)">⏱</span><span>Today 18:00</span></div>
+      </div>
+      <div class="hint">Tap to select</div>
+    </div>
+
+    <div class="bid-card" style="opacity:0.55;border-color:rgba(239,68,68,0.3)">
+      <div class="bid-top">
+        <div class="bid-name">Cohen Plumbers</div>
+      </div>
+      <div class="bid-info">
+        <div class="bid-info-item"><span class="price">280</span><span class="price-label">ILS</span></div>
+        <div class="divider-v"></div>
+        <div class="bid-info-item"><span style="color:var(--error)">⏱</span><span style="color:var(--error)">Yesterday 10:00</span></div>
+      </div>
+      <div class="hint" style="color:var(--error)">The proposed time has already passed</div>
+    </div>
+  </div>
+
+  <div style="position:absolute;bottom:16px;left:16px;right:16px;display:flex;gap:8px">
+    <div class="btn btn-secondary flex1">Pause request</div>
+    <div class="btn btn-ghost flex1">Close request</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PROVIDER SELECTED -->
+<!-- ============================================================ -->
+<div class="screen" id="selected">
+  <div class="pad pt-xl">
+    <div class="spread mb-lg">
+      <div class="row"><span style="font-size:24px">←</span><div style="margin-left:12px"><div class="h3" style="margin:0">Service Request</div><div class="hint">Plumber</div></div></div>
+      <div class="status-badge status-progress">In Progress</div>
+    </div>
+
+    <div class="selected-card">
+      <div class="row mb-sm">
+        <span style="color:var(--success);font-size:22px">✅</span>
+        <span style="color:var(--success);font-size:12px;font-weight:700;margin-left:6px">Professional Selected</span>
+      </div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:12px">Yossi plumbing</div>
+
+      <div class="row" style="gap:8px;margin-bottom:16px">
+        <div class="chip"><span style="color:var(--primary)">🏷</span> 350 ILS</div>
+        <div class="chip"><span style="color:var(--success)">⏱</span> Tomorrow 14:00</div>
+      </div>
+
+      <div class="phone-reveal">
+        <span style="color:var(--primary)">📞</span>
+        <span class="num">+972-52-123-4567</span>
+      </div>
+
+      <div class="btn btn-primary" style="margin-bottom:10px">
+        📞 Call Yossi plumbing →
+      </div>
+
+      <div class="btn btn-ghost" style="color:var(--error)">Cancel selection</div>
+    </div>
+  </div>
+
+  <div style="position:absolute;bottom:16px;left:16px;right:16px">
+    <div class="btn btn-ghost">Close request</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- REVIEW -->
+<!-- ============================================================ -->
+<div class="screen" id="review">
+  <div class="pad pt-xl">
+    <div class="h1 mb-md">How was the service?</div>
+    <div class="sub mb-lg">Rate Yossi plumbing</div>
+
+    <div style="text-align:center" class="mb-lg">
+      <span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star" style="color:var(--text-t)">★</span>
+      <div style="font-size:20px;font-weight:700;color:var(--success);margin-top:8px">Very good</div>
+    </div>
+
+    <div class="label mb-sm">What was good? (optional)</div>
+    <div class="mb-md">
+      <span class="chip active">Punctuality</span>
+      <span class="chip active">Professionalism</span>
+      <span class="chip">Fair price</span>
+      <span class="chip">Cleanliness</span>
+    </div>
+
+    <div class="label mb-sm">Write a comment (optional)</div>
+    <div class="input" style="min-height:80px">Came on time, fixed the leak in 20 min. Clean work.</div>
+
+    <div class="mb-md" style="margin-top:16px">
+      <div class="label mb-sm">How much did you pay? (optional)</div>
+      <div class="input">350</div>
+    </div>
+  </div>
+
+  <div style="position:absolute;bottom:16px;left:16px;right:16px">
+    <div class="btn btn-primary">Submit rating</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- VERIFY OTP -->
+<!-- ============================================================ -->
+<div class="screen" id="verify">
+  <div class="pad" style="padding-top:120px">
+    <div class="h1">Enter the code</div>
+    <div class="sub mb-lg">We sent a code to +972548336350</div>
+
+    <div class="label mb-sm">6-digit code</div>
+    <div class="input" style="font-size:24px;letter-spacing:8px;text-align:center">123456</div>
+
+    <div style="margin-top:40px" class="btn btn-primary">Verify</div>
+    <div class="hint" style="text-align:center;margin-top:16px">Didn't get it? Resend</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PROFILE SETUP -->
+<!-- ============================================================ -->
+<div class="screen" id="profile-setup">
+  <div class="pad" style="padding-top:60px">
+    <div class="h1">Let's get to know you</div>
+    <div class="sub mb-lg">Just a few more details and you're ready</div>
+
+    <div class="label mb-sm">What should we call you?</div>
+    <div class="input mb-md">Roee Angel</div>
+
+    <div class="label mb-sm">Your location</div>
+    <div class="card mb-md" style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:24px;color:var(--primary)">📍</span>
+      <div class="flex1">
+        <div style="font-weight:700">Hadera, Israel</div>
+        <div class="hint">Lat 32.44, Lng 34.92</div>
+      </div>
+      <span style="color:var(--success);font-size:20px">✓</span>
+    </div>
+
+    <div class="hint" style="margin-bottom:24px">To find professionals near you</div>
+
+    <div class="btn btn-primary">Let's go</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PERMISSIONS (native only) -->
+<!-- ============================================================ -->
+<div class="screen" id="permissions">
+  <div class="pad" style="padding-top:60px">
+    <div class="h1">Almost there</div>
+    <div class="sub mb-lg">We need two permissions for the app to work properly</div>
+
+    <div class="card mb-md" style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:28px">📍</span>
+      <div class="flex1">
+        <div style="font-weight:700">Location</div>
+        <div class="hint">To find professionals in your area</div>
+      </div>
+      <span style="color:var(--success);font-size:20px">✓</span>
+    </div>
+
+    <div class="card mb-lg" style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:28px">🔔</span>
+      <div class="flex1">
+        <div style="font-weight:700">Notifications</div>
+        <div class="hint">To update you when offers arrive</div>
+      </div>
+      <div class="btn btn-primary" style="padding:6px 14px;font-size:13px">Allow</div>
+    </div>
+
+    <div class="btn btn-primary">Continue</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- OTP VERIFY (6-box style) -->
+<!-- ============================================================ -->
+<div class="screen" id="verify-boxes">
+  <div class="pad" style="padding-top:120px">
+    <div class="h1">Enter the code</div>
+    <div class="sub mb-lg">We sent a code to +972-54-833-6350</div>
+
+    <div style="display:flex;gap:8px;margin-bottom:24px">
+      <div style="flex:1;height:64px;border-radius:14px;border:2px solid var(--primary);background:rgba(99,102,241,0.15);color:var(--text);font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center">1</div>
+      <div style="flex:1;height:64px;border-radius:14px;border:2px solid var(--primary);background:rgba(99,102,241,0.15);color:var(--text);font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center">2</div>
+      <div style="flex:1;height:64px;border-radius:14px;border:2px solid var(--primary);background:rgba(99,102,241,0.15);color:var(--text);font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center">3</div>
+      <div style="flex:1;height:64px;border-radius:14px;border:2px solid var(--primary);background:rgba(99,102,241,0.15);color:var(--text);font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center">4</div>
+      <div style="flex:1;height:64px;border-radius:14px;border:2px solid var(--primary);background:rgba(99,102,241,0.15);color:var(--text);font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center">5</div>
+      <div style="flex:1;height:64px;border-radius:14px;border:2px solid var(--primary);background:var(--surface);color:var(--text);font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center">_</div>
+    </div>
+
+    <div class="hint" style="text-align:center;margin-bottom:24px">
+      <span style="color:var(--primary)">✨ Auto-filled from SMS</span>
+    </div>
+
+    <div class="btn btn-primary">Verify</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PROVIDER WHATSAPP MESSAGE (what they see) -->
+<!-- ============================================================ -->
+<div class="screen" id="whatsapp-msg" style="background:#111b21">
+  <div style="background:#202c33;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #2a3942">
+    <div style="width:36px;height:36px;border-radius:18px;background:#00a884;display:flex;align-items:center;justify-content:center;font-size:18px">🔧</div>
+    <div class="flex1">
+      <div style="font-weight:700;font-size:15px;color:#e9edef">ai-fixly</div>
+      <div style="font-size:12px;color:#8696a0">online</div>
+    </div>
+    <span style="color:#8696a0;font-size:20px">📞</span>
+  </div>
+
+  <div class="pad" style="padding:12px;background:#0b141a;min-height:calc(100% - 64px)">
+    <div style="background:#202c33;padding:10px 12px;border-radius:8px;max-width:90%;color:#e9edef;font-size:13.5px;line-height:1.45">
+      <div style="font-weight:700;margin-bottom:6px">🔧 ai-fixly — New service request</div>
+      <div>📍 Area: Hadera</div>
+      <div style="margin-top:8px">📝 Customer description:</div>
+      <div style="font-style:italic;margin-bottom:6px">Water leaking from the kitchen tap, started this morning</div>
+      <div style="margin-bottom:8px">📷 2 photos attached</div>
+      <div style="color:#53bdeb">🟢 Send a quote:</div>
+      <div style="color:#53bdeb;text-decoration:underline;margin-bottom:8px;word-break:break-all">ai-fixly-web.pages.dev/provider/quote/abc123</div>
+      <div style="color:#ff6b6b">🔴 Report the request:</div>
+      <div style="color:#53bdeb;text-decoration:underline;margin-bottom:6px;word-break:break-all">ai-fixly-web.pages.dev/provider/report/abc123</div>
+      <div style="color:#8696a0;font-size:11px;margin-top:8px">Customer details (name, phone, address) are sent only if you are chosen.</div>
+      <div style="text-align:right;font-size:10px;color:#8696a0;margin-top:6px">10:42 ✓✓</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PROVIDER QUOTE FORM -->
+<!-- ============================================================ -->
+<div class="screen" id="provider-quote">
+  <div class="pad pt-xl">
+    <div style="color:var(--primary);font-size:14px;font-weight:700">ai-fixly</div>
+    <div class="h2" style="margin-top:4px;margin-bottom:16px">Send a quote to the customer</div>
+
+    <div class="card mb-md">
+      <div class="label mb-sm">Area</div>
+      <div style="font-size:15px;margin-bottom:12px">Hadera</div>
+
+      <div class="label mb-sm">Problem description</div>
+      <div style="font-size:14px;margin-bottom:12px">Water leaking from the kitchen tap, started this morning, can't shut it off</div>
+
+      <div style="display:flex;gap:8px">
+        <div style="width:72px;height:72px;border-radius:8px;background:linear-gradient(135deg,#2a3f5f,#1e2d47);display:flex;align-items:center;justify-content:center;font-size:28px">🚰</div>
+        <div style="width:72px;height:72px;border-radius:8px;background:linear-gradient(135deg,#3f2a5f,#2d1e47);display:flex;align-items:center;justify-content:center;font-size:28px">💧</div>
+      </div>
+    </div>
+
+    <div class="label mb-sm">Estimated price (₪)</div>
+    <div class="input mb-sm" style="font-size:18px;font-weight:700">350</div>
+
+    <div class="row" style="gap:12px;padding:10px 0;margin-bottom:16px">
+      <div style="width:40px;height:24px;border-radius:12px;background:var(--primary);position:relative">
+        <div style="position:absolute;right:2px;top:2px;width:20px;height:20px;border-radius:10px;background:#fff"></div>
+      </div>
+      <div class="flex1">
+        <div style="font-size:13px;font-weight:600">This is a visit fee only</div>
+        <div class="hint" style="font-size:11px">Additional costs may apply based on what we find</div>
+      </div>
+    </div>
+
+    <div class="label mb-sm">When can you come?</div>
+    <div style="margin-bottom:8px">
+      <span class="chip">Today</span>
+      <span class="chip active">Tomorrow</span>
+      <span class="chip">Day after</span>
+    </div>
+    <div>
+      <span class="chip">Morning</span>
+      <span class="chip">Noon</span>
+      <span class="chip active">Afternoon</span>
+      <span class="chip">Evening</span>
+    </div>
+    <div style="color:var(--success);font-size:13px;font-weight:600;margin-top:10px">You selected: Tomorrow • Afternoon</div>
+  </div>
+
+  <div style="position:absolute;bottom:16px;left:16px;right:16px">
+    <div class="btn btn-primary">Send quote to customer</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PROVIDER REPORT FORM -->
+<!-- ============================================================ -->
+<div class="screen" id="provider-report">
+  <div class="pad pt-xl">
+    <div style="color:var(--primary);font-size:14px;font-weight:700">ai-fixly</div>
+    <div class="h2" style="margin-top:4px;margin-bottom:6px">Report a problem with this request</div>
+    <div class="sub mb-lg">If this request is a wrong fit (wrong profession, spam, etc.), tell us and we won't send you similar requests.</div>
+
+    <div class="label mb-sm">What's the issue?</div>
+    <div class="input" style="min-height:120px">This is not my profession — I'm a plumber, this looks like electrical work.</div>
+  </div>
+
+  <div style="position:absolute;bottom:16px;left:16px;right:16px">
+    <div class="btn btn-primary">Submit report</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- OUT OF AREA -->
+<!-- ============================================================ -->
+<div class="screen" id="out-of-area">
+  <div class="pad" style="padding-top:80px;text-align:center">
+    <div style="font-size:64px;margin-bottom:24px">🌍</div>
+    <div class="h1" style="font-size:22px;line-height:1.3">Sorry, we're not<br>in your area yet</div>
+    <div class="sub mb-lg" style="margin-top:12px">We're currently active in Hadera, Kaiseria, Netanya and Hefer Valley. Working hard to reach you too!</div>
+
+    <div class="label mb-sm" style="text-align:left">Want us to notify you when we arrive?</div>
+    <div class="input mb-md" style="text-align:left">email@example.com</div>
+
+    <div class="btn btn-primary">Notify me</div>
+
+    <div style="margin-top:32px;text-align:left">
+      <div class="label mb-sm">Areas we serve:</div>
+      <span class="chip">Hadera</span>
+      <span class="chip">Kaiseria</span>
+      <span class="chip">Or Akiva</span>
+      <span class="chip">Pardes Hanna</span>
+      <span class="chip">Binyamina</span>
+      <span class="chip">Netanya</span>
+      <span class="chip">Hefer Valley</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

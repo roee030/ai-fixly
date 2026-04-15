@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ai-fixly — App Flow (draggable)</title>
+<style>
+  :root {
+    --bg: #0F0F1A;
+    --surface: #1A1A2E;
+    --border: rgba(255,255,255,0.12);
+    --text: #FFFFFF;
+    --text-secondary: rgba(255,255,255,0.6);
+    --primary: #6366F1;
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --arrow: #818CF8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, system-ui, sans-serif; overflow: hidden; }
+
+  /* Top toolbar */
+  .toolbar {
+    position: fixed; top: 0; left: 0; right: 0; height: 52px;
+    background: rgba(15,15,26,0.95); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px; padding: 0 20px;
+    z-index: 1000;
+  }
+  .toolbar h1 { font-size: 16px; margin: 0; color: var(--primary); }
+  .toolbar .spacer { flex: 1; }
+  .toolbar button {
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 14px; font-size: 13px; cursor: pointer;
+    transition: all 150ms;
+  }
+  .toolbar button:hover { background: rgba(255,255,255,0.08); border-color: var(--primary); }
+  .toolbar button.primary { background: var(--primary); border-color: var(--primary); }
+  .toolbar button.primary:hover { background: #4F46E5; }
+  .toolbar .hint { color: var(--text-secondary); font-size: 12px; }
+
+  /* Infinite pannable canvas */
+  #canvas {
+    position: absolute; top: 52px; left: 0; right: 0; bottom: 0;
+    overflow: hidden; cursor: grab;
+    background-image:
+      radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+  #canvas.panning { cursor: grabbing; }
+  #world {
+    position: absolute; width: 10000px; height: 10000px;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+  }
+
+  /* Arrow SVG overlay */
+  #arrows {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  #arrows path {
+    fill: none;
+    stroke: var(--arrow);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-dasharray: 6 4;
+    opacity: 0.8;
+  }
+  #arrows text { fill: var(--text-secondary); font-size: 12px; font-weight: 600; }
+
+  /* Screen card */
+  .card {
+    position: absolute;
+    width: 280px;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    overflow: hidden;
+    cursor: grab;
+    user-select: none;
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+  .card:hover { border-color: var(--primary); box-shadow: 0 12px 40px rgba(99,102,241,0.3); }
+  .card.dragging { cursor: grabbing; z-index: 999; opacity: 0.9; }
+  .card .header {
+    padding: 10px 14px;
+    background: rgba(99,102,241,0.15);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card .title {
+    font-size: 14px; font-weight: 700; color: var(--text);
+  }
+  .card .route {
+    font-size: 10px; font-family: ui-monospace, monospace;
+    color: var(--text-secondary); opacity: 0.8;
+  }
+  .card img {
+    display: block; width: 100%; height: auto;
+    background: #000;
+  }
+  .card .footer {
+    padding: 8px 14px;
+    background: rgba(0,0,0,0.3);
+    font-size: 11px; color: var(--text-secondary);
+    border-top: 1px solid var(--border);
+  }
+  .card.placeholder .body {
+    padding: 30px 20px;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 400px;
+    background: repeating-linear-gradient(
+      45deg, rgba(255,255,255,0.02), rgba(255,255,255,0.02) 10px,
+      rgba(255,255,255,0.04) 10px, rgba(255,255,255,0.04) 20px
+    );
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .card.placeholder .body strong { color: var(--primary); }
+
+  /* Badge for zone */
+  .zone-badge {
+    position: absolute; padding: 4px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .zone-badge.public { background: rgba(34,197,94,0.15); color: var(--success); border: 1px solid rgba(34,197,94,0.3); }
+  .zone-badge.auth { background: rgba(245,158,11,0.15); color: var(--warning); border: 1px solid rgba(245,158,11,0.3); }
+  .zone-badge.provider { background: rgba(99,102,241,0.15); color: var(--primary); border: 1px solid rgba(99,102,241,0.3); }
+
+  /* Legend */
+  .legend {
+    position: fixed; bottom: 20px; left: 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px;
+    font-size: 12px; z-index: 900;
+  }
+  .legend-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+  .zoom-indicator {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 14px;
+    font-size: 12px; z-index: 900;
+    font-family: ui-monospace, monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>🔧 ai-fixly — App Flow</h1>
+  <span class="hint">Drag cards. Scroll to pan. Ctrl+Scroll to zoom.</span>
+  <div class="spacer"></div>
+  <button onclick="resetLayout()">Reset layout</button>
+  <button onclick="toggleArrows()">Toggle arrows</button>
+  <button class="primary" onclick="exportLayout()">Export layout (JSON)</button>
+</div>
+
+<div class="legend">
+  <div class="legend-row"><div class="legend-dot" style="background: rgba(34,197,94,0.5)"></div>Public (no auth)</div>
+  <div class="legend-row"><div class="legend-dot" style="background: rgba(245,158,11,0.5)"></div>Auth-required</div>
+  <div class="legend-row"><div class="legend-dot" style="background: rgba(99,102,241,0.5)"></div>Provider (WhatsApp link)</div>
+</div>
+
+<div class="zoom-indicator" id="zoomIndicator">100%</div>
+
+<div id="canvas">
+  <div id="world">
+    <svg id="arrows" width="100%" height="100%"></svg>
+    <!-- cards are injected here -->
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+ * Data — every screen gets an entry. Position is layout hint only;
+ * the user can drag cards anywhere and the new layout auto-saves.
+ * ======================================================================= */
+const SCREENS = [
+  // Zone: Public (SEO + provider-facing)
+  { id: 'seo-plumber',     title: 'SEO: Plumber',          route: '/services/plumber',        img: 'screenshots/04-services-plumber.png',   zone: 'public',   next: ['onboarding'], label: 'User clicks CTA', x: 80,   y: 60 },
+  { id: 'seo-electrician', title: 'SEO: Electrician',      route: '/services/electrician',    img: 'screenshots/06-services-electrician.png', zone: 'public', next: ['onboarding'], label: 'User clicks CTA', x: 80,   y: 780 },
+  { id: 'join',            title: 'Provider join',          route: '/join',                    img: 'screenshots/05-join.png',               zone: 'public',   next: [], x: 80, y: 1500 },
+
+  // Zone: Auth flow
+  { id: 'onboarding',      title: '1. Onboarding',         route: '/onboarding',              img: 'screenshots/01-onboarding.png',          zone: 'public',   next: ['phone'], label: 'Lets start', x: 500, y: 60 },
+  { id: 'onboarding-3',    title: '1. Onboarding (slide 3)', route: '/onboarding',            img: 'screenshots/02-onboarding-2.png',        zone: 'public',   next: ['phone'], x: 500, y: 780 },
+  { id: 'phone',           title: '2. Auth: Phone',        route: '/auth/phone',              img: 'screenshots/03-phone-auth.png',          zone: 'public',   next: ['verify'], label: 'Send code', x: 920, y: 400 },
+
+  // Auth-required screens — mockup screenshots (designed to match the app)
+  { id: 'verify',          title: '3. Auth: Verify OTP (6 boxes + SMS auto-fill)', route: '/auth/verify', img: 'screenshots/mock-verify-boxes.png', zone: 'auth', next: ['profile-setup'], label: 'OTP correct', x: 1340, y: 60 },
+  { id: 'profile-setup',   title: '4. Profile setup',      route: '/auth/profile-setup',      img: 'screenshots/mock-profile-setup.png',  zone: 'auth', next: ['permissions', 'out-of-area'], label: 'Save', x: 1340, y: 1000 },
+  { id: 'permissions',     title: '5. Permissions (native)', route: '/auth/permissions',      img: 'screenshots/mock-permissions.png',    zone: 'auth', next: ['home'], x: 1760, y: 500 },
+  { id: 'out-of-area',     title: '5b. Out of area (dead end)', route: '/auth/out-of-area',   img: 'screenshots/mock-out-of-area.png',    zone: 'auth', next: [], x: 1760, y: 1400 },
+
+  // Main tabs
+  { id: 'home',            title: '6. Home (hub)',          route: '/(tabs)/',                img: 'screenshots/mock-home.png',           zone: 'auth', next: ['capture', 'request-details'], label: 'Snap', x: 2200, y: 60 },
+  { id: 'my-requests',     title: '7. My Requests',         route: '/(tabs)/requests',        img: 'screenshots/mock-my-requests.png',    zone: 'auth', next: ['request-details'], x: 2200, y: 1000 },
+  { id: 'profile',         title: '7b. Profile',            route: '/(tabs)/profile',         img: 'screenshots/mock-profile-tab.png',    zone: 'auth', next: [], x: 2200, y: 1950 },
+
+  // Capture flow
+  { id: 'capture',         title: '8. Capture',             route: '/capture',                img: 'screenshots/mock-capture.png',        zone: 'auth', next: ['confirm'], label: 'Send for analysis', x: 2640, y: 60 },
+  { id: 'confirm',         title: '9. AI Confirm',          route: '/capture/confirm',        img: 'screenshots/mock-confirm.png',        zone: 'auth', next: ['sent'], label: 'Confirm', x: 3080, y: 60 },
+  { id: 'sent',            title: '10. Sent',               route: '/capture/sent',           img: 'screenshots/mock-sent.png',           zone: 'auth', next: ['my-requests'], x: 3520, y: 60 },
+
+  // Request lifecycle
+  { id: 'request-details', title: '11. Request details',    route: '/request/[id]',           img: 'screenshots/mock-request-details.png', zone: 'auth', next: ['selected', 'review'], label: 'Pick bid', x: 2640, y: 1000 },
+  { id: 'selected',        title: '12. Provider selected',  route: '/request/[id] (state)',   img: 'screenshots/mock-selected.png',       zone: 'auth', next: ['review'], label: 'Close request', x: 3080, y: 1000 },
+  { id: 'review',          title: '13. Review',             route: '/review/[requestId]',     img: 'screenshots/mock-review.png',         zone: 'auth', next: [], x: 3520, y: 1000 },
+
+  // Provider side (WhatsApp → web)
+  { id: 'whatsapp-msg',    title: 'WhatsApp to provider',   route: 'Twilio WA',               img: 'screenshots/mock-whatsapp-msg.png',   zone: 'provider', next: ['provider-quote', 'provider-report'], x: 500, y: 2900 },
+  { id: 'provider-quote',  title: 'Provider quote form',    route: '/provider/quote/[id]',    img: 'screenshots/mock-provider-quote.png', zone: 'provider', next: ['request-details'], label: 'Bid appears', x: 1000, y: 2900 },
+  { id: 'provider-report', title: 'Provider report form',   route: '/provider/report/[id]',   img: 'screenshots/mock-provider-report.png', zone: 'provider', next: [], x: 1500, y: 2900 },
+];
+
+/* =========================================================================
+ * Canvas pan/zoom + card drag
+ * ======================================================================= */
+const world = document.getElementById('world');
+const canvas = document.getElementById('canvas');
+const arrowsSvg = document.getElementById('arrows');
+const zoomEl = document.getElementById('zoomIndicator');
+
+let pan = { x: 0, y: 0, scale: 0.9 };
+let isPanning = false, panStart = null;
+
+function applyTransform() {
+  world.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${pan.scale})`;
+  zoomEl.textContent = Math.round(pan.scale * 100) + '%';
+}
+applyTransform();
+
+canvas.addEventListener('mousedown', (e) => {
+  // only start panning if clicking on the canvas itself, not a card
+  if (e.target.closest('.card')) return;
+  isPanning = true;
+  canvas.classList.add('panning');
+  panStart = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+});
+window.addEventListener('mousemove', (e) => {
+  if (!isPanning) return;
+  pan.x = e.clientX - panStart.x;
+  pan.y = e.clientY - panStart.y;
+  applyTransform();
+});
+window.addEventListener('mouseup', () => {
+  isPanning = false;
+  canvas.classList.remove('panning');
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    // zoom centered on cursor
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const before = { x: (mx - pan.x) / pan.scale, y: (my - pan.y) / pan.scale };
+    const delta = -e.deltaY * 0.001;
+    pan.scale = Math.max(0.2, Math.min(2.0, pan.scale + delta));
+    pan.x = mx - before.x * pan.scale;
+    pan.y = my - before.y * pan.scale;
+  } else {
+    pan.x -= e.deltaX;
+    pan.y -= e.deltaY;
+  }
+  applyTransform();
+}, { passive: false });
+
+/* =========================================================================
+ * Render the cards
+ * ======================================================================= */
+const STORAGE_KEY = 'aifixly_flow_positions';
+const saved = (() => {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+})();
+const positions = {};
+SCREENS.forEach((s) => {
+  positions[s.id] = saved[s.id] || { x: s.x, y: s.y };
+});
+
+function renderCards() {
+  document.querySelectorAll('.card').forEach((n) => n.remove());
+  SCREENS.forEach((s) => {
+    const card = document.createElement('div');
+    card.className = 'card' + (s.placeholder ? ' placeholder' : '');
+    card.dataset.id = s.id;
+    const pos = positions[s.id];
+    card.style.left = pos.x + 'px';
+    card.style.top = pos.y + 'px';
+
+    const zoneBadge = `<span class="zone-badge ${s.zone}">${s.zone}</span>`;
+
+    if (s.img) {
+      card.innerHTML = `
+        <div class="header">
+          <div>
+            <div class="title">${s.title}</div>
+            <div class="route">${s.route}</div>
+          </div>
+          ${zoneBadge}
+        </div>
+        <img src="${s.img}" alt="${s.title}" draggable="false">
+      `;
+    } else {
+      card.innerHTML = `
+        <div class="header">
+          <div>
+            <div class="title">${s.title}</div>
+            <div class="route">${s.route}</div>
+          </div>
+          ${zoneBadge}
+        </div>
+        <div class="body">${s.placeholder}</div>
+      `;
+    }
+    world.appendChild(card);
+    makeDraggable(card, s.id);
+  });
+}
+
+function makeDraggable(card, id) {
+  let dragStart = null;
+  card.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+    card.classList.add('dragging');
+    const rect = card.getBoundingClientRect();
+    dragStart = { mx: e.clientX, my: e.clientY, origX: positions[id].x, origY: positions[id].y };
+    const onMove = (ev) => {
+      const dx = (ev.clientX - dragStart.mx) / pan.scale;
+      const dy = (ev.clientY - dragStart.my) / pan.scale;
+      positions[id] = { x: dragStart.origX + dx, y: dragStart.origY + dy };
+      card.style.left = positions[id].x + 'px';
+      card.style.top = positions[id].y + 'px';
+      drawArrows();
+    };
+    const onUp = () => {
+      card.classList.remove('dragging');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(positions));
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
+/* =========================================================================
+ * Draw arrows between cards with orthogonal-ish curves
+ * ======================================================================= */
+let showArrows = true;
+function drawArrows() {
+  arrowsSvg.innerHTML = `
+    <defs>
+      <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5"
+        markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 Z" fill="var(--arrow)" />
+      </marker>
+    </defs>
+  `;
+  if (!showArrows) return;
+
+  SCREENS.forEach((from) => {
+    if (!from.next) return;
+    const a = positions[from.id];
+    const aEl = document.querySelector(`.card[data-id="${from.id}"]`);
+    const aW = aEl ? aEl.offsetWidth : 280;
+    const aH = aEl ? aEl.offsetHeight : 400;
+
+    from.next.forEach((toId) => {
+      const to = positions[toId];
+      if (!to) return;
+      const bEl = document.querySelector(`.card[data-id="${toId}"]`);
+      const bW = bEl ? bEl.offsetWidth : 280;
+      const bH = bEl ? bEl.offsetHeight : 400;
+
+      // Start at right-middle of `from`, end at left-middle of `to`
+      const x1 = a.x + aW;
+      const y1 = a.y + aH / 2;
+      const x2 = to.x;
+      const y2 = to.y + bH / 2;
+
+      // Cubic bezier curve between them
+      const dx = Math.max(60, (x2 - x1) / 2);
+      const pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', pathD);
+      path.setAttribute('marker-end', 'url(#arrowhead)');
+      arrowsSvg.appendChild(path);
+
+      if (from.label) {
+        const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2 - 10;
+        labelText.setAttribute('x', midX);
+        labelText.setAttribute('y', midY);
+        labelText.setAttribute('text-anchor', 'middle');
+        labelText.textContent = from.label;
+        arrowsSvg.appendChild(labelText);
+      }
+    });
+  });
+}
+
+/* =========================================================================
+ * Toolbar actions
+ * ======================================================================= */
+function resetLayout() {
+  if (!confirm('Reset all card positions to the default layout?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  SCREENS.forEach((s) => { positions[s.id] = { x: s.x, y: s.y }; });
+  renderCards();
+  drawArrows();
+}
+function toggleArrows() {
+  showArrows = !showArrows;
+  drawArrows();
+}
+function exportLayout() {
+  const blob = new Blob([JSON.stringify(positions, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'app-flow-layout.json';
+  a.click();
+}
+
+renderCards();
+drawArrows();
+
+// Initial: center the canvas roughly on the first screen
+pan.x = 60;
+pan.y = 20;
+applyTransform();
+</script>
+
+</body>
+</html>

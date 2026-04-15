@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Text, View, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
-import { Button, Input } from '../../src/components/ui';
+import { Button } from '../../src/components/ui';
+import { OtpBoxInput } from '../../src/components/ui/OtpBoxInput';
 import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { otpSchema } from '../../src/validators';
 import { authService } from '../../src/services/auth';
@@ -22,31 +23,32 @@ export default function VerifyScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
 
-  const handleVerify = async () => {
-    setError('');
-
-    const result = otpSchema.safeParse(code);
-    if (!result.success) {
-      setError(result.error.issues[0].message);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await authService.confirmOtp(verificationId, code);
-      // Auth state change handled by useAuth hook -> redirects automatically
-    } catch (err) {
-      setError(t('auth.wrongCode'));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const handleVerify = useCallback(
+    async (finalCode: string) => {
+      setError('');
+      const result = otpSchema.safeParse(finalCode);
+      if (!result.success) {
+        setError(result.error.issues[0].message);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        await authService.confirmOtp(verificationId, finalCode);
+        // Auth state change handled by useAuth hook → AuthGate redirects.
+      } catch (err) {
+        setError(t('auth.wrongCode'));
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [verificationId, t],
+  );
 
   return (
     <ScreenContainer>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, justifyContent: 'center' }}
+        style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 8 }}
       >
         <Text style={{ fontSize: 28, fontWeight: 'bold', marginBottom: 8, color: COLORS.text }}>
           {t('auth.verifyTitle')}
@@ -55,27 +57,35 @@ export default function VerifyScreen() {
           {t('auth.verifySubtitle', { phone })}
         </Text>
 
-        <Input
-          label={t('auth.verifyTitle')}
-          placeholder="000000"
+        <OtpBoxInput
+          length={LIMITS.OTP_LENGTH}
           value={code}
-          onChangeText={setCode}
-          keyboardType="number-pad"
-          maxLength={LIMITS.OTP_LENGTH}
-          autoComplete="one-time-code"
-          textContentType="oneTimeCode"
-          error={error}
+          onChange={(next) => {
+            setCode(next);
+            if (error) setError('');
+          }}
+          onComplete={(final) => { void handleVerify(final); }}
+          error={!!error}
         />
+
+        {error !== '' && (
+          <Text style={{ color: COLORS.error, fontSize: 13, marginBottom: 12, textAlign: 'center' }}>
+            {error}
+          </Text>
+        )}
 
         <Button
           title={t('auth.verify')}
-          onPress={handleVerify}
+          onPress={() => void handleVerify(code)}
           isLoading={isLoading}
           disabled={code.length !== LIMITS.OTP_LENGTH}
         />
 
         {error !== '' && (
-          <Pressable onPress={() => setShowFeedback(true)} style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+          <Pressable
+            onPress={() => setShowFeedback(true)}
+            style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' }}
+          >
             <Ionicons name="chatbubble-ellipses-outline" size={14} color={COLORS.textTertiary} />
             <Text style={{ color: COLORS.textTertiary, fontSize: 12 }}>{t('common.reportProblem')}</Text>
           </Pressable>
