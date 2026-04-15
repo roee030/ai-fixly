@@ -7,9 +7,9 @@ import {
 import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
+import { VideoPreview } from '../../src/components/ui/VideoPreview';
 import { useImagePicker } from '../../src/hooks/useImagePicker';
 import { COLORS, LIMITS } from '../../src/constants';
 import { analyticsService } from '../../src/services/analytics';
@@ -329,13 +329,14 @@ export default function CaptureScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Unified preview modal. Images render with <Image>; videos render with
-          expo-video's <VideoView> + native controls so the user can play,
-          pause, and scrub the recording before submitting. */}
+      {/* Unified preview modal. Images render with <Image>; videos delegate
+          to the optional VideoPreview component (which gracefully falls back
+          to a placeholder when expo-video's native module isn't compiled
+          into the current build). */}
       <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
         <View style={styles.modalOverlay}>
           {preview?.kind === 'video' ? (
-            <VideoPreview uri={preview.uri} />
+            <VideoPreview uri={preview.uri} style={styles.previewVideo} />
           ) : preview ? (
             <Pressable style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' }} onPress={() => setPreview(null)}>
               <Image
@@ -351,22 +352,6 @@ export default function CaptureScreen() {
         </View>
       </Modal>
     </ScreenContainer>
-  );
-}
-
-function VideoPreview({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = false;
-    p.play();
-  });
-  return (
-    <VideoView
-      style={styles.previewVideo}
-      player={player}
-      allowsFullscreen
-      nativeControls
-      contentFit="contain"
-    />
   );
 }
 

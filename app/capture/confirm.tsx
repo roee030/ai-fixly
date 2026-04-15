@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Image, ActivityIndicator, Pressable, Modal, Fla
 import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { VideoPreview } from '../../src/components/ui/VideoPreview';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { localizeProfession } from '../../src/utils/professionLabel';
@@ -278,7 +278,7 @@ export default function ConfirmScreen() {
       <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
         <View style={previewStyles.overlay}>
           {preview?.kind === 'video' ? (
-            <VideoPlayer uri={preview.uri} />
+            <VideoPreview uri={preview.uri} style={previewStyles.video} />
           ) : preview ? (
             <Pressable style={previewStyles.imgWrap} onPress={() => setPreview(null)}>
               <Image source={{ uri: preview.uri }} style={previewStyles.image} resizeMode="contain" />
@@ -290,22 +290,6 @@ export default function ConfirmScreen() {
         </View>
       </Modal>
     </ScreenContainer>
-  );
-}
-
-function VideoPlayer({ uri }: { uri: string }) {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = false;
-    p.play();
-  });
-  return (
-    <VideoView
-      style={previewStyles.video}
-      player={player}
-      allowsFullscreen
-      nativeControls
-      contentFit="contain"
-    />
   );
 }
 
