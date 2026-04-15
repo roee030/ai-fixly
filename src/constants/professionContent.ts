@@ -1,79 +1,75 @@
 /**
- * Unique SEO content per profession.
+ * Profession-level SEO content builder.
  *
- * Everything here is written from scratch for ai-fixly — not scraped from
- * competitors. The structure reuses a shared template (intro / whyUs /
- * commonIssues / pricingHints / faq) with per-profession overrides so we
- * can cover every profession without hand-writing full copy for all of
- * them.
+ * Two content "tiers" are supported:
  *
- * SEO approach:
- *  - Every section becomes an h2 that Google indexes.
- *  - FAQ items also power Schema.org FAQPage markup — enables rich
- *    snippets on Google SERP.
- *  - commonIssues cross-links to the problem-matrix for intra-site
- *    authority.
- *  - All content is written in Hebrew, the primary SEO market.
+ *  1. Generic template — populated from the active i18n locale
+ *     (`servicePage.genericIntroFmt`, `genericIssueN`, `genericFaq*`). This
+ *     means every profession has useful, translated content out of the
+ *     box: intro, 4 issues, 3 pricing hints, 5 FAQs — in he/en/ar/ru.
+ *
+ *  2. Hebrew-only per-profession overrides (HEBREW_OVERRIDES) — rich,
+ *     custom copy for the top professions (plumber, electrician, locksmith…)
+ *     that we prioritize for organic search in Israel. These overrides ONLY
+ *     apply when the active language is Hebrew; in other languages we keep
+ *     the translated generic template to avoid mixing Hebrew content with
+ *     an English/Arabic/Russian UI.
+ *
+ * Why this split:
+ *  - Non-Hebrew users get consistent, fully-translated pages.
+ *  - Hebrew SEO pages — our priority market — get uniquely written,
+ *    competitive content where it matters most.
  */
 
 import type { ProfessionKey } from './problemMatrix';
 
 export interface ProfessionSEO {
-  /** 1–2 sentence intro for the hero subtitle (max ~160 chars). */
   intro: string;
-  /** "Why ai-fixly" bullets (4 short points). */
   whyUs: string[];
-  /** Typical issues this profession handles (bullets, 4–8). */
   commonIssues: string[];
-  /** Short guidance about pricing. DO NOT mention specific shekel prices. */
   pricingHints: string[];
-  /** 4–6 FAQ items. Becomes FAQPage JSON-LD. */
   faq: Array<{ q: string; a: string }>;
-  /** Other professions to cross-link to. */
   relatedProfessions?: ProfessionKey[];
-  /** Emergency/24-7? Surfaces a red badge + pushes urgency wording. */
   isEmergencyService?: boolean;
 }
 
-// Default FAQs used when a profession doesn't define its own.
-// Gets the profession label injected at render time via `{{name}}`.
-const GENERIC_FAQ: ProfessionSEO['faq'] = [
-  {
-    q: 'איך מוצאים {{name}} אמין?',
-    a: 'ב-ai-fixly תצלם את הבעיה ותקבל בתוך דקות הצעות מחיר מבעלי מקצוע שמדורגים בידי לקוחות קודמים באזורך. אין תשלום על השירות שלנו — אתה משלם רק לבעל המקצוע שתבחר.',
-  },
-  {
-    q: 'כמה זמן לוקח לקבל הצעה?',
-    a: 'ההצעות הראשונות מגיעות תוך מספר דקות. אתה רואה אותן באפליקציה עם מחיר משוער וזמן הגעה, ובוחר את מי שמתאים לך.',
-  },
-  {
-    q: 'מה העלות של השירות?',
-    a: 'השירות שלנו חינמי לחלוטין. אתה לא משלם לנו כלום — אנחנו רק מתווכים בינך לבין {{name}} שמתאים לך. המחיר שהוא מציע הוא המחיר שאתה משלם לו ישירות.',
-  },
-  {
-    q: 'האם בעלי המקצוע מאומתים?',
-    a: 'כן. אנחנו עובדים רק עם בעלי מקצוע פעילים עם ותק ומדורגים מלקוחות קודמים. אתה רואה את הדירוג שלהם לפני שאתה בוחר.',
-  },
-  {
-    q: 'מה קורה אם ההצעה לא מתאימה לי?',
-    a: 'אין שום התחייבות. אתה יכול לסגור את הבקשה בכל שלב, לבחור הצעה אחרת, או פשוט לחכות להצעות נוספות. אנחנו לא מחייבים אותך לשום דבר.',
-  },
-];
-
-// Default Why Us bullets shared across most professions.
-const GENERIC_WHY_US = [
-  'צלם את הבעיה — ה-AI שלנו מזהה מה בדיוק צריך',
-  'הצעות מחיר מבעלי מקצוע באזורך תוך דקות',
-  'ללא עלות, ללא התחייבות, ללא חיפוש ארוך',
-  'רק בעלי מקצוע מדורגים — אתה בוחר את הטוב ביותר',
-];
+type TFunction = (key: string, opts?: Record<string, unknown>) => string;
 
 // ============================================================================
-// Per-profession overrides. Only fields that differ from the generic need to
-// be set. `buildProfessionContent(key)` falls back to generics for the rest.
+// Metadata that applies across all locales
 // ============================================================================
 
-const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
+/**
+ * Cross-profession links for internal SEO. Same in every language — the
+ * profession label itself gets localized at render time.
+ */
+const RELATED: Partial<Record<ProfessionKey, ProfessionKey[]>> = {
+  plumber: ['hvac_contractor', 'waterproofing_specialist', 'electric_water_heater', 'leak_detection', 'gas_technician'],
+  electrician: ['hvac_contractor', 'electric_water_heater', 'alarm_systems', 'security_camera_installer', 'intercom'],
+  locksmith: ['car_locksmith', 'door_installer', 'alarm_systems'],
+  hvac_contractor: ['electrician', 'ac_cleaning'],
+  home_appliance_repair: ['gas_technician', 'electrician'],
+  painter: ['plasterer', 'renovator', 'whitewashing'],
+  renovator: ['painter', 'tiler', 'plasterer', 'carpenter', 'electrician', 'plumber', 'home_inspection'],
+  gas_technician: ['home_appliance_repair', 'electric_water_heater'],
+  exterminator: ['cleaning_service', 'pigeon_repellent', 'snake_catcher', 'mouse_catcher'],
+  carpenter: ['kitchen_installer', 'door_installer', 'parquet_installer'],
+};
+
+const EMERGENCY_KEYS: ProfessionKey[] = ['plumber', 'electrician', 'locksmith', 'gas_technician'];
+
+// ============================================================================
+// Hebrew-only rich overrides
+// ============================================================================
+
+interface HebrewOverride {
+  intro?: string;
+  commonIssues?: string[];
+  pricingHints?: string[];
+  faq?: Array<{ q: string; a: string }>;
+}
+
+const HEBREW_OVERRIDES: Partial<Record<ProfessionKey, HebrewOverride>> = {
   plumber: {
     intro: 'נזילה, סתימה, דוד לא מחמם או לחץ מים נמוך — אינסטלטור מקצועי באזורך תוך דקות. פשוט לצלם, לקבל הצעות, ולבחור.',
     commonIssues: [
@@ -86,7 +82,7 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       'פיצוץ צינור או הצפה — טיפול דחוף',
     ],
     pricingHints: [
-      'מחיר ביקור אבחון נע בד"כ בין מאות בודדות לאלף שקלים — תלוי באזור ובשעה',
+      'מחיר ביקור אבחון נע בדרך כלל בין מאות בודדות לאלף שקלים — תלוי באזור ובשעה',
       'סתימות פשוטות זולות יותר מעבודות שדורשות פירוק צנרת',
       'עבודה דחופה (לילה, חג או סופ"ש) יקרה יותר ב-30-50%',
       'תמיד דרוש להתעקש על הצעת מחיר ברורה לפני תחילת העבודה',
@@ -94,12 +90,10 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
     faq: [
       { q: 'מתי כדאי להזעיק אינסטלטור דחוף?', a: 'הצפה, פיצוץ צינור, ביוב חוזר או דוד שמטפטף מים חמים — אלה מקרים שבהם עדיף לא לחכות ולקבל אינסטלטור עם ETA מיידי. ב-ai-fixly תוכל לראות מי פנוי עכשיו ולבחור את הזמין ביותר.' },
       { q: 'האם אני חייב להיות בבית בזמן הביקור?', a: 'רוב האינסטלטורים דורשים נוכחות בעלי דירה לפחות לפתיחה וסיום העבודה. אפשר לסכם איתו דרך ai-fixly מראש מה הנוסחה שמתאימה לך.' },
-      { q: 'מה ההבדל בין אינסטלטור לטכנאי מיזוג?', a: 'אינסטלטור מטפל במים וצנרת (נזילות, סתימות, דוד שמש, מערכות ניקוז). טכנאי מיזוג מטפל במיזוג אוויר ומערכות קירור/חימום. לפעמים יש חפיפה — ב-ai-fixly ה-AI מכוון אותך לבעל המקצוע הנכון אוטומטית.' },
+      { q: 'מה ההבדל בין אינסטלטור לטכנאי מיזוג?', a: 'אינסטלטור מטפל במים וצנרת (נזילות, סתימות, דוד שמש, מערכות ניקוז). טכנאי מיזוג מטפל במיזוג אוויר ומערכות קירור/חימום. ב-ai-fixly ה-AI מכוון אותך לבעל המקצוע הנכון אוטומטית.' },
       { q: 'מה העלות של תיקון נזילה פשוטה?', a: 'המחיר משתנה מאוד לפי האזור, שעת היום ומורכבות — לכן אנחנו לא נותנים מחירון קבוע. במקום זאת, ב-ai-fixly אתה מקבל הצעות מבעלי מקצוע אמיתיים באזורך, עם מחיר ספציפי לבעיה שלך.' },
-      { q: 'האם יש אחריות על העבודה?', a: 'רוב האינסטלטורים נותנים אחריות של חודש עד שנה על העבודה (לא על החלקים). חשוב לוודא את זה מולם לפני שמסכמים. אתה יכול לדרג אותם אחרי העבודה ב-ai-fixly — זה עוזר ללקוחות הבאים.' },
+      { q: 'האם יש אחריות על העבודה?', a: 'רוב האינסטלטורים נותנים אחריות של חודש עד שנה על העבודה (לא על החלקים). חשוב לוודא את זה מולם לפני שמסכמים.' },
     ],
-    relatedProfessions: ['hvac_contractor', 'waterproofing_specialist', 'electric_water_heater', 'leak_detection', 'gas_technician'],
-    isEmergencyService: true,
   },
 
   electrician: {
@@ -126,8 +120,6 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       { q: 'מה זה בודק חשמל?', a: 'בודק חשמל הוא חשמלאי עם הסמכה גבוהה במיוחד שמוסמך לבדוק ולחתום על תקינות לוחות חשמל. אם אתה קונה דירה או שיש שינויים גדולים — הוא זה שאתה צריך, ולא חשמלאי רגיל.' },
       { q: 'האם העבודה באחריות?', a: 'רוב החשמלאים נותנים אחריות של 6 חודשים עד שנה על העבודה. חשוב לקבל את זה בכתב או בוואטסאפ ולא רק בעל פה.' },
     ],
-    relatedProfessions: ['hvac_contractor', 'electric_water_heater', 'alarm_systems', 'security_camera_installer', 'intercom'],
-    isEmergencyService: true,
   },
 
   locksmith: {
@@ -145,8 +137,6 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       'מנעולן טוב יגיע עם ציוד שלא פוגע בדלת — לא לפתוח אם אין ציוד מתאים',
       'מחיר החלפת מנעול תלוי ברמת האבטחה (רב-בריח יקר יותר)',
     ],
-    relatedProfessions: ['car_locksmith', 'door_installer', 'alarm_systems'],
-    isEmergencyService: true,
   },
 
   hvac_contractor: {
@@ -164,7 +154,6 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       'ניקוי תקופתי חוסך הרבה על צריכת חשמל וחיי המזגן',
       'בקיץ יש עומס — מחירים עולים והזמינות קטנה',
     ],
-    relatedProfessions: ['electrician', 'ac_cleaning'],
   },
 
   home_appliance_repair: {
@@ -177,7 +166,6 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       'מייבש שלא מייבש או מעלה ריח',
       'הוצאת חפץ תקוע',
     ],
-    relatedProfessions: ['gas_technician', 'electrician'],
   },
 
   painter: {
@@ -195,7 +183,6 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       'שכבה שנייה עולה בפחות משכבה ראשונה',
       'הכנה (חירור, שפכטל, שיוף) זה חלק גדול מהעלות',
     ],
-    relatedProfessions: ['plasterer', 'renovator', 'whitewashing'],
   },
 
   renovator: {
@@ -214,7 +201,6 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       'מסמך הסכם שיפוצים הוא חובה — לא לוותר',
       'חשוב לוודא ביטוח אחריות מקצועית של הקבלן',
     ],
-    relatedProfessions: ['painter', 'tiler', 'plasterer', 'carpenter', 'electrician', 'plumber', 'home_inspection'],
   },
 
   gas_technician: {
@@ -232,8 +218,6 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       'בדיקת דליפה זולה יחסית, התקנה חדשה יקרה יותר',
       'אל תנסה לעבוד על גז בעצמך — מסוכן ולא חוקי',
     ],
-    relatedProfessions: ['home_appliance_repair', 'electric_water_heater'],
-    isEmergencyService: true,
   },
 
   exterminator: {
@@ -251,7 +235,6 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       'הדברה יעילה דורשת לפעמים 2-3 ביקורים במרווחים',
       'חשוב לוודא שהחומרים מאושרים ובטוחים לילדים/חיות',
     ],
-    relatedProfessions: ['cleaning_service', 'pigeon_repellent', 'snake_catcher', 'mouse_catcher'],
   },
 
   handyman: {
@@ -275,7 +258,6 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
       'ייצור מדפים מעוצבים',
       'עבודת גמר של פנל רצפה',
     ],
-    relatedProfessions: ['kitchen_installer', 'door_installer', 'parquet_installer'],
   },
 };
 
@@ -284,52 +266,66 @@ const OVERRIDES: Partial<Record<ProfessionKey, Partial<ProfessionSEO>>> = {
 // ============================================================================
 
 /**
- * Build the full SEO content for a profession. Falls back to generic
- * templates for any field that wasn't overridden.
+ * Build the full SEO content for a profession using the active i18n
+ * `t()` function. Hebrew overrides are applied only when the active
+ * language is Hebrew.
  */
-export function buildProfessionContent(key: ProfessionKey, labelHe: string): ProfessionSEO {
-  const override = OVERRIDES[key] || {};
+export function buildProfessionContent(
+  key: ProfessionKey,
+  labelLocalized: string,
+  t: TFunction,
+  language: string,
+): ProfessionSEO {
+  const generic = buildGeneric(labelLocalized, t);
+  const override = language === 'he' ? HEBREW_OVERRIDES[key] : undefined;
 
-  const intro =
-    override.intro ||
-    `מחפש ${labelHe} באזורך? ai-fixly מחבר אותך לבעלי המקצוע הטובים ביותר תוך דקות — צלם את הבעיה וקבל הצעות מחיר מיד.`;
+  return {
+    intro: override?.intro || generic.intro,
+    whyUs: generic.whyUs,
+    commonIssues: override?.commonIssues || generic.commonIssues,
+    pricingHints: override?.pricingHints || generic.pricingHints,
+    faq: override?.faq || generic.faq,
+    relatedProfessions: RELATED[key],
+    isEmergencyService: EMERGENCY_KEYS.includes(key),
+  };
+}
 
-  const whyUs = override.whyUs || GENERIC_WHY_US;
-
-  const commonIssues =
-    override.commonIssues ||
-    [
-      `בעיות דחופות בתחום ${labelHe}`,
-      `התקנה ושדרוג של מערכות ${labelHe}`,
-      `תיקון ושירות שוטף`,
-      `ייעוץ מקצועי לפני פרויקט גדול`,
-    ];
-
-  const pricingHints =
-    override.pricingHints ||
-    [
-      `המחיר משתנה לפי מורכבות העבודה, האזור ושעת היום`,
-      `תמיד לבקש הצעת מחיר בכתב לפני תחילת עבודה`,
-      `אזורי פריפריה לרוב זולים מאזור המרכז`,
-    ];
-
-  const faq = (override.faq || GENERIC_FAQ).map((item) => ({
-    q: item.q.replace(/\{\{name\}\}/g, labelHe),
-    a: item.a.replace(/\{\{name\}\}/g, labelHe),
-  }));
-
+function buildGeneric(name: string, t: TFunction): ProfessionSEO {
+  const intro = t('servicePage.genericIntroFmt', { name });
+  const whyUs = [
+    t('servicePage.whyUs1'),
+    t('servicePage.whyUs2'),
+    t('servicePage.whyUs3'),
+    t('servicePage.whyUs4'),
+  ];
+  const commonIssues = [
+    t('servicePage.genericIssue1Fmt', { name }),
+    t('servicePage.genericIssue2Fmt', { name }),
+    t('servicePage.genericIssue3'),
+    t('servicePage.genericIssue4'),
+  ];
+  const pricingHints = [
+    t('servicePage.genericPricing1'),
+    t('servicePage.genericPricing2'),
+    t('servicePage.genericPricing3'),
+  ];
+  const faq = [
+    { q: t('servicePage.genericFaq1qFmt', { name }), a: t('servicePage.genericFaq1aFmt', { name }) },
+    { q: t('servicePage.genericFaq2q'), a: t('servicePage.genericFaq2a') },
+    { q: t('servicePage.genericFaq3q'), a: t('servicePage.genericFaq3aFmt', { name }) },
+    { q: t('servicePage.genericFaq4q'), a: t('servicePage.genericFaq4a') },
+    { q: t('servicePage.genericFaq5q'), a: t('servicePage.genericFaq5a') },
+  ];
   return {
     intro,
     whyUs,
     commonIssues,
     pricingHints,
     faq,
-    relatedProfessions: override.relatedProfessions,
-    isEmergencyService: override.isEmergencyService ?? false,
   };
 }
 
-/** Ordered list of the main Israeli cities for the city-links section. */
+/** Major Israeli cities for the city-links strip. */
 export const MAIN_CITIES: Array<{ he: string; slug: string }> = [
   { he: 'תל אביב', slug: 'tel-aviv' },
   { he: 'רמת גן', slug: 'ramat-gan' },

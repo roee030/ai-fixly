@@ -8,7 +8,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build:web": "npx expo export --platform web && npx tsx scripts/generate-sitemap.ts",
+    "build:web": "npx expo export --platform web && npx tsx scripts/generate-sitemap.ts && npx tsx scripts/post-build-fonts.ts",
     "deploy:web": "npm run build:web && node -e \"const fs=require('fs');fs.mkdirSync('dist/fonts',{recursive:true});fs.copyFileSync('public/fonts/Ionicons.ttf','dist/fonts/Ionicons.ttf');\" && npx wrangler pages deploy dist/ --project-name ai-fixly-web --commit-dirty=true",
     "deploy:worker": "cd workers/broker && npx wrangler deploy",
     "deploy:rules": "npx firebase-tools deploy --only firestore:rules",

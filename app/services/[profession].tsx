@@ -3,9 +3,11 @@ import { useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import Head from 'expo-router/head';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { PROFESSIONS } from '../../src/constants/problemMatrix';
 import type { ProfessionKey } from '../../src/constants/problemMatrix';
 import { buildProfessionContent, MAIN_CITIES } from '../../src/constants/professionContent';
+import { localizeProfession } from '../../src/utils/professionLabel';
 import { COLORS, SPACING, RADII, FONT_SIZES } from '../../src/constants';
 
 const BASE_URL = 'https://ai-fixly-web.pages.dev';
@@ -18,15 +20,11 @@ export function generateStaticParams() {
 // JSON-LD builders
 // ============================================================================
 
-/**
- * Service + LocalBusiness JSON-LD. Google uses this to render rich results
- * and to understand the site as a service-broker.
- */
-function buildServiceJsonLd(profLabel: string, canonicalUrl: string, description: string) {
+function buildServiceJsonLd(name: string, canonicalUrl: string, description: string) {
   return {
     '@context': 'https://schema.org',
     '@type': 'Service',
-    name: `${profLabel} — ai-fixly`,
+    name: `${name} — ai-fixly`,
     description,
     provider: {
       '@type': 'Organization',
@@ -35,7 +33,7 @@ function buildServiceJsonLd(profLabel: string, canonicalUrl: string, description
       logo: `${BASE_URL}/icon.png`,
     },
     areaServed: { '@type': 'Country', name: 'Israel' },
-    serviceType: profLabel,
+    serviceType: name,
     availableChannel: {
       '@type': 'ServiceChannel',
       serviceUrl: canonicalUrl,
@@ -45,15 +43,11 @@ function buildServiceJsonLd(profLabel: string, canonicalUrl: string, description
       '@type': 'Offer',
       price: '0',
       priceCurrency: 'ILS',
-      description: 'השירות חינמי — משלמים רק לבעל המקצוע שנבחר',
+      description: 'Free platform — customers pay only the chosen professional.',
     },
   };
 }
 
-/**
- * FAQPage JSON-LD. Each Q&A turns into a rich-snippet expandable row on
- * the Google search results page (when Google chooses to render it).
- */
 function buildFaqJsonLd(faq: Array<{ q: string; a: string }>) {
   return {
     '@context': 'https://schema.org',
@@ -66,37 +60,37 @@ function buildFaqJsonLd(faq: Array<{ q: string; a: string }>) {
   };
 }
 
-/** Breadcrumbs JSON-LD — helps Google draw the nav path above the result. */
-function buildBreadcrumbsJsonLd(profLabel: string, canonicalUrl: string) {
+function buildBreadcrumbsJsonLd(name: string, canonicalUrl: string, labels: { home: string; services: string }) {
   return {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'בית', item: BASE_URL },
-      { '@type': 'ListItem', position: 2, name: 'שירותים', item: `${BASE_URL}/services` },
-      { '@type': 'ListItem', position: 3, name: profLabel, item: canonicalUrl },
+      { '@type': 'ListItem', position: 1, name: labels.home, item: BASE_URL },
+      { '@type': 'ListItem', position: 2, name: labels.services, item: `${BASE_URL}/services` },
+      { '@type': 'ListItem', position: 3, name, item: canonicalUrl },
     ],
   };
 }
 
 // ============================================================================
-// SEO Head
+// SEO <head>
 // ============================================================================
 
 function SeoHead({
-  profLabel,
-  canonicalUrl,
+  title,
   metaDescription,
+  canonicalUrl,
+  language,
   jsonLdBlocks,
 }: {
-  profLabel: string;
-  canonicalUrl: string;
+  title: string;
   metaDescription: string;
+  canonicalUrl: string;
+  language: string;
   jsonLdBlocks: object[];
 }) {
   if (Platform.OS !== 'web') return null;
-
-  const title = `${profLabel} באזורך — הצעות מחיר תוך דקות | ai-fixly`;
+  const isRTL = language === 'he' || language === 'ar';
 
   return (
     <Head>
@@ -106,14 +100,14 @@ function SeoHead({
       <meta property="og:description" content={metaDescription} />
       <meta property="og:type" content="website" />
       <meta property="og:url" content={canonicalUrl} />
-      <meta property="og:locale" content="he_IL" />
+      <meta property="og:locale" content={language === 'he' ? 'he_IL' : language === 'ar' ? 'ar_IL' : language === 'ru' ? 'ru_RU' : 'en_US'} />
       <meta property="og:site_name" content="ai-fixly" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={title} />
       <meta name="twitter:description" content={metaDescription} />
       <link rel="canonical" href={canonicalUrl} />
       <meta name="robots" content="index, follow, max-image-preview:large" />
-      <html lang="he" dir="rtl" />
+      <html lang={language} dir={isRTL ? 'rtl' : 'ltr'} />
       {jsonLdBlocks.map((block, i) => (
         <script
           key={i}
@@ -126,15 +120,10 @@ function SeoHead({
 }
 
 // ============================================================================
-// Inline mini-form (prominent on-page CTA)
+// Inline mini-form (top-of-page conversion surface)
 // ============================================================================
 
-/**
- * One-field textarea that captures the user's problem description and then
- * hands off to the full /capture flow with the description pre-filled.
- * This turns the SEO landing page into an actual conversion surface.
- */
-function InlineProblemForm({ profLabel, profKey }: { profLabel: string; profKey: string }) {
+function InlineProblemForm({ profLabel, profKey, t }: { profLabel: string; profKey: string; t: (k: string, o?: Record<string, unknown>) => string }) {
   const [text, setText] = useState('');
   const isValid = text.trim().length >= 10;
 
@@ -149,12 +138,12 @@ function InlineProblemForm({ profLabel, profKey }: { profLabel: string; profKey:
   return (
     <View style={styles.inlineForm}>
       <Text role="heading" aria-level={2} style={styles.inlineFormTitle}>
-        {`תאר את הבעיה — קבל ${profLabel} תוך דקות`}
+        {t('servicePage.inlineFormTitleFmt', { name: profLabel })}
       </Text>
       <TextInput
         value={text}
         onChangeText={setText}
-        placeholder={`למשל: נזילה מהברז במטבח, התחילה הבוקר ולא מפסיקה`}
+        placeholder={t('servicePage.inlineFormPlaceholder')}
         placeholderTextColor={COLORS.textTertiary}
         multiline
         numberOfLines={3}
@@ -166,50 +155,71 @@ function InlineProblemForm({ profLabel, profKey }: { profLabel: string; profKey:
         disabled={!isValid}
       >
         <Ionicons name="camera" size={20} color="#FFFFFF" />
-        <Text style={styles.ctaText}>המשך עם תמונה וקבל הצעות</Text>
+        <Text style={styles.ctaText}>{t('servicePage.inlineFormSubmit')}</Text>
       </Pressable>
-      <Text style={styles.inlineFormNote}>
-        ללא עלות • ללא התחייבות • הצעות מבעלי מקצוע מדורגים באזור שלך
-      </Text>
+      <Text style={styles.inlineFormNote}>{t('servicePage.inlineFormNote')}</Text>
     </View>
   );
 }
 
 // ============================================================================
-// Content sections
+// Section components
 // ============================================================================
 
-function HeroSection({ profLabel, intro, isEmergency }: { profLabel: string; intro: string; isEmergency: boolean }) {
+function HeroSection({ profLabel, intro, isEmergency, emergencyLabel, heroH1 }: {
+  profLabel: string;
+  intro: string;
+  isEmergency: boolean;
+  emergencyLabel: string;
+  heroH1: string;
+}) {
   return (
     <View style={styles.hero}>
       {isEmergency && (
         <View style={styles.emergencyBadge}>
           <Ionicons name="flash" size={14} color="#FFFFFF" />
-          <Text style={styles.emergencyBadgeText}>שירות 24/7 זמין</Text>
+          <Text style={styles.emergencyBadgeText}>{emergencyLabel}</Text>
         </View>
       )}
       <View style={styles.heroIcon}>
         <Ionicons name="construct" size={48} color={COLORS.primary} />
       </View>
       <Text role="heading" aria-level={1} style={styles.h1}>
-        {profLabel} באזורך
+        {heroH1}
       </Text>
       <Text style={styles.heroSubtitle}>{intro}</Text>
     </View>
   );
 }
 
-function WhyUsSection({ points }: { points: string[] }) {
+function TrustStrip({ t }: { t: (k: string) => string }) {
+  const items = [
+    { icon: 'time-outline' as const, label: t('servicePage.trustFast') },
+    { icon: 'shield-checkmark-outline' as const, label: t('servicePage.trustVerified') },
+    { icon: 'pricetag-outline' as const, label: t('servicePage.trustPrices') },
+    { icon: 'heart-outline' as const, label: t('servicePage.trustFree') },
+  ];
+  return (
+    <View style={styles.trustStrip}>
+      {items.map((item, i) => (
+        <View key={i} style={styles.trustItem}>
+          <Ionicons name={item.icon} size={20} color={COLORS.primary} />
+          <Text style={styles.trustLabel}>{item.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function BulletSection({ title, bullets, icon }: { title: string; bullets: string[]; icon: any }) {
   return (
     <View style={styles.section}>
-      <Text role="heading" aria-level={2} style={styles.h2}>
-        למה ai-fixly?
-      </Text>
+      <Text role="heading" aria-level={2} style={styles.h2}>{title}</Text>
       <View style={styles.bulletList}>
-        {points.map((point, i) => (
+        {bullets.map((b, i) => (
           <View key={i} style={styles.bulletRow}>
-            <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-            <Text style={styles.bulletText}>{point}</Text>
+            <Ionicons name={icon} size={20} color={COLORS.success} />
+            <Text style={styles.bulletText}>{b}</Text>
           </View>
         ))}
       </View>
@@ -217,12 +227,10 @@ function WhyUsSection({ points }: { points: string[] }) {
   );
 }
 
-function CommonIssuesSection({ issues, profLabel }: { issues: string[]; profLabel: string }) {
+function CommonIssuesSection({ title, issues }: { title: string; issues: string[] }) {
   return (
     <View style={styles.section}>
-      <Text role="heading" aria-level={2} style={styles.h2}>
-        {`מה ${profLabel} פותר?`}
-      </Text>
+      <Text role="heading" aria-level={2} style={styles.h2}>{title}</Text>
       <View style={styles.issuesList}>
         {issues.map((issue, i) => (
           <View key={i} style={styles.issueCard}>
@@ -235,17 +243,13 @@ function CommonIssuesSection({ issues, profLabel }: { issues: string[]; profLabe
   );
 }
 
-function PricingSection({ hints, profLabel }: { hints: string[]; profLabel: string }) {
+function PricingSection({ title, intro, hints }: { title: string; intro: string; hints: string[] }) {
   return (
     <View style={styles.section}>
-      <Text role="heading" aria-level={2} style={styles.h2}>
-        {`כמה עולה ${profLabel}?`}
-      </Text>
+      <Text role="heading" aria-level={2} style={styles.h2}>{title}</Text>
       <View style={styles.pricingBox}>
         <Ionicons name="information-circle" size={18} color={COLORS.info} />
-        <Text style={styles.pricingNote}>
-          אנחנו לא נותנים מחירון קבוע — במקום זה, בעלי המקצוע נותנים הצעת מחיר ספציפית לבעיה שלך.
-        </Text>
+        <Text style={styles.pricingNote}>{intro}</Text>
       </View>
       <View style={styles.bulletList}>
         {hints.map((hint, i) => (
@@ -259,19 +263,16 @@ function PricingSection({ hints, profLabel }: { hints: string[]; profLabel: stri
   );
 }
 
-function HowItWorks() {
+function HowItWorks({ t }: { t: (k: string) => string }) {
   const steps = [
-    { icon: 'camera-outline' as const, title: 'צלם את הבעיה', desc: 'תמונה אחת או סרטון — וגם תיאור קצר' },
-    { icon: 'sparkles-outline' as const, title: 'ה-AI מזהה', desc: 'מחפש את בעלי המקצוע המתאימים באזורך' },
-    { icon: 'chatbubbles-outline' as const, title: 'קבל הצעות', desc: 'מחיר וזמן הגעה — ישיר ב-WhatsApp של בעל המקצוע' },
-    { icon: 'checkmark-done-outline' as const, title: 'בחר את הטוב ביותר', desc: 'השווה מחירים ודירוגים, סגור ברגע' },
+    { icon: 'camera-outline' as const, title: t('servicePage.step1Title'), desc: t('servicePage.step1Desc') },
+    { icon: 'sparkles-outline' as const, title: t('servicePage.step2Title'), desc: t('servicePage.step2Desc') },
+    { icon: 'chatbubbles-outline' as const, title: t('servicePage.step3Title'), desc: t('servicePage.step3Desc') },
+    { icon: 'checkmark-done-outline' as const, title: t('servicePage.step4Title'), desc: t('servicePage.step4Desc') },
   ];
-
   return (
     <View style={styles.section}>
-      <Text role="heading" aria-level={2} style={styles.h2}>
-        איך זה עובד?
-      </Text>
+      <Text role="heading" aria-level={2} style={styles.h2}>{t('servicePage.howItWorksTitle')}</Text>
       <View style={styles.stepsGrid}>
         {steps.map((step, i) => (
           <View key={i} style={styles.stepCard}>
@@ -288,30 +289,18 @@ function HowItWorks() {
   );
 }
 
-function FaqSection({ faq }: { faq: Array<{ q: string; a: string }> }) {
+function FaqSection({ title, faq }: { title: string; faq: Array<{ q: string; a: string }> }) {
   const [open, setOpen] = useState<number | null>(0);
   return (
     <View style={styles.section}>
-      <Text role="heading" aria-level={2} style={styles.h2}>
-        שאלות נפוצות
-      </Text>
+      <Text role="heading" aria-level={2} style={styles.h2}>{title}</Text>
       {faq.map((item, i) => {
         const isOpen = open === i;
         return (
-          <Pressable
-            key={i}
-            onPress={() => setOpen(isOpen ? null : i)}
-            style={styles.faqItem}
-          >
+          <Pressable key={i} onPress={() => setOpen(isOpen ? null : i)} style={styles.faqItem}>
             <View style={styles.faqHeader}>
-              <Text role="heading" aria-level={3} style={styles.faqQuestion}>
-                {item.q}
-              </Text>
-              <Ionicons
-                name={isOpen ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color={COLORS.textSecondary}
-              />
+              <Text role="heading" aria-level={3} style={styles.faqQuestion}>{item.q}</Text>
+              <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textSecondary} />
             </View>
             {isOpen && <Text style={styles.faqAnswer}>{item.a}</Text>}
           </Pressable>
@@ -321,22 +310,14 @@ function FaqSection({ faq }: { faq: Array<{ q: string; a: string }> }) {
   );
 }
 
-function CitiesSection({ profLabel }: { profLabel: string }) {
+function CitiesSection({ title, intro }: { title: string; intro: string }) {
   return (
     <View style={styles.section}>
-      <Text role="heading" aria-level={2} style={styles.h2}>
-        {`${profLabel} באזורים שלנו`}
-      </Text>
-      <Text style={styles.sectionIntro}>
-        {`אנחנו פעילים בכל מרכז הארץ. לחץ על עיר כדי למצוא ${profLabel} באזורך.`}
-      </Text>
+      <Text role="heading" aria-level={2} style={styles.h2}>{title}</Text>
+      <Text style={styles.sectionIntro}>{intro}</Text>
       <View style={styles.cityPills}>
         {MAIN_CITIES.map((city) => (
-          <Pressable
-            key={city.slug}
-            onPress={() => router.push('/capture')}
-            style={styles.cityPill}
-          >
+          <Pressable key={city.slug} onPress={() => router.push('/capture')} style={styles.cityPill}>
             <Text style={styles.cityPillText}>{city.he}</Text>
           </Pressable>
         ))}
@@ -345,18 +326,18 @@ function CitiesSection({ profLabel }: { profLabel: string }) {
   );
 }
 
-function RelatedSection({ related }: { related: ProfessionKey[] }) {
-  const items = related
-    .map((key) => PROFESSIONS.find((p) => p.key === key))
-    .filter(Boolean) as Array<{ key: string; labelHe: string }>;
+function RelatedSection({ title, related, t }: { title: string; related: ProfessionKey[]; t: (k: string, o?: Record<string, unknown>) => string }) {
+  const items: Array<{ key: string; label: string }> = [];
+  for (const key of related) {
+    const prof = PROFESSIONS.find((p) => p.key === key);
+    if (prof) items.push({ key: prof.key, label: localizeProfession(prof.key, t) });
+  }
 
   if (items.length === 0) return null;
 
   return (
     <View style={styles.section}>
-      <Text role="heading" aria-level={2} style={styles.h2}>
-        בעלי מקצוע נוספים שאולי תצטרך
-      </Text>
+      <Text role="heading" aria-level={2} style={styles.h2}>{title}</Text>
       <View style={styles.relatedList}>
         {items.map((item) => (
           <Pressable
@@ -365,29 +346,10 @@ function RelatedSection({ related }: { related: ProfessionKey[] }) {
             style={styles.relatedCard}
           >
             <Ionicons name="arrow-back" size={16} color={COLORS.primary} />
-            <Text style={styles.relatedText}>{item.labelHe}</Text>
+            <Text style={styles.relatedText}>{item.label}</Text>
           </Pressable>
         ))}
       </View>
-    </View>
-  );
-}
-
-function TrustStrip() {
-  const items = [
-    { icon: 'time-outline' as const, label: 'תוך דקות' },
-    { icon: 'shield-checkmark-outline' as const, label: 'מאומתים' },
-    { icon: 'pricetag-outline' as const, label: 'השוואת מחירים' },
-    { icon: 'heart-outline' as const, label: 'ללא עלות' },
-  ];
-  return (
-    <View style={styles.trustStrip}>
-      {items.map((item, i) => (
-        <View key={i} style={styles.trustItem}>
-          <Ionicons name={item.icon} size={20} color={COLORS.primary} />
-          <Text style={styles.trustLabel}>{item.label}</Text>
-        </View>
-      ))}
     </View>
   );
 }
@@ -398,32 +360,41 @@ function TrustStrip() {
 
 export default function ServicePage() {
   const { profession } = useLocalSearchParams<{ profession: string }>();
+  const { t, i18n } = useTranslation();
+  const language = i18n.language || 'he';
   const prof = PROFESSIONS.find((p) => p.key === profession);
 
   if (!prof) {
     return (
       <View style={styles.container}>
-        <Text style={styles.notFound}>שירות לא נמצא</Text>
+        <Text style={styles.notFound}>{t('servicePage.notFound')}</Text>
       </View>
     );
   }
 
-  const content = buildProfessionContent(prof.key as ProfessionKey, prof.labelHe);
+  const profLabel = localizeProfession(prof.key, t);
+  const content = buildProfessionContent(prof.key as ProfessionKey, profLabel, t, language);
   const canonicalUrl = `${BASE_URL}/services/${profession}`;
-  const metaDescription = `${prof.labelHe} באזורך דרך ai-fixly — צלם את הבעיה, קבל הצעות מחיר מבעלי מקצוע מדורגים תוך דקות. ללא עלות ללא התחייבות. ${content.intro}`.slice(0, 158);
+  const title = t('servicePage.titleFmt', { name: profLabel });
+  const metaDescription = t('servicePage.metaDescFmt', { name: profLabel }).slice(0, 158);
+  const heroH1 = t('servicePage.heroH1Fmt', { name: profLabel });
 
   const jsonLdBlocks = [
-    buildServiceJsonLd(prof.labelHe, canonicalUrl, content.intro),
+    buildServiceJsonLd(profLabel, canonicalUrl, content.intro),
     buildFaqJsonLd(content.faq),
-    buildBreadcrumbsJsonLd(prof.labelHe, canonicalUrl),
+    buildBreadcrumbsJsonLd(profLabel, canonicalUrl, {
+      home: t('tabs.home'),
+      services: t('profile.title'),
+    }),
   ];
 
   return (
     <>
       <SeoHead
-        profLabel={prof.labelHe}
-        canonicalUrl={canonicalUrl}
+        title={title}
         metaDescription={metaDescription}
+        canonicalUrl={canonicalUrl}
+        language={language}
         jsonLdBlocks={jsonLdBlocks}
       />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -431,51 +402,62 @@ export default function ServicePage() {
           <Pressable
             onPress={() => router.replace('/(tabs)')}
             style={styles.navBtn}
-            accessibilityLabel="חזרה לדף הבית"
+            accessibilityLabel={t('servicePage.backHome')}
           >
-            <Ionicons name="home-outline" size={22} color={COLORS.text} />
+            {/* A small text fallback + icon: if the Ionicons font ever fails
+                to load, the arrow still shows. Home icon was rendering as an
+                empty box in some environments. */}
+            <Ionicons name="chevron-back" size={22} color={COLORS.text} />
           </Pressable>
         </View>
 
-        <HeroSection profLabel={prof.labelHe} intro={content.intro} isEmergency={!!content.isEmergencyService} />
-        <TrustStrip />
+        <HeroSection
+          profLabel={profLabel}
+          intro={content.intro}
+          isEmergency={!!content.isEmergencyService}
+          emergencyLabel={t('servicePage.emergencyBadge')}
+          heroH1={heroH1}
+        />
+        <TrustStrip t={t} />
 
-        {/* Primary conversion point — inline form at the top */}
-        <InlineProblemForm profLabel={prof.labelHe} profKey={prof.key} />
+        <InlineProblemForm profLabel={profLabel} profKey={prof.key} t={t} />
 
-        <WhyUsSection points={content.whyUs} />
-        <CommonIssuesSection issues={content.commonIssues} profLabel={prof.labelHe} />
-        <HowItWorks />
-        <PricingSection hints={content.pricingHints} profLabel={prof.labelHe} />
+        <BulletSection title={t('servicePage.whyUsTitle')} bullets={content.whyUs} icon="checkmark-circle" />
+        <CommonIssuesSection title={t('servicePage.commonIssuesTitleFmt', { name: profLabel })} issues={content.commonIssues} />
+        <HowItWorks t={t} />
+        <PricingSection
+          title={t('servicePage.pricingTitleFmt', { name: profLabel })}
+          intro={t('servicePage.pricingIntro')}
+          hints={content.pricingHints}
+        />
 
-        {/* Secondary CTA — after the "how it works" section */}
         <View style={{ marginVertical: SPACING.lg }}>
           <Pressable style={styles.ctaButton} onPress={() => router.push('/capture')}>
             <Ionicons name="camera" size={20} color="#FFFFFF" />
-            <Text style={styles.ctaText}>{`צלם את הבעיה וקבל הצעות מ${prof.labelHe}`}</Text>
+            <Text style={styles.ctaText}>{t('servicePage.secondaryCtaFmt', { name: profLabel })}</Text>
           </Pressable>
         </View>
 
-        <FaqSection faq={content.faq} />
-        <CitiesSection profLabel={prof.labelHe} />
+        <FaqSection title={t('servicePage.faqTitle')} faq={content.faq} />
+        <CitiesSection
+          title={t('servicePage.citiesTitleFmt', { name: profLabel })}
+          intro={t('servicePage.citiesIntroFmt', { name: profLabel })}
+        />
 
         {content.relatedProfessions && content.relatedProfessions.length > 0 && (
-          <RelatedSection related={content.relatedProfessions} />
+          <RelatedSection title={t('servicePage.relatedTitle')} related={content.relatedProfessions} t={t} />
         )}
 
-        {/* Final conversion CTA */}
         <View style={styles.finalCta}>
-          <Text style={styles.finalCtaTitle}>{`מחפש ${prof.labelHe}? התחל עכשיו`}</Text>
-          <Text style={styles.finalCtaSubtitle}>
-            תמונה אחת + תיאור קצר → הצעות מבעלי מקצוע באזורך תוך דקות
-          </Text>
+          <Text style={styles.finalCtaTitle}>{t('servicePage.finalCtaTitleFmt', { name: profLabel })}</Text>
+          <Text style={styles.finalCtaSubtitle}>{t('servicePage.finalCtaSubtitle')}</Text>
           <Pressable style={styles.ctaButton} onPress={() => router.push('/capture')}>
-            <Text style={styles.ctaText}>{'התחל עכשיו ←'}</Text>
+            <Text style={styles.ctaText}>{t('servicePage.finalCtaButton')}</Text>
           </Pressable>
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>ai-fixly — הדרך הקלה למצוא בעל מקצוע</Text>
+          <Text style={styles.footerText}>{t('servicePage.footer')}</Text>
         </View>
       </ScrollView>
     </>
@@ -495,11 +477,12 @@ const styles = StyleSheet.create({
 
   navTop: { paddingTop: SPACING.md },
   navBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center',
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border,
+    alignItems: 'center', justifyContent: 'center',
   },
 
-  // Hero
   hero: { alignItems: 'center', paddingTop: SPACING.xl, paddingBottom: SPACING.lg },
   heroIcon: {
     width: 80, height: 80, borderRadius: 40,
@@ -508,12 +491,11 @@ const styles = StyleSheet.create({
   },
   h1: {
     color: COLORS.text, fontSize: FONT_SIZES.xxl, fontWeight: '700',
-    textAlign: 'center', writingDirection: 'rtl', marginBottom: SPACING.sm,
+    textAlign: 'center', marginBottom: SPACING.sm,
   },
   heroSubtitle: {
     color: COLORS.textSecondary, fontSize: FONT_SIZES.md,
-    textAlign: 'center', writingDirection: 'rtl',
-    lineHeight: 24, maxWidth: 560, marginBottom: SPACING.lg,
+    textAlign: 'center', lineHeight: 24, maxWidth: 560, marginBottom: SPACING.lg,
   },
   emergencyBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -522,7 +504,6 @@ const styles = StyleSheet.create({
   },
   emergencyBadgeText: { color: '#FFFFFF', fontSize: FONT_SIZES.xs, fontWeight: '700' },
 
-  // Trust strip
   trustStrip: {
     flexDirection: 'row', justifyContent: 'space-around',
     backgroundColor: COLORS.surface, borderRadius: RADII.lg,
@@ -532,7 +513,6 @@ const styles = StyleSheet.create({
   trustItem: { alignItems: 'center', gap: 4, flex: 1 },
   trustLabel: { color: COLORS.textSecondary, fontSize: FONT_SIZES.xs, fontWeight: '600' },
 
-  // Inline form
   inlineForm: {
     backgroundColor: COLORS.primary + '10',
     borderWidth: 1, borderColor: COLORS.primary + '30',
@@ -541,14 +521,13 @@ const styles = StyleSheet.create({
   },
   inlineFormTitle: {
     color: COLORS.text, fontSize: FONT_SIZES.lg, fontWeight: '700',
-    textAlign: 'right', writingDirection: 'rtl', marginBottom: SPACING.md,
+    marginBottom: SPACING.md,
   },
   inlineFormInput: {
     backgroundColor: COLORS.background, color: COLORS.text,
     borderRadius: RADII.md, padding: SPACING.md,
     fontSize: FONT_SIZES.md, minHeight: 80, textAlignVertical: 'top',
     borderWidth: 1, borderColor: COLORS.border,
-    writingDirection: 'rtl', textAlign: 'right',
     marginBottom: SPACING.md,
   },
   inlineFormNote: {
@@ -556,7 +535,6 @@ const styles = StyleSheet.create({
     textAlign: 'center', marginTop: SPACING.sm,
   },
 
-  // CTA button (shared)
   ctaButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: SPACING.sm,
@@ -566,16 +544,14 @@ const styles = StyleSheet.create({
   },
   ctaText: { color: '#FFFFFF', fontSize: FONT_SIZES.md, fontWeight: '700' },
 
-  // Sections
   section: { marginVertical: SPACING.lg },
   h2: {
     color: COLORS.text, fontSize: FONT_SIZES.xl, fontWeight: '700',
-    writingDirection: 'rtl', textAlign: 'right',
     marginBottom: SPACING.md,
   },
   sectionIntro: {
     color: COLORS.textSecondary, fontSize: FONT_SIZES.md,
-    writingDirection: 'rtl', textAlign: 'right', marginBottom: SPACING.md, lineHeight: 22,
+    marginBottom: SPACING.md, lineHeight: 22,
   },
 
   bulletList: { gap: SPACING.sm },
@@ -584,8 +560,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface, padding: SPACING.md, borderRadius: RADII.md,
   },
   bulletText: {
-    color: COLORS.text, fontSize: FONT_SIZES.md,
-    writingDirection: 'rtl', flex: 1, lineHeight: 22,
+    color: COLORS.text, fontSize: FONT_SIZES.md, flex: 1, lineHeight: 22,
   },
 
   issuesList: { gap: SPACING.xs },
@@ -594,22 +569,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md,
     borderRadius: RADII.md,
   },
-  issueText: {
-    color: COLORS.text, fontSize: FONT_SIZES.md,
-    writingDirection: 'rtl', flex: 1,
-  },
+  issueText: { color: COLORS.text, fontSize: FONT_SIZES.md, flex: 1 },
 
   pricingBox: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
     backgroundColor: COLORS.info + '15', padding: SPACING.md,
     borderRadius: RADII.md, marginBottom: SPACING.md,
   },
-  pricingNote: {
-    color: COLORS.text, fontSize: FONT_SIZES.sm,
-    writingDirection: 'rtl', flex: 1, lineHeight: 20,
-  },
+  pricingNote: { color: COLORS.text, fontSize: FONT_SIZES.sm, flex: 1, lineHeight: 20 },
 
-  // How it works
   stepsGrid: { gap: SPACING.md },
   stepCard: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
@@ -621,13 +589,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center',
   },
   stepNumText: { color: '#FFFFFF', fontSize: FONT_SIZES.sm, fontWeight: '700' },
-  stepTitle: { color: COLORS.text, fontSize: FONT_SIZES.md, fontWeight: '700', writingDirection: 'rtl' },
-  stepDesc: {
-    color: COLORS.textSecondary, fontSize: FONT_SIZES.sm,
-    writingDirection: 'rtl', flex: 1, lineHeight: 20,
-  },
+  stepTitle: { color: COLORS.text, fontSize: FONT_SIZES.md, fontWeight: '700' },
+  stepDesc: { color: COLORS.textSecondary, fontSize: FONT_SIZES.sm, flex: 1, lineHeight: 20 },
 
-  // FAQ
   faqItem: {
     backgroundColor: COLORS.surface, borderRadius: RADII.md,
     padding: SPACING.md, marginBottom: SPACING.sm,
@@ -635,16 +599,13 @@ const styles = StyleSheet.create({
   },
   faqHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm },
   faqQuestion: {
-    color: COLORS.text, fontSize: FONT_SIZES.md, fontWeight: '600',
-    writingDirection: 'rtl', textAlign: 'right', flex: 1,
+    color: COLORS.text, fontSize: FONT_SIZES.md, fontWeight: '600', flex: 1,
   },
   faqAnswer: {
     color: COLORS.textSecondary, fontSize: FONT_SIZES.sm,
-    writingDirection: 'rtl', textAlign: 'right',
     marginTop: SPACING.sm, lineHeight: 22,
   },
 
-  // Cities
   cityPills: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   cityPill: {
     backgroundColor: COLORS.surface, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
@@ -652,19 +613,14 @@ const styles = StyleSheet.create({
   },
   cityPillText: { color: COLORS.text, fontSize: FONT_SIZES.sm, fontWeight: '600' },
 
-  // Related
   relatedList: { gap: SPACING.sm },
   relatedCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: COLORS.surface, paddingHorizontal: SPACING.md, paddingVertical: SPACING.md,
     borderRadius: RADII.md, borderWidth: 1, borderColor: COLORS.border,
   },
-  relatedText: {
-    color: COLORS.text, fontSize: FONT_SIZES.md, fontWeight: '600',
-    writingDirection: 'rtl',
-  },
+  relatedText: { color: COLORS.text, fontSize: FONT_SIZES.md, fontWeight: '600' },
 
-  // Final CTA
   finalCta: {
     alignItems: 'center', gap: SPACING.md,
     backgroundColor: COLORS.primary + '08',
@@ -672,16 +628,12 @@ const styles = StyleSheet.create({
     marginVertical: SPACING.xl,
     borderWidth: 1, borderColor: COLORS.primary + '20',
   },
-  finalCtaTitle: {
-    color: COLORS.text, fontSize: FONT_SIZES.xl, fontWeight: '700',
-    textAlign: 'center', writingDirection: 'rtl',
-  },
+  finalCtaTitle: { color: COLORS.text, fontSize: FONT_SIZES.xl, fontWeight: '700', textAlign: 'center' },
   finalCtaSubtitle: {
     color: COLORS.textSecondary, fontSize: FONT_SIZES.md,
-    textAlign: 'center', writingDirection: 'rtl', lineHeight: 22,
+    textAlign: 'center', lineHeight: 22,
   },
 
-  // Footer
   footer: {
     paddingVertical: SPACING.lg, alignItems: 'center',
     borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: SPACING.lg,
