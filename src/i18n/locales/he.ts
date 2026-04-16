@@ -282,6 +282,9 @@ export default {
     totalTooLargeTitle: 'ההעלאה גדולה מדי',
     totalTooLargeBody: 'סך הקבצים שבחרת הוא {{size}} מגה — אנחנו מגבילים את ההעלאה ל-{{max}} מגה. הסר קובץ אחד או יותר ונסה שוב.',
     warnLargeFile: '{{size}} מגה — ההעלאה עלולה לקחת יותר זמן',
+    pickFailedTitle: 'לא הצלחנו לייבא את הקובץ',
+    pickFailedBody: 'נסה שוב. אם זה חוזר, בחר קובץ אחר.',
+    pickFailedLargeBody: 'הקובץ גדול מדי או שאין מספיק מקום פנוי במכשיר. נסה לבחור קובץ קטן יותר, או לפנות מקום ולנסות שוב.',
   },
 
   feedback: {

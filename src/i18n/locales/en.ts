@@ -276,6 +276,9 @@ export default {
     totalTooLargeTitle: 'Total upload is too large',
     totalTooLargeBody: 'The files you selected total {{size}} MB — we cap uploads at {{max}} MB. Remove one or more files and try again.',
     warnLargeFile: '{{size}} MB — upload may take a while',
+    pickFailedTitle: 'Could not import that file',
+    pickFailedBody: 'Please try again. If it keeps failing, pick a different file.',
+    pickFailedLargeBody: 'The file is too large or your device is low on space. Try picking a smaller file or freeing up some storage.',
   },
 
   feedback: {

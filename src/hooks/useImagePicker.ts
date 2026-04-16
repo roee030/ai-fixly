@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+// Use the legacy entry point. SDK 54 deprecated the top-level `getInfoAsync`
+// in favour of the new `File` / `Directory` classes, but the legacy API is
+// still fully supported and keeps our size-check one-liner intact without
+// a larger refactor.
+import * as FileSystem from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { LIMITS } from '../constants/limits';
@@ -100,26 +104,58 @@ export function useImagePicker() {
     setVideos((prev) => [...prev, asset]);
   };
 
+  /**
+   * Run an ImagePicker call and turn native "Failed to write a file" /
+   * "Cannot access" errors into a human-readable Alert. Android copies the
+   * picked asset into the app's cache; that copy can fail for huge files or
+   * when the device is low on space, and we should not let that propagate
+   * as an uncaught rejection.
+   */
+  const runPicker = async <T>(
+    pick: () => Promise<T>,
+  ): Promise<T | null> => {
+    try {
+      return await pick();
+    } catch (err: any) {
+      const message = String(err?.message || err || '');
+      const isCopyFailure =
+        message.includes('Failed to write a file') ||
+        message.includes('ENOSPC') ||
+        message.includes('No space');
+      Alert.alert(
+        t('imagePicker.pickFailedTitle'),
+        isCopyFailure
+          ? t('imagePicker.pickFailedLargeBody')
+          : t('imagePicker.pickFailedBody'),
+      );
+      return null;
+    }
+  };
+
   const takePhoto = async (): Promise<PickResult | null> => {
     if (!(await ensureCameraPermission())) return null;
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-      base64: false,
-    });
-    if (result.canceled || !result.assets[0]) return null;
+    const result = await runPicker(() =>
+      ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+        base64: false,
+      }),
+    );
+    if (!result || result.canceled || !result.assets[0]) return null;
     addImage(result.assets[0].uri);
     return { imageUris: [result.assets[0].uri], videoAssets: [] };
   };
 
   const recordVideo = async (): Promise<PickResult | null> => {
     if (!(await ensureCameraPermission())) return null;
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['videos'],
-      quality: 0.8,
-      videoMaxDuration: LIMITS.MAX_VIDEO_DURATION_SEC,
-    });
-    if (result.canceled || !result.assets[0]) return null;
+    const result = await runPicker(() =>
+      ImagePicker.launchCameraAsync({
+        mediaTypes: ['videos'],
+        quality: 0.8,
+        videoMaxDuration: LIMITS.MAX_VIDEO_DURATION_SEC,
+      }),
+    );
+    if (!result || result.canceled || !result.assets[0]) return null;
     const asset = await enrichVideoAsset(result.assets[0].uri);
     if (!asset) return null;
     setVideos((prev) => [...prev, asset]);
@@ -128,13 +164,15 @@ export function useImagePicker() {
 
   const pickFromGallery = async (): Promise<PickResult | null> => {
     if (!(await ensureLibraryPermission())) return null;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      quality: 0.8,
-      allowsMultipleSelection: true,
-      videoMaxDuration: LIMITS.MAX_VIDEO_DURATION_SEC,
-    });
-    if (result.canceled || !result.assets || result.assets.length === 0) return null;
+    const result = await runPicker(() =>
+      ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        quality: 0.8,
+        allowsMultipleSelection: true,
+        videoMaxDuration: LIMITS.MAX_VIDEO_DURATION_SEC,
+      }),
+    );
+    if (!result || result.canceled || !result.assets || result.assets.length === 0) return null;
 
     const newImages: string[] = [];
     const rawVideoUris: string[] = [];
