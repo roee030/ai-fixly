@@ -277,6 +277,11 @@ export default {
     galleryAccessRequired: 'נדרשת גישה לגלריה כדי לבחור תמונות.',
     maxImagesTitle: 'הגעת למגבלה',
     maxImagesBody: 'ניתן להוסיף עד {{max}} תמונות.',
+    videoTooLargeTitle: 'הסרטון גדול מדי',
+    videoTooLargeBody: 'הסרטון במשקל {{size}} מגה, אנחנו מקבלים עד {{max}} מגה. נסה לצלם סרטון קצר יותר או באיכות נמוכה יותר.',
+    totalTooLargeTitle: 'ההעלאה גדולה מדי',
+    totalTooLargeBody: 'סך הקבצים שבחרת הוא {{size}} מגה — אנחנו מגבילים את ההעלאה ל-{{max}} מגה. הסר קובץ אחד או יותר ונסה שוב.',
+    warnLargeFile: '{{size}} מגה — ההעלאה עלולה לקחת יותר זמן',
   },
 
   feedback: {

@@ -271,6 +271,11 @@ export default {
     galleryAccessRequired: 'Gallery access is required to select photos.',
     maxImagesTitle: 'Maximum images',
     maxImagesBody: 'You can add up to {{max}} images.',
+    videoTooLargeTitle: 'Video is too large',
+    videoTooLargeBody: 'This video is {{size}} MB, and we accept up to {{max}} MB. Please record a shorter clip or use a lower quality setting.',
+    totalTooLargeTitle: 'Total upload is too large',
+    totalTooLargeBody: 'The files you selected total {{size}} MB — we cap uploads at {{max}} MB. Remove one or more files and try again.',
+    warnLargeFile: '{{size}} MB — upload may take a while',
   },
 
   feedback: {

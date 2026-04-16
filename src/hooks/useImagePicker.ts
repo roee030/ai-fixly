@@ -1,29 +1,43 @@
 import { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { LIMITS } from '../constants/limits';
+import { generateVideoThumbnail } from '../utils/videoThumbnail';
+
+export interface VideoAsset {
+  uri: string;
+  /** Optional poster frame (JPG URI) generated from the video. */
+  thumbnailUri?: string;
+  /** Size in bytes. Used to enforce per-file and total upload budgets. */
+  sizeBytes: number;
+}
 
 export interface PickResult {
   imageUris: string[];
-  videoUris: string[];
+  videoAssets: VideoAsset[];
 }
 
+const MB = 1024 * 1024;
+
 /**
- * Unified media picker hook. Stores photos and videos in separate arrays so
- * callers can render thumbnails uniformly while still knowing the media type.
+ * Unified media picker hook.
  *
- * Design note: earlier versions of this hook restricted camera to a combined
- * "photo or video" mediaType. On some devices this caused video recordings
- * to be saved as a single still frame (iOS's "mixed" mode sometimes behaves
- * that way). We now expose `takePhoto` and `recordVideo` as distinct actions
- * so the caller can make the intent explicit and the system camera always
- * launches in the correct mode.
+ * Videos are stored as `{ uri, thumbnailUri, sizeBytes }` rather than plain
+ * URIs so the UI can render a real poster frame AND show / enforce size
+ * budgets without re-stat'ing the file on every render.
+ *
+ * Size policy (see LIMITS):
+ *   < WARN_VIDEO_SIZE_MB  — silent, looks normal.
+ *   ≥ WARN_VIDEO_SIZE_MB  — accepted but the tile shows the MB in yellow
+ *                           so the user knows the upload will be slow.
+ *   > MAX_VIDEO_SIZE_MB   — rejected with a clear "too large" message.
  */
 export function useImagePicker() {
   const { t } = useTranslation();
   const [images, setImages] = useState<string[]>([]);
-  const [videos, setVideos] = useState<string[]>([]);
+  const [videos, setVideos] = useState<VideoAsset[]>([]);
 
   const ensureCameraPermission = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -55,7 +69,36 @@ export function useImagePicker() {
       return [...prev, uri];
     });
 
-  const addVideo = (uri: string) => setVideos((prev) => [...prev, uri]);
+  /**
+   * Measure the video, generate a thumbnail, and reject if oversized.
+   * Returns null if the file is too big or unreadable (an Alert has been
+   * shown to the user in that case).
+   */
+  const enrichVideoAsset = async (uri: string): Promise<VideoAsset | null> => {
+    const info = await FileSystem.getInfoAsync(uri).catch(() => null);
+    const sizeBytes = (info && 'size' in info && typeof info.size === 'number') ? info.size : 0;
+    const sizeMB = sizeBytes / MB;
+
+    if (sizeMB > LIMITS.MAX_VIDEO_SIZE_MB) {
+      Alert.alert(
+        t('imagePicker.videoTooLargeTitle'),
+        t('imagePicker.videoTooLargeBody', {
+          size: sizeMB.toFixed(1),
+          max: LIMITS.MAX_VIDEO_SIZE_MB,
+        }),
+      );
+      return null;
+    }
+
+    const thumbnailUri = await generateVideoThumbnail(uri);
+    return { uri, thumbnailUri, sizeBytes };
+  };
+
+  const addVideo = async (uri: string) => {
+    const asset = await enrichVideoAsset(uri);
+    if (!asset) return;
+    setVideos((prev) => [...prev, asset]);
+  };
 
   const takePhoto = async (): Promise<PickResult | null> => {
     if (!(await ensureCameraPermission())) return null;
@@ -66,7 +109,7 @@ export function useImagePicker() {
     });
     if (result.canceled || !result.assets[0]) return null;
     addImage(result.assets[0].uri);
-    return { imageUris: [result.assets[0].uri], videoUris: [] };
+    return { imageUris: [result.assets[0].uri], videoAssets: [] };
   };
 
   const recordVideo = async (): Promise<PickResult | null> => {
@@ -74,11 +117,13 @@ export function useImagePicker() {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['videos'],
       quality: 0.8,
-      videoMaxDuration: 60,
+      videoMaxDuration: LIMITS.MAX_VIDEO_DURATION_SEC,
     });
     if (result.canceled || !result.assets[0]) return null;
-    addVideo(result.assets[0].uri);
-    return { imageUris: [], videoUris: [result.assets[0].uri] };
+    const asset = await enrichVideoAsset(result.assets[0].uri);
+    if (!asset) return null;
+    setVideos((prev) => [...prev, asset]);
+    return { imageUris: [], videoAssets: [asset] };
   };
 
   const pickFromGallery = async (): Promise<PickResult | null> => {
@@ -87,23 +132,33 @@ export function useImagePicker() {
       mediaTypes: ['images', 'videos'],
       quality: 0.8,
       allowsMultipleSelection: true,
-      videoMaxDuration: 60,
+      videoMaxDuration: LIMITS.MAX_VIDEO_DURATION_SEC,
     });
     if (result.canceled || !result.assets || result.assets.length === 0) return null;
 
     const newImages: string[] = [];
-    const newVideos: string[] = [];
+    const rawVideoUris: string[] = [];
     for (const asset of result.assets) {
-      if (asset.type === 'video') newVideos.push(asset.uri);
+      if (asset.type === 'video') rawVideoUris.push(asset.uri);
       else newImages.push(asset.uri);
     }
+
     if (newImages.length > 0) {
       setImages((prev) => [...prev, ...newImages].slice(0, LIMITS.MAX_IMAGES_PER_REQUEST));
     }
-    if (newVideos.length > 0) {
-      setVideos((prev) => [...prev, ...newVideos]);
+
+    // Enrich each video sequentially so any size-rejection Alert fires
+    // before we try to show the next one.
+    const newAssets: VideoAsset[] = [];
+    for (const uri of rawVideoUris) {
+      const asset = await enrichVideoAsset(uri);
+      if (asset) newAssets.push(asset);
     }
-    return { imageUris: newImages, videoUris: newVideos };
+    if (newAssets.length > 0) {
+      setVideos((prev) => [...prev, ...newAssets]);
+    }
+
+    return { imageUris: newImages, videoAssets: newAssets };
   };
 
   const removeImage = (index: number) => {
@@ -132,6 +187,9 @@ export function useImagePicker() {
     return base64Images;
   };
 
+  /** Sum of all picked video sizes, in bytes. Images are bounded by count × quality. */
+  const totalVideoBytes = videos.reduce((sum, v) => sum + v.sizeBytes, 0);
+
   return {
     images,
     videos,
@@ -141,6 +199,7 @@ export function useImagePicker() {
     removeImage,
     removeVideo,
     getBase64Images,
+    totalVideoBytes,
     hasMedia: images.length > 0 || videos.length > 0,
     hasImages: images.length > 0,
   };

@@ -30,6 +30,7 @@ export default function CaptureScreen() {
     removeImage,
     removeVideo,
     getBase64Images,
+    totalVideoBytes,
     hasMedia,
   } = useImagePicker();
   const [description, setDescription] = useState(() => (params.prefillDescription || '').slice(0, 500));
@@ -97,9 +98,28 @@ export default function CaptureScreen() {
     const photoList = Platform.OS === 'web' ? webPhotos : images;
     if (photoList.length === 0 && videos.length === 0 && !isDescriptionValid) return;
     if (!isDescriptionValid) return;
+
+    // Block submit if combined video size exceeds the upload budget. Per-file
+    // limits are already enforced at pick-time; this catches the case where
+    // several individually-OK videos add up to too much.
+    const totalMB = totalVideoBytes / (1024 * 1024);
+    if (totalMB > LIMITS.MAX_TOTAL_UPLOAD_MB) {
+      Alert.alert(
+        t('imagePicker.totalTooLargeTitle'),
+        t('imagePicker.totalTooLargeBody', {
+          size: totalMB.toFixed(1),
+          max: LIMITS.MAX_TOTAL_UPLOAD_MB,
+        }),
+      );
+      return;
+    }
+
     setIsAnalyzing(true);
     logAction('capture_submitted', 'capture');
     try {
+      // Downstream only needs the video URIs for upload; thumbnails are a
+      // render-only concern so we don't bother shipping them through params.
+      const videoUris = videos.map((v) => v.uri);
       if (Platform.OS === 'web') {
         router.push({
           pathname: '/capture/confirm',
@@ -118,7 +138,7 @@ export default function CaptureScreen() {
             images: JSON.stringify(images),
             base64Images: JSON.stringify(base64Images),
             description: description.trim(),
-            videoUris: JSON.stringify(videos),
+            videoUris: JSON.stringify(videoUris),
           },
         });
       }
@@ -226,13 +246,22 @@ export default function CaptureScreen() {
               so adding media doesn't push the description off-screen. */}
           {(images.length > 0 || videos.length > 0) && (
             <>
-              <Text style={styles.imageCount}>
-                {t('capture.mediaCount', {
-                  photos: images.length,
-                  videos: videos.length,
-                  max: LIMITS.MAX_IMAGES_PER_REQUEST,
-                })}
-              </Text>
+              <View style={styles.mediaCountRow}>
+                <Text style={styles.imageCount}>
+                  {t('capture.mediaCount', {
+                    photos: images.length,
+                    videos: videos.length,
+                    max: LIMITS.MAX_IMAGES_PER_REQUEST,
+                  })}
+                </Text>
+                {videos.length > 0 && totalVideoBytes / (1024 * 1024) >= LIMITS.WARN_VIDEO_SIZE_MB && (
+                  <Text style={styles.sizeHint}>
+                    {t('imagePicker.warnLargeFile', {
+                      size: (totalVideoBytes / (1024 * 1024)).toFixed(1),
+                    })}
+                  </Text>
+                )}
+              </View>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -255,28 +284,46 @@ export default function CaptureScreen() {
                     </Pressable>
                   </Pressable>
                 ))}
-                {videos.map((uri, index) => (
-                  <Pressable
-                    key={`v-${index}`}
-                    onPress={() => setPreview({ uri, kind: 'video' })}
-                    style={styles.thumbWrap}
-                  >
-                    <View style={[styles.thumb, styles.videoThumbBg]}>
-                      <Ionicons name="play-circle" size={36} color="#FFFFFF" />
+                {videos.map((video, index) => {
+                  const sizeMB = video.sizeBytes / (1024 * 1024);
+                  const isLarge = sizeMB >= LIMITS.WARN_VIDEO_SIZE_MB;
+                  return (
+                    <Pressable
+                      key={`v-${index}`}
+                      onPress={() => setPreview({ uri: video.uri, kind: 'video' })}
+                      style={styles.thumbWrap}
+                    >
+                      {/* Real poster frame if expo-video-thumbnails is
+                          available in the build; dark tile fallback otherwise. */}
+                      {video.thumbnailUri ? (
+                        <Image source={{ uri: video.thumbnailUri }} style={styles.thumb} />
+                      ) : (
+                        <View style={[styles.thumb, styles.videoThumbBg]} />
+                      )}
+                      <View style={styles.videoPlayOverlay} pointerEvents="none">
+                        <Ionicons name="play-circle" size={36} color="#FFFFFF" />
+                      </View>
                       <View style={styles.videoBadge}>
                         <Ionicons name="videocam" size={10} color="#FFFFFF" />
-                        <Text style={styles.videoBadgeText}>{t('capture.videoTag')}</Text>
+                        <Text style={styles.videoBadgeText}>
+                          {sizeMB >= 0.1 ? `${sizeMB.toFixed(1)}MB` : t('capture.videoTag')}
+                        </Text>
                       </View>
-                    </View>
-                    <Pressable
-                      onPress={() => removeVideo(index)}
-                      style={styles.removeBtn}
-                      hitSlop={6}
-                    >
-                      <Ionicons name="close" size={14} color="#FFF" />
+                      {isLarge && (
+                        <View style={[styles.videoBadge, styles.videoBadgeWarn]}>
+                          <Ionicons name="warning" size={10} color="#000" />
+                        </View>
+                      )}
+                      <Pressable
+                        onPress={() => removeVideo(index)}
+                        style={styles.removeBtn}
+                        hitSlop={6}
+                      >
+                        <Ionicons name="close" size={14} color="#FFF" />
+                      </Pressable>
                     </Pressable>
-                  </Pressable>
-                ))}
+                  );
+                })}
               </ScrollView>
             </>
           )}
@@ -433,10 +480,23 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     flex: 1,
   },
+  mediaCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    gap: 8,
+  },
   imageCount: {
     fontSize: 12,
     color: COLORS.textSecondary,
-    marginBottom: 6,
+  },
+  sizeHint: {
+    fontSize: 11,
+    color: COLORS.warning,
+    fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'right',
   },
   thumbStrip: {
     marginBottom: 14,
@@ -476,6 +536,25 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '600',
+  },
+  videoBadgeWarn: {
+    top: 4,
+    left: 'auto',
+    right: 4,
+    bottom: 'auto',
+    backgroundColor: COLORS.warning,
+  },
+  videoPlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Slight scrim so the play icon is readable over any poster frame.
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 12,
   },
   removeBtn: {
     position: 'absolute',
