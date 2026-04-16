@@ -36,9 +36,14 @@ export default function CaptureScreen() {
   const [description, setDescription] = useState(() => (params.prefillDescription || '').slice(0, 500));
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   // Single preview slot. `kind` tells the modal what to render. Videos use
-  // expo-video; images use the existing <Image> path. One state object means
-  // there's never an inconsistent "image AND video previewed" combination.
-  const [preview, setPreview] = useState<{ uri: string; kind: 'image' | 'video' } | null>(null);
+  // expo-video when the native module is present, and fall back to showing
+  // the pre-generated poster thumbnail full-size otherwise. One state object
+  // avoids any inconsistent "image AND video previewed" combination.
+  const [preview, setPreview] = useState<
+    | { uri: string; kind: 'image' }
+    | { uri: string; kind: 'video'; posterUri?: string }
+    | null
+  >(null);
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -290,7 +295,7 @@ export default function CaptureScreen() {
                   return (
                     <Pressable
                       key={`v-${index}`}
-                      onPress={() => setPreview({ uri: video.uri, kind: 'video' })}
+                      onPress={() => setPreview({ uri: video.uri, kind: 'video', posterUri: video.thumbnailUri })}
                       style={styles.thumbWrap}
                     >
                       {/* Real poster frame if expo-video-thumbnails is
@@ -383,7 +388,11 @@ export default function CaptureScreen() {
       <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
         <View style={styles.modalOverlay}>
           {preview?.kind === 'video' ? (
-            <VideoPreview uri={preview.uri} style={styles.previewVideo} />
+            <VideoPreview
+              uri={preview.uri}
+              posterUri={preview.posterUri}
+              style={styles.previewVideo}
+            />
           ) : preview ? (
             <Pressable style={{ flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' }} onPress={() => setPreview(null)}>
               <Image
