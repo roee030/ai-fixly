@@ -28,7 +28,7 @@
 import { Env } from './env';
 import { findNearbyProvidersCached } from './placesCache';
 import type { PlacesProvider } from './googlePlaces';
-import { sendWhatsAppMessage } from './twilio';
+import { sendWhatsAppMessage, sendWhatsAppWithAllMedia } from './twilio';
 import { parseProviderReply } from './geminiParser';
 import { FirestoreClient } from './firestore';
 import { sendPush } from './fcm';
@@ -262,13 +262,13 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       `━━━━━━━━━━━━━━\n\n` +
       testMessage;
 
-    const result = await sendWhatsAppMessage({
+    const result = await sendWhatsAppWithAllMedia({
       accountSid: env.TWILIO_ACCOUNT_SID,
       authToken: env.TWILIO_AUTH_TOKEN,
       from: env.TWILIO_WHATSAPP_FROM,
       to: testPhone,
       body: testBody,
-      mediaUrls: body.mediaUrls?.slice(0, 5),
+      mediaUrls: body.mediaUrls?.slice(0, 10),
     });
 
     // Denormalize broadcast result so the app shows "1 provider contacted"
@@ -356,13 +356,13 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
 
     // Real mode: send WhatsApp with personalized form URLs for THIS provider.
     const message = messagePrefix + buildProviderMessage(body, env, provider.phone);
-    const result = await sendWhatsAppMessage({
+    const result = await sendWhatsAppWithAllMedia({
       accountSid: env.TWILIO_ACCOUNT_SID,
       authToken: env.TWILIO_AUTH_TOKEN,
       from: env.TWILIO_WHATSAPP_FROM,
       to: provider.phone,
       body: message,
-      mediaUrls: body.mediaUrls?.slice(0, 5),
+      mediaUrls: body.mediaUrls?.slice(0, 10),
     });
 
     if (result.success) {

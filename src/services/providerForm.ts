@@ -6,11 +6,21 @@
 
 const BROKER_URL = process.env.EXPO_PUBLIC_BROKER_URL || '';
 
+export interface PublicMediaItem {
+  url: string;
+  type: 'image' | 'video';
+  /** JPG poster frame URL, videos only. */
+  thumbnailUrl?: string;
+}
+
 export interface PublicRequestSummary {
   requestId: string;
   city: string;
   textDescription: string;
+  /** Legacy flat URL list — still populated for old clients. */
   mediaUrls: string[];
+  /** Type-aware media list. Prefer this when available. */
+  mediaItems?: PublicMediaItem[];
   status: string;
   createdAt: string | null;
 }

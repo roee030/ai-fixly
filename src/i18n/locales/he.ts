@@ -519,6 +519,8 @@ export default {
     editLabel: 'שנה',
     selectTitle: 'בחר את בעל המקצוע המתאים',
     save: 'שמור',
+    searchPlaceholder: 'חיפוש מקצוע...',
+    noResults: 'לא נמצאו תוצאות',
   },
 
   join: {

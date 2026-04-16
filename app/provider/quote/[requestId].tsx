@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-  ActivityIndicator, Image, Switch,
+  ActivityIndicator, Image, Switch, Modal, Dimensions,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ScreenContainer } from '../../../src/components/layout';
 import { Button } from '../../../src/components/ui';
+import { VideoPreview } from '../../../src/components/ui/VideoPreview';
 import { AvailabilityPicker } from '../../../src/components/provider/AvailabilityPicker';
 import {
   fetchPublicRequestSummary,
@@ -44,6 +45,11 @@ export default function ProviderQuoteScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<
+    | { kind: 'image'; uri: string }
+    | { kind: 'video'; uri: string; posterUri?: string }
+    | null
+  >(null);
 
   useEffect(() => {
     if (!requestId) return;
@@ -129,13 +135,49 @@ export default function ProviderQuoteScreen() {
           <Text style={[styles.cardLabel, { marginTop: 12 }]}>{t('providerForm.problem')}</Text>
           <Text style={styles.cardValue}>{summary.textDescription || '—'}</Text>
 
-          {summary.mediaUrls && summary.mediaUrls.length > 0 && (
-            <View style={styles.thumbRow}>
-              {summary.mediaUrls.slice(0, 5).map((url, i) => (
-                <Image key={i} source={{ uri: url }} style={styles.thumb} />
-              ))}
-            </View>
-          )}
+          {(() => {
+            // Prefer the type-aware list if the broker provided it; fall back
+            // to the legacy string[] (treat all as images).
+            const items =
+              summary.mediaItems && summary.mediaItems.length > 0
+                ? summary.mediaItems
+                : (summary.mediaUrls || []).map((url) => ({ url, type: 'image' as const }));
+            if (items.length === 0) return null;
+            return (
+              <View style={styles.thumbRow}>
+                {items.slice(0, 10).map((item, i) => {
+                  const isVideo = item.type === 'video';
+                  return (
+                    <Pressable
+                      key={i}
+                      onPress={() =>
+                        setPreview(
+                          isVideo
+                            ? { kind: 'video', uri: item.url, posterUri: item.thumbnailUrl }
+                            : { kind: 'image', uri: item.url },
+                        )
+                      }
+                    >
+                      {isVideo ? (
+                        <View style={styles.videoThumbWrap}>
+                          {item.thumbnailUrl ? (
+                            <Image source={{ uri: item.thumbnailUrl }} style={styles.thumb} />
+                          ) : (
+                            <View style={[styles.thumb, styles.videoThumbFallback]} />
+                          )}
+                          <View style={styles.videoPlayOverlay}>
+                            <Ionicons name="play-circle" size={28} color="#FFFFFF" />
+                          </View>
+                        </View>
+                      ) : (
+                        <Image source={{ uri: item.url }} style={styles.thumb} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            );
+          })()}
         </View>
 
         {/* Price */}
@@ -199,6 +241,21 @@ export default function ProviderQuoteScreen() {
 
         <Text style={styles.footer}>{t('providerForm.footer')}</Text>
       </ScrollView>
+
+      <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
+        <View style={styles.previewOverlay}>
+          {preview?.kind === 'video' ? (
+            <VideoPreview uri={preview.uri} posterUri={preview.posterUri} style={styles.previewVideo} />
+          ) : preview ? (
+            <Pressable style={styles.previewImageWrap} onPress={() => setPreview(null)}>
+              <Image source={{ uri: preview.uri }} style={styles.previewImage} resizeMode="contain" />
+            </Pressable>
+          ) : null}
+          <Pressable style={styles.previewClose} onPress={() => setPreview(null)} hitSlop={10}>
+            <Ionicons name="close-circle" size={36} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -220,6 +277,51 @@ const styles = StyleSheet.create({
   cardValue: { color: COLORS.text, fontSize: 15, marginTop: 4 },
   thumbRow: { flexDirection: 'row' as any, flexWrap: 'wrap' as any, gap: 8, marginTop: 12 },
   thumb: { width: 72, height: 72, borderRadius: 8 },
+  videoThumbWrap: { position: 'relative', width: 72, height: 72 },
+  videoThumbFallback: {
+    backgroundColor: '#101015',
+    width: 72,
+    height: 72,
+  },
+  videoPlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderRadius: 8,
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewImageWrap: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewImage: {
+    width: Dimensions.get('window').width - 32,
+    height: Dimensions.get('window').width - 32,
+    borderRadius: 12,
+  },
+  previewVideo: {
+    width: Dimensions.get('window').width - 32,
+    height: (Dimensions.get('window').width - 32) * 1.2,
+    borderRadius: 12,
+    backgroundColor: '#000',
+  },
+  previewClose: {
+    position: 'absolute' as any,
+    top: 60,
+    right: 20,
+  },
 
   section: { gap: 8 },
   label: { color: COLORS.text, fontSize: 14, fontWeight: '600' as any },

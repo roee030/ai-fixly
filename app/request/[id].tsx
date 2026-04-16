@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, Pressable, ActivityIndicator,
-  StyleSheet, Alert, Linking,
+  StyleSheet, Alert, Linking, Modal, Image, Dimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
@@ -9,6 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button, SkeletonImage } from '../../src/components/ui';
+import { VideoPreview } from '../../src/components/ui/VideoPreview';
 import { requestService } from '../../src/services/requests';
 import { bidService } from '../../src/services/bids';
 import { chatService } from '../../src/services/chat';
@@ -35,6 +36,11 @@ export default function RequestDetailsScreen() {
   const [isLoadingBids, setIsLoadingBids] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [preview, setPreview] = useState<
+    | { kind: 'image'; uri: string }
+    | { kind: 'video'; uri: string; posterUri?: string }
+    | null
+  >(null);
 
   // Subscribe to real-time updates of the request document (broadcastedProviders, status, etc.)
   useEffect(() => {
@@ -236,16 +242,52 @@ export default function RequestDetailsScreen() {
           <View style={styles.detailsContent}>
             {request.media && request.media.length > 0 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                {request.media.map((m, i) => (
-                  <SkeletonImage
-                    key={i}
-                    source={{ uri: m.downloadUrl }}
-                    width={80}
-                    height={80}
-                    borderRadius={8}
-                    containerStyle={{ marginRight: 8 }}
-                  />
-                ))}
+                {request.media.map((m: any, i) => {
+                  // Tolerate both UploadedMedia (downloadUrl) and the legacy
+                  // MediaItem (url) shapes — old requests may still be in
+                  // Firestore without the type/thumbnailUrl fields.
+                  const url: string = m.downloadUrl || m.url;
+                  const isVideo = m.type === 'video';
+                  const posterUri: string | undefined = m.thumbnailUrl;
+                  return (
+                    <Pressable
+                      key={i}
+                      onPress={() =>
+                        setPreview(
+                          isVideo
+                            ? { kind: 'video', uri: url, posterUri }
+                            : { kind: 'image', uri: url },
+                        )
+                      }
+                      style={{ marginRight: 8 }}
+                    >
+                      {isVideo ? (
+                        <View style={styles.videoThumbWrap}>
+                          {posterUri ? (
+                            <SkeletonImage
+                              source={{ uri: posterUri }}
+                              width={80}
+                              height={80}
+                              borderRadius={8}
+                            />
+                          ) : (
+                            <View style={[styles.mediaThumb, styles.videoThumbFallback]} />
+                          )}
+                          <View style={styles.videoPlayOverlay}>
+                            <Ionicons name="play-circle" size={28} color="#FFFFFF" />
+                          </View>
+                        </View>
+                      ) : (
+                        <SkeletonImage
+                          source={{ uri: url }}
+                          width={80}
+                          height={80}
+                          borderRadius={8}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })}
               </ScrollView>
             )}
             {request.textDescription && (
@@ -407,6 +449,21 @@ export default function RequestDetailsScreen() {
           <Button title={t('requestDetails.closeRequest')} onPress={handleClose} variant="ghost" />
         </View>
       )}
+
+      <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
+        <View style={styles.previewOverlay}>
+          {preview?.kind === 'video' ? (
+            <VideoPreview uri={preview.uri} posterUri={preview.posterUri} style={styles.previewVideo} />
+          ) : preview ? (
+            <Pressable style={styles.previewImageWrap} onPress={() => setPreview(null)}>
+              <Image source={{ uri: preview.uri }} style={styles.previewImage} resizeMode="contain" />
+            </Pressable>
+          ) : null}
+          <Pressable style={styles.previewClose} onPress={() => setPreview(null)} hitSlop={10}>
+            <Ionicons name="close-circle" size={36} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -428,6 +485,52 @@ const styles = StyleSheet.create({
     marginBottom: 16, borderWidth: 1, borderColor: COLORS.border,
   },
   mediaThumb: { width: 80, height: 80, borderRadius: 8, marginRight: 8 },
+  videoThumbWrap: { position: 'relative', width: 80, height: 80 },
+  videoThumbFallback: {
+    backgroundColor: '#101015',
+    width: 80,
+    height: 80,
+    marginRight: 0,
+  },
+  videoPlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderRadius: 8,
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewImageWrap: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewImage: {
+    width: Dimensions.get('window').width - 32,
+    height: Dimensions.get('window').width - 32,
+    borderRadius: 12,
+  },
+  previewVideo: {
+    width: Dimensions.get('window').width - 32,
+    height: (Dimensions.get('window').width - 32) * 1.2,
+    borderRadius: 12,
+    backgroundColor: '#000',
+  },
+  previewClose: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+  },
   summaryText: { color: COLORS.text, fontSize: 14, lineHeight: 20 },
   descText: { color: COLORS.textSecondary, fontSize: 13, fontStyle: 'italic' },
   customerTextBlock: {

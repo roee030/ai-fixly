@@ -124,11 +124,30 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       const inPermissions = segments[1] === 'permissions';
       const inOutOfArea = (segments[1] as string) === 'out-of-area';
 
+      // Routes that handle their own auth (no AuthGate redirects)
+      // - /join: public provider signup
+      // - /admin: has its own UID check + "access denied" screen
+      // - /services/*: public SEO pages
+      // - /(dev)/*: dev tools with devBypass
+      // - /provider/*: public quote / report forms (provider arrives via WhatsApp link)
+      // - /legal/*: public terms / privacy / accessibility pages
+      const selfManagedRoute = ['join', 'admin', 'services', '(dev)', 'legal', 'provider'].includes(segments[0]);
+      // App routes that require auth but shouldn't trigger redirect loops
+      const inAppRoute = ['capture', 'request', 'chat', 'review'].includes(segments[0]);
+
       const navigate = (to: string) => {
         if (lastDestination.current === to) return; // prevent re-nav to same place
         lastDestination.current = to;
         router.replace(to as any);
       };
+
+      // Self-managed routes win against ALL other gates. A provider arriving
+      // via a WhatsApp link must not be funnelled through onboarding +
+      // phone-auth — they're a public visitor, not a customer.
+      if (selfManagedRoute) {
+        lastDestination.current = null;
+        return;
+      }
 
       // Onboarding flow
       if (!hasSeenOnboarding && !inOnboarding) {
@@ -148,23 +167,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Routes that handle their own auth (no AuthGate redirects)
-      // - /join: public provider signup
-      // - /admin: has its own UID check + "access denied" screen
-      // - /services/*: public SEO pages
-      // - /(dev)/*: dev tools with devBypass
-      // - /provider/*: public quote / report forms (provider arrives via WhatsApp link)
-      const selfManagedRoute = ['join', 'admin', 'services', '(dev)', 'legal', 'provider'].includes(segments[0]);
-      // App routes that require auth but shouldn't trigger redirect loops
-      const inAppRoute = ['capture', 'request', 'chat', 'review'].includes(segments[0]);
-
-      // Auth gates — skip for self-managed routes (they handle auth internally)
-      if (selfManagedRoute) {
-        lastDestination.current = null;
-        return;
-      }
-
       if (!isAuthenticated && !inAuthGroup && !inOnboarding && !inAppRoute) {
+        // Remember where the user was actually trying to go so we can return
+        // them there after they finish phone auth. Without this they always
+        // land on /(tabs) instead of, say, the request they tapped a link to.
+        const { intentStore } = require('../src/stores/intentStore');
+        intentStore.capture('/' + segments.join('/'));
         navigate('/(auth)/phone');
         return;
       }
@@ -185,7 +193,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Fully onboarded - kick out of the auth group into the app
+      // Fully onboarded - kick out of the auth group into the app, restoring
+      // any deep-link target the user originally tried to open.
       if (
         isAuthenticated &&
         hasCompletedProfile &&
@@ -193,7 +202,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         inAuthGroup
       ) {
         analyticsService.trackEvent('app_opened');
-        navigate('/(tabs)');
+        const { intentStore } = require('../src/stores/intentStore');
+        const target = intentStore.consume();
+        navigate(target || '/(tabs)');
         return;
       }
 

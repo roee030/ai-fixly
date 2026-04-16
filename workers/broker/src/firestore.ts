@@ -23,12 +23,22 @@ export interface RequestDoc {
  * Includes ALL media URLs and the customer description, but NEVER the
  * customer's identity (userId, name, phone, exact address are stripped).
  */
+export interface PublicMediaItem {
+  url: string;
+  type: 'image' | 'video';
+  /** JPG poster frame for videos. */
+  thumbnailUrl?: string;
+}
+
 export interface PublicRequestView {
   requestId: string;
   status: string;
   city: string;
   textDescription: string;
+  /** Legacy flat URL list; kept so older clients don't break. */
   mediaUrls: string[];
+  /** Type-aware list. New clients should prefer this. */
+  mediaItems: PublicMediaItem[];
   createdAt: string | null;
 }
 
@@ -263,14 +273,24 @@ export class FirestoreClient {
       const status = fields.status?.stringValue || 'unknown';
       if (status === 'closed') return null;
 
-      // Pull the array of media downloadUrls (skip thumbnails / storage paths).
+      // Pull the array of media items. We expose two shapes for backward
+      // compatibility: `mediaUrls` is the legacy flat list of download URLs;
+      // `mediaItems` carries the type + optional thumbnail so the provider
+      // page can render videos as videos.
       const mediaUrls: string[] = [];
+      const mediaItems: Array<{ url: string; type: 'image' | 'video'; thumbnailUrl?: string }> = [];
       try {
         const mediaValues = fields.media?.arrayValue?.values;
         if (Array.isArray(mediaValues)) {
           for (const m of mediaValues) {
-            const url = m?.mapValue?.fields?.downloadUrl?.stringValue;
-            if (url) mediaUrls.push(url);
+            const inner = m?.mapValue?.fields || {};
+            const url: string | undefined = inner.downloadUrl?.stringValue;
+            if (!url) continue;
+            const rawType = inner.type?.stringValue || 'image';
+            const type: 'image' | 'video' = rawType === 'video' ? 'video' : 'image';
+            const thumbnailUrl: string | undefined = inner.thumbnailUrl?.stringValue || undefined;
+            mediaUrls.push(url);
+            mediaItems.push({ url, type, thumbnailUrl });
           }
         }
       } catch {
@@ -291,6 +311,7 @@ export class FirestoreClient {
         city,
         textDescription: fields.textDescription?.stringValue || '',
         mediaUrls,
+        mediaItems,
         createdAt: fields.createdAt?.timestampValue || null,
       };
     } catch (err) {

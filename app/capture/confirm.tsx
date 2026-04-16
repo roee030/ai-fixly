@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, Image, ActivityIndicator, Pressable, Modal, FlatList, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, ScrollView, Image, ActivityIndicator, Pressable, Modal, FlatList, StyleSheet, Dimensions, TextInput } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,11 +25,11 @@ import type { AIAnalysisResult } from '../../src/services/ai';
 
 export default function ConfirmScreen() {
   const { t } = useTranslation();
-  const { images, base64Images, description, videoUris: videoUrisParam } = useLocalSearchParams<{
+  const { images, base64Images, description, videoAssets: videoAssetsParam } = useLocalSearchParams<{
     images: string;
     base64Images: string;
     description: string;
-    videoUris?: string;
+    videoAssets?: string;
   }>();
 
   const user = useAuthStore((s) => s.user);
@@ -43,7 +43,8 @@ export default function ConfirmScreen() {
   const [preview, setPreview] = useState<{ uri: string; kind: 'image' | 'video' } | null>(null);
 
   const imageUris: string[] = JSON.parse(images || '[]');
-  const videoUris: string[] = JSON.parse(videoUrisParam || '[]');
+  const videoAssets: { uri: string; thumbnailUri?: string }[] = JSON.parse(videoAssetsParam || '[]');
+  const videoUris: string[] = videoAssets.map((v) => v.uri);
 
   useEffect(() => {
     analyzeImages();
@@ -90,9 +91,18 @@ export default function ConfirmScreen() {
       }
 
       const tempId = `req_${Date.now()}`;
-      const uploadedMedia = await Promise.all(
-        imageUris.map((uri) => mediaService.uploadImage(uri, user.uid, tempId))
+      // Upload everything in parallel — images and videos. Videos carry their
+      // poster frame so the WhatsApp preview / provider quote page can show
+      // a still frame next to the play link.
+      const uploadedImages = await Promise.all(
+        imageUris.map((uri) => mediaService.uploadImage(uri, user.uid, tempId)),
       );
+      const uploadedVideos = await Promise.all(
+        videoAssets.map((v) =>
+          mediaService.uploadVideo(v.uri, user.uid, tempId, v.thumbnailUri),
+        ),
+      );
+      const uploadedMedia = [...uploadedImages, ...uploadedVideos];
 
       // Override AI-chosen professions with whatever the user finalised in
       // the picker. This preserves the AI's other analysis (urgency, summary)
@@ -115,7 +125,8 @@ export default function ConfirmScreen() {
       // can offer "view my request".
       router.replace({ pathname: '/capture/sent', params: { requestId: request.id } });
 
-      // Fire-and-forget broadcast.
+      // Fire-and-forget broadcast. Send images first so the provider sees
+      // photos at the top of the WhatsApp thread, then videos.
       broadcastToProviders({
         requestId: request.id,
         professions: chosenProfessions,
@@ -359,9 +370,13 @@ function ProfessionPickerModal({
   t: (k: string, o?: any) => string;
 }) {
   const [draft, setDraft] = useState<string[]>(selected);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
-    if (visible) setDraft(selected);
+    if (visible) {
+      setDraft(selected);
+      setQuery('');
+    }
   }, [visible, selected]);
 
   const toggle = (label: string) => {
@@ -369,6 +384,20 @@ function ProfessionPickerModal({
       prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label],
     );
   };
+
+  // Selected items first, then unselected ones, both filtered by the query.
+  // Showing selected on top makes it clear what's already chosen even after
+  // the user scrolls or searches.
+  const normalisedQuery = query.trim().toLowerCase();
+  const filteredItems = PROFESSIONS.filter((p) =>
+    normalisedQuery.length === 0
+      ? true
+      : p.labelHe.toLowerCase().includes(normalisedQuery) ||
+        p.key.toLowerCase().includes(normalisedQuery),
+  );
+  const selectedItems = filteredItems.filter((p) => draft.includes(p.labelHe));
+  const unselectedItems = filteredItems.filter((p) => !draft.includes(p.labelHe));
+  const orderedItems = [...selectedItems, ...unselectedItems];
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -380,11 +409,37 @@ function ProfessionPickerModal({
               <Ionicons name="close" size={24} color={COLORS.text} />
             </Pressable>
           </View>
+
+          <View style={modalStyles.searchRow}>
+            <Ionicons name="search" size={18} color={COLORS.textTertiary} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder={t('editProfession.searchPlaceholder')}
+              placeholderTextColor={COLORS.textTertiary}
+              style={modalStyles.searchInput}
+              autoCorrect={false}
+            />
+            {query.length > 0 && (
+              <Pressable onPress={() => setQuery('')} hitSlop={10}>
+                <Ionicons name="close-circle" size={18} color={COLORS.textTertiary} />
+              </Pressable>
+            )}
+          </View>
+
           <FlatList
-            data={PROFESSIONS}
+            data={orderedItems}
             keyExtractor={(item) => item.key}
             ItemSeparatorComponent={() => <View style={{ height: 6 }} />}
             contentContainerStyle={{ paddingVertical: 8 }}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={() => (
+              <View style={modalStyles.empty}>
+                <Text style={modalStyles.emptyText}>
+                  {t('editProfession.noResults')}
+                </Text>
+              </View>
+            )}
             renderItem={({ item }) => {
               const isOn = draft.includes(item.labelHe);
               return (
@@ -461,5 +516,31 @@ const modalStyles = StyleSheet.create({
   rowTextActive: {
     color: COLORS.primary,
     fontWeight: '700',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  searchInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 15,
+    padding: 0,
+  },
+  empty: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: COLORS.textTertiary,
+    fontSize: 14,
   },
 });

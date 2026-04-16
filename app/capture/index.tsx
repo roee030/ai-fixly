@@ -122,9 +122,12 @@ export default function CaptureScreen() {
     setIsAnalyzing(true);
     logAction('capture_submitted', 'capture');
     try {
-      // Downstream only needs the video URIs for upload; thumbnails are a
-      // render-only concern so we don't bother shipping them through params.
-      const videoUris = videos.map((v) => v.uri);
+      // Ship the full video asset (uri + thumbnailUri) so the next screen
+      // can both upload the mp4 AND a real poster frame for the WhatsApp
+      // preview / provider quote page. Plain URIs lose the poster.
+      const videoAssetsParam = JSON.stringify(
+        videos.map((v) => ({ uri: v.uri, thumbnailUri: v.thumbnailUri })),
+      );
       if (Platform.OS === 'web') {
         router.push({
           pathname: '/capture/confirm',
@@ -132,7 +135,7 @@ export default function CaptureScreen() {
             images: JSON.stringify(webPhotos),
             base64Images: JSON.stringify([]),
             description: description.trim(),
-            videoUris: JSON.stringify([]),
+            videoAssets: JSON.stringify([]),
           },
         });
       } else {
@@ -143,7 +146,7 @@ export default function CaptureScreen() {
             images: JSON.stringify(images),
             base64Images: JSON.stringify(base64Images),
             description: description.trim(),
-            videoUris: JSON.stringify(videoUris),
+            videoAssets: videoAssetsParam,
           },
         });
       }
