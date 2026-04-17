@@ -69,12 +69,13 @@ export async function sendPush(params: FcmPushParams): Promise<boolean> {
         data: data || {},
         android: {
           priority: 'high' as const,
-          // Collapse key lets a newer push replace the previous one while the
-          // device is offline. Tag additionally replaces the tray entry on
-          // arrival, so repeat notifications (e.g. "2nd bid", "3rd bid") show
-          // up as ONE updating entry instead of a stack.
           collapse_key: tag || data?.requestId || undefined,
           notification: {
+            // Deliberately NOT specifying channel_id. When omitted, Android
+            // routes the message to the FCM-auto-created "Miscellaneous"
+            // channel that RN Firebase creates on first token registration.
+            // Specifying a channel_id that doesn't exist on the device
+            // suppresses the banner silently.
             sound: 'default',
             body,
             notification_priority: 'PRIORITY_HIGH' as const,
