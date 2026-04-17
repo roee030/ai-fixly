@@ -40,7 +40,11 @@ export default function ConfirmScreen() {
   const [hasError, setHasError] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showProfessionPicker, setShowProfessionPicker] = useState(false);
-  const [preview, setPreview] = useState<{ uri: string; kind: 'image' | 'video' } | null>(null);
+  const [preview, setPreview] = useState<
+    | { kind: 'image'; uri: string }
+    | { kind: 'video'; uri: string; posterUri?: string }
+    | null
+  >(null);
 
   const imageUris: string[] = JSON.parse(images || '[]');
   const videoAssets: { uri: string; thumbnailUri?: string }[] = JSON.parse(videoAssetsParam || '[]');
@@ -189,21 +193,33 @@ export default function ConfirmScreen() {
           </Text>
         </View>
 
-        {(imageUris.length > 0 || videoUris.length > 0) && (
+        {(imageUris.length > 0 || videoAssets.length > 0) && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
             {imageUris.map((uri, i) => (
-              <Pressable key={`p-${i}`} onPress={() => setPreview({ uri, kind: 'image' })}>
-                <Image source={{ uri }} style={{ width: 100, height: 100, borderRadius: 8, marginRight: 8 }} />
+              <Pressable key={`p-${i}`} onPress={() => setPreview({ kind: 'image', uri })}>
+                <Image source={{ uri }} style={confirmThumbStyles.thumb} />
               </Pressable>
             ))}
-            {videoUris.map((uri, i) => (
+            {videoAssets.map((video, i) => (
               <Pressable
                 key={`v-${i}`}
-                onPress={() => setPreview({ uri, kind: 'video' })}
-                style={{ width: 100, height: 100, borderRadius: 8, marginRight: 8, backgroundColor: '#1A1A1F', alignItems: 'center', justifyContent: 'center' }}
+                onPress={() => setPreview({ kind: 'video', uri: video.uri, posterUri: video.thumbnailUri })}
+                style={confirmThumbStyles.videoTile}
               >
-                <Ionicons name="play-circle" size={36} color="#FFFFFF" />
-                <Text style={{ color: '#FFFFFF', fontSize: 11, marginTop: 4 }}>{t('capture.videoTag')}</Text>
+                {video.thumbnailUri ? (
+                  // Real poster frame from expo-video-thumbnails. Falls back
+                  // to the dark placeholder if the thumb wasn't generated.
+                  <Image source={{ uri: video.thumbnailUri }} style={confirmThumbStyles.thumb} />
+                ) : (
+                  <View style={[confirmThumbStyles.thumb, confirmThumbStyles.videoFallback]} />
+                )}
+                <View style={confirmThumbStyles.videoOverlay}>
+                  <Ionicons name="play-circle" size={36} color="#FFFFFF" />
+                </View>
+                <View style={confirmThumbStyles.videoBadge}>
+                  <Ionicons name="videocam" size={10} color="#FFFFFF" />
+                  <Text style={confirmThumbStyles.videoBadgeText}>{t('capture.videoTag')}</Text>
+                </View>
               </Pressable>
             ))}
           </ScrollView>
@@ -289,7 +305,7 @@ export default function ConfirmScreen() {
       <Modal visible={!!preview} transparent animationType="fade" onRequestClose={() => setPreview(null)}>
         <View style={previewStyles.overlay}>
           {preview?.kind === 'video' ? (
-            <VideoPreview uri={preview.uri} style={previewStyles.video} />
+            <VideoPreview uri={preview.uri} posterUri={preview.posterUri} style={previewStyles.video} />
           ) : preview ? (
             <Pressable style={previewStyles.imgWrap} onPress={() => setPreview(null)}>
               <Image source={{ uri: preview.uri }} style={previewStyles.image} resizeMode="contain" />
@@ -542,5 +558,39 @@ const modalStyles = StyleSheet.create({
   emptyText: {
     color: COLORS.textTertiary,
     fontSize: 14,
+  },
+});
+
+const confirmThumbStyles = StyleSheet.create({
+  thumb: { width: 100, height: 100, borderRadius: 8, marginRight: 8 },
+  videoTile: { width: 100, height: 100, borderRadius: 8, marginRight: 8, position: 'relative' },
+  videoFallback: { backgroundColor: '#101015', marginRight: 0 },
+  videoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 8,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderRadius: 8,
+  },
+  videoBadge: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  videoBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
   },
 });

@@ -28,7 +28,7 @@
 import { Env } from './env';
 import { findNearbyProvidersCached } from './placesCache';
 import type { PlacesProvider } from './googlePlaces';
-import { sendWhatsAppMessage, sendWhatsAppWithAllMedia } from './twilio';
+import { sendWhatsAppMessage } from './twilio';
 import { parseProviderReply } from './geminiParser';
 import { FirestoreClient } from './firestore';
 import { sendPush } from './fcm';
@@ -262,7 +262,7 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       `━━━━━━━━━━━━━━\n\n` +
       testMessage;
 
-    const result = await sendWhatsAppWithAllMedia({
+    const result = await sendWhatsAppMessage({
       accountSid: env.TWILIO_ACCOUNT_SID,
       authToken: env.TWILIO_AUTH_TOKEN,
       from: env.TWILIO_WHATSAPP_FROM,
@@ -356,7 +356,7 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
 
     // Real mode: send WhatsApp with personalized form URLs for THIS provider.
     const message = messagePrefix + buildProviderMessage(body, env, provider.phone);
-    const result = await sendWhatsAppWithAllMedia({
+    const result = await sendWhatsAppMessage({
       accountSid: env.TWILIO_ACCOUNT_SID,
       authToken: env.TWILIO_AUTH_TOKEN,
       from: env.TWILIO_WHATSAPP_FROM,
