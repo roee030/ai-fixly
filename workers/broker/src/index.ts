@@ -985,16 +985,25 @@ async function pushToCustomer(params: {
   title: string;
   body: string;
 }): Promise<void> {
+  console.log(`[push] pushToCustomer entered type=${params.type} requestId=${params.requestId}`);
   try {
     const firestore = new FirestoreClient(
       params.env.FIREBASE_PROJECT_ID,
       params.env.FIREBASE_SERVICE_ACCOUNT_JSON
     );
     const requestDoc = await firestore.getRequest(params.requestId);
-    if (!requestDoc?.userId) return;
+    if (!requestDoc?.userId) {
+      console.warn(`[push] skipping — request ${params.requestId} has no userId`);
+      return;
+    }
+    console.log(`[push] resolved userId=${requestDoc.userId}`);
 
     const fcmToken = await firestore.getUserFcmToken(requestDoc.userId);
-    if (!fcmToken) return;
+    if (!fcmToken) {
+      console.warn(`[push] skipping — user ${requestDoc.userId} has no fcmToken saved. Open the Push Diagnostic screen in the app.`);
+      return;
+    }
+    console.log(`[push] fcmToken present (len=${fcmToken.length})`);
 
     // For bid pushes, collapse every arriving-offer notification into ONE
     // tray entry that updates its title/body as more bids arrive. Without
