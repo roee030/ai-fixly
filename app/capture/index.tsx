@@ -46,6 +46,11 @@ export default function CaptureScreen() {
   >(null);
 
   const scrollRef = useRef<ScrollView>(null);
+  // Scroll offset captured the moment the textarea gained focus, so we can
+  // restore it when the keyboard closes. Without this, scroll-to-end on
+  // focus permanently shifts the page down even after the keyboard hides.
+  const preFocusScrollYRef = useRef<number>(0);
+  const currentScrollYRef = useRef<number>(0);
 
   useEffect(() => {
     analyticsService.trackEvent('capture_started');
@@ -232,13 +237,16 @@ export default function CaptureScreen() {
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
-          // Generous bottom padding so scrollToEnd(onFocus) actually moves
-          // the input into the middle of the visible area instead of pinning
-          // it flush against the keyboard. The dummy padding gets hidden by
-          // the keyboard and is invisible otherwise.
           contentContainerStyle={{ paddingBottom: 240 }}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
+          // Track the live scroll offset so we can remember where the user
+          // was before they focused the textarea and restore it when they
+          // dismiss the keyboard.
+          onScroll={(e) => {
+            currentScrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
         >
           {/* Header */}
           <View style={styles.header}>
@@ -246,6 +254,15 @@ export default function CaptureScreen() {
               <Ionicons name="arrow-back" size={24} color={COLORS.text} />
             </Pressable>
             <Text style={styles.title}>{t('capture.title')}</Text>
+          </View>
+
+          {/* Required-field header — mirrors the one above the description
+              textarea so users understand that media is ALSO mandatory, not
+              just text. Without this the red asterisk only on the text made
+              it look like photos/videos are optional. */}
+          <View style={styles.descLabelRow}>
+            <Text style={styles.descLabel}>{t('capture.mediaRequiredLabel')}</Text>
+            <Text style={styles.required}> *</Text>
           </View>
 
           {/* Two clean entry points: Camera (photo OR video via action sheet)
@@ -366,12 +383,31 @@ export default function CaptureScreen() {
             // Scroll the textarea into view when the keyboard appears.
             // Without this, the keyboard can sit on top of the input.
             onFocus={() => {
+              // Remember where the user was so we can restore the scroll
+              // position when the keyboard closes. Without this, the page
+              // stayed scrolled-to-end after dismiss.
+              preFocusScrollYRef.current = currentScrollYRef.current;
               // Delay enough for the OS keyboard animation to start; then
               // scroll twice (once immediately, once after the keyboard has
               // fully animated in) so the input ends up visible regardless
               // of device keyboard speed.
               setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
               setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 420);
+            }}
+            onBlur={() => {
+              // Restore the offset from just before focus, so dismissing
+              // the keyboard returns the user to where they were. The delay
+              // waits for the keyboard-hide animation to free up space
+              // first — otherwise the scrollTo clamps to a smaller content
+              // area and ends up in the wrong place.
+              setTimeout(
+                () =>
+                  scrollRef.current?.scrollTo({
+                    y: preFocusScrollYRef.current,
+                    animated: true,
+                  }),
+                220,
+              );
             }}
             style={[
               styles.descInput,
@@ -525,14 +561,24 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   thumbStrip: {
+    // Extra top margin prevents the x-remove button (which sits at
+    // top:-4, right:-4 on each thumb) from being clipped by the element
+    // above or by the strip's own bounding box.
+    marginTop: 10,
     marginBottom: 14,
+    paddingTop: 6,
   },
   thumbStripContent: {
     gap: 8,
     paddingRight: 4,
+    paddingTop: 4,
   },
   thumbWrap: {
     position: 'relative',
+    // Extra inset so the floating remove-button (top:-4 right:-4) is never
+    // visually cropped by the parent strip.
+    marginTop: 4,
+    marginRight: 4,
   },
   thumb: {
     width: THUMB_SIZE,

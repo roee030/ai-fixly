@@ -150,6 +150,7 @@ export default {
     mediaCount: '{{photos}} תמונות, {{videos}} סרטונים (עד {{max}})',
     videoTag: 'סרטון',
     cameraSheetTitle: 'מה לצלם?',
+    mediaRequiredLabel: 'צלם או העלה תמונה/סרטון',
   },
 
   confirm: {

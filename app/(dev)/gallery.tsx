@@ -69,6 +69,7 @@ const SCREENS: ScreenCard[] = [
   { name: 'Admin: Geo', nameHe: 'ניהול: מפת גיאו', route: '/admin/geo', icon: 'map-outline', group: 'ניהול' },
   { name: 'Admin: Providers', nameHe: 'ניהול: בעלי מקצוע', route: '/admin/providers', icon: 'people-outline', group: 'ניהול' },
   { name: 'Admin: Revenue', nameHe: 'ניהול: הכנסות', route: '/admin/revenue', icon: 'cash-outline', group: 'ניהול' },
+  { name: 'Push Diagnostic', nameHe: 'דיאגנוסטיקה: התראות', route: '/(dev)/push-test', icon: 'bug-outline', group: 'ניהול' },
 ];
 
 export default function GalleryScreen() {
