@@ -92,11 +92,30 @@ class FirebaseBidService implements BidService {
       availabilityStartAt: toIsoOrNull(data.availabilityStartAt),
       rating: typeof data.rating === 'number' ? data.rating : null,
       address: data.address,
+      // `notes` is the preferred new field; we also fall back to the
+      // legacy `rawReply` string with its "[web-form] " prefix stripped
+      // so older bids already in Firestore keep displaying correctly.
+      notes: readBidNotes(data),
       isReal: data.isReal === true,
       source: (data.source as BidSource) || 'mock',
       createdAt: parseDate(data.createdAt, data.receivedAt),
     };
   }
+}
+
+/**
+ * Extract the provider's free-text notes. New bids store it directly on
+ * `notes`; legacy bids from the web form packed it into `rawReply` with a
+ * "[web-form] " prefix that we strip for display.
+ */
+function readBidNotes(data: any): string | undefined {
+  if (typeof data.notes === 'string' && data.notes.trim()) return data.notes.trim();
+  const rawReply: string | undefined = typeof data.rawReply === 'string' ? data.rawReply : undefined;
+  if (!rawReply) return undefined;
+  const stripped = rawReply.replace(/^\[web-form\]\s*/, '').trim();
+  // Ignore the demo-bid placeholder string so we don't expose it to users.
+  if (!stripped || stripped.startsWith('[DEMO')) return undefined;
+  return stripped || undefined;
 }
 
 function byNewestFirst(a: Bid, b: Bid): number {

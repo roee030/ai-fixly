@@ -434,6 +434,19 @@ export default function RequestDetailsScreen() {
                         </Text>
                       </View>
                     </View>
+                    {bid.notes && (
+                      <View style={styles.bidNotesBlock}>
+                        <Ionicons
+                          name="chatbubble-ellipses-outline"
+                          size={12}
+                          color={COLORS.textSecondary}
+                          style={{ marginTop: 3 }}
+                        />
+                        <Text style={styles.bidNotesText} numberOfLines={4}>
+                          {bid.notes}
+                        </Text>
+                      </View>
+                    )}
                     <Text style={[styles.bidSelectHint, expired && { color: COLORS.error }]}>
                       {expired ? t('requestDetails.bidExpired') : t('requestDetails.tapToSelect')}
                     </Text>
@@ -817,6 +830,22 @@ const styles = StyleSheet.create({
   bidPriceLabel: { color: COLORS.primary, fontSize: 14 },
   bidDivider: { width: 1, height: 24, backgroundColor: COLORS.border },
   bidAvail: { color: COLORS.text, fontSize: 14 },
+  bidNotesBlock: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+    backgroundColor: COLORS.backgroundLight,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  bidNotesText: {
+    color: COLORS.text,
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
+    fontStyle: 'italic',
+  },
   bidSelectHint: { color: COLORS.primary, fontSize: 12, textAlign: 'center', marginTop: 8, fontWeight: '600' },
   bottomBar: { paddingVertical: 12, gap: 8 },
 });

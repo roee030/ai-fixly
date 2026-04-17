@@ -470,6 +470,13 @@ export class FirestoreClient {
       rating?: number | null;
       address?: string;
       rawReply: string;
+      /**
+       * Provider's own free-text notes (from the web form's "notes"
+       * textarea, or the prose portion of a WhatsApp reply). Stored
+       * separately from rawReply so the customer-facing bid card can
+       * surface it without showing raw-log noise.
+       */
+      notes?: string;
       receivedAt: string;
       isReal: boolean;
       source: 'whatsapp' | 'google_places_demo' | 'mock';
@@ -490,6 +497,7 @@ export class FirestoreClient {
           ? { stringValue: data.availability }
           : { nullValue: null },
         rawReply: { stringValue: data.rawReply },
+        ...(data.notes ? { notes: { stringValue: data.notes } } : {}),
         receivedAt: { timestampValue: data.receivedAt },
         isReal: { booleanValue: data.isReal },
         source: { stringValue: data.source },

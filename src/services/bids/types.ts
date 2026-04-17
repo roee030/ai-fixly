@@ -18,6 +18,12 @@ export interface Bid {
   availabilityStartAt?: string | null;
   rating: number | null;
   address?: string;
+  /**
+   * Free-text message the provider attached to the quote (e.g. from the
+   * "notes" field on the web form, or the prose body of a WhatsApp reply).
+   * Shown to the customer below the price/availability chips when present.
+   */
+  notes?: string;
   /** true = real reply from a provider via WhatsApp; false = simulated demo bid */
   isReal: boolean;
   source: BidSource;

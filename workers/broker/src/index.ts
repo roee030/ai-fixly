@@ -1115,6 +1115,8 @@ async function handleProviderQuoteSubmission(request: Request, env: Env): Promis
     return jsonResponse({ error: 'already_submitted', code: 'ALREADY_SUBMITTED' }, 409, request);
   }
 
+  const notesClean = (body.notes || '').trim().slice(0, 500);
+
   await firestore.createBid({
     requestId: body.requestId,
     bidId: crypto.randomUUID(),
@@ -1126,7 +1128,12 @@ async function handleProviderQuoteSubmission(request: Request, env: Env): Promis
       availability: availabilityText,
       availabilityStartAt: body.availabilityStartAt,
       rating: null,
-      rawReply: `[web-form] ${body.notes || ''}`.slice(0, 500),
+      // Store the provider's free-text notes as a first-class field so
+      // the customer-facing bid card can render it directly. `rawReply`
+      // is kept for audit / parser compatibility but no longer the only
+      // place this text lives.
+      notes: notesClean || undefined,
+      rawReply: `[web-form] ${notesClean}`.slice(0, 500),
       receivedAt: new Date().toISOString(),
       isReal: true,
       source: 'whatsapp',
