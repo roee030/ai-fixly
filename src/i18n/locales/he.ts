@@ -202,6 +202,8 @@ export default {
     shekel: 'ש"ח',
     demoOffer: 'הצעה מדומה',
     requestNotFound: 'בקשה לא נמצאה',
+    tapToReveal: 'לחץ להצגת מספר הטלפון',
+    callNow: 'לחץ להתקשר',
   },
 
   chat: {
@@ -330,6 +332,8 @@ export default {
     submitError: 'לא הצלחנו לשלוח. נסה שוב.',
     submittedTitle: 'ההצעה נשלחה!',
     submittedSubtitle: 'הלקוח יראה את ההצעה שלך עם שאר ההצעות. אם יבחר בך, נשלח לך את הפרטים שלו ב-WhatsApp.',
+    alreadySubmittedTitle: 'כבר שלחת הצעה לבקשה הזו',
+    alreadySubmittedSubtitle: 'ההצעה הקודמת שלך מוצגת ללקוח. אם הוא יבחר בך, נשלח לך את פרטי הקשר ב-WhatsApp.',
     requestNotFound: 'הקריאה לא נמצאה או נסגרה.',
     footer: 'ai-fixly — מחבר בין בעיות לפתרונות',
   },

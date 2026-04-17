@@ -28,4 +28,22 @@ export interface Env {
    * Overrides DRY_RUN when set. Leave empty for normal behavior.
    */
   TEST_PHONE_OVERRIDE: string;
+
+  /**
+   * Twilio Content Template SID for the "new service request" provider intro
+   * message (HXxxxxxxxxxxxxxxxxxx). When set, the broadcast uses this
+   * interactive template — the provider sees "Send a quote" and "Report" as
+   * real WhatsApp CTA buttons instead of inline URLs. When unset, we fall
+   * back to the plain-text message with links.
+   *
+   * Template creation + approval is a one-time manual step in the Twilio
+   * Console. See docs/plans/2026-04-17-whatsapp-interactive-buttons.md.
+   */
+  TWILIO_CONTENT_SID_PROVIDER_INTRO?: string;
+
+  /**
+   * Optional override for the web base URL of the provider forms. Falls
+   * back to ai-fixly-web.pages.dev when unset.
+   */
+  PROVIDER_FORM_BASE_URL?: string;
 }

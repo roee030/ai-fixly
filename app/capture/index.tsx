@@ -222,14 +222,23 @@ export default function CaptureScreen() {
     <ScreenContainer>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        // `padding` on both platforms: Android's default `adjustResize` can
+        // leave the input hidden behind the keyboard when there's a fixed
+        // bottom bar. Adding padding ourselves guarantees the input is pushed
+        // up alongside the keyboard.
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
       >
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 24 }}
+          // Generous bottom padding so scrollToEnd(onFocus) actually moves
+          // the input into the middle of the visible area instead of pinning
+          // it flush against the keyboard. The dummy padding gets hidden by
+          // the keyboard and is invisible otherwise.
+          contentContainerStyle={{ paddingBottom: 240 }}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
         >
           {/* Header */}
           <View style={styles.header}>
@@ -357,7 +366,12 @@ export default function CaptureScreen() {
             // Scroll the textarea into view when the keyboard appears.
             // Without this, the keyboard can sit on top of the input.
             onFocus={() => {
-              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+              // Delay enough for the OS keyboard animation to start; then
+              // scroll twice (once immediately, once after the keyboard has
+              // fully animated in) so the input ends up visible regardless
+              // of device keyboard speed.
+              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 420);
             }}
             style={[
               styles.descInput,

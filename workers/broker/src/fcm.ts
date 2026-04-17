@@ -26,10 +26,21 @@ export interface FcmPushParams {
   data?: Record<string, string>;
   /** Optional hero image URL (Android BigPictureStyle). */
   imageUrl?: string;
+  /**
+   * Stable tag used to REPLACE the previous tray notification with the same
+   * tag (Android) and a matching iOS APNS thread. Perfect for "N offers"
+   * style updates where we don't want to pile up a notification per bid.
+   */
+  tag?: string;
+  /**
+   * iOS badge count. Usually the current number of unread items (bids,
+   * messages, etc.) — set to 0 to clear, undefined to leave the badge alone.
+   */
+  badge?: number;
 }
 
 export async function sendPush(params: FcmPushParams): Promise<boolean> {
-  const { serviceAccountJson, token, title, body, data, imageUrl } = params;
+  const { serviceAccountJson, token, title, body, data, imageUrl, tag, badge } = params;
 
   if (!token) {
     console.log('[fcm] no token, skipping push');
@@ -58,20 +69,20 @@ export async function sendPush(params: FcmPushParams): Promise<boolean> {
         data: data || {},
         android: {
           priority: 'high' as const,
-          // Collapse key lets a newer push with the same requestId replace
-          // the previous one in the tray instead of stacking — cleaner UX.
-          collapse_key: data?.requestId || undefined,
+          // Collapse key lets a newer push replace the previous one while the
+          // device is offline. Tag additionally replaces the tray entry on
+          // arrival, so repeat notifications (e.g. "2nd bid", "3rd bid") show
+          // up as ONE updating entry instead of a stack.
+          collapse_key: tag || data?.requestId || undefined,
           notification: {
             sound: 'default',
-            // BigText lets the body wrap to multiple lines when expanded.
-            // Without this, long bodies are truncated to one line.
             body,
             notification_priority: 'PRIORITY_HIGH' as const,
             visibility: 'PUBLIC' as const,
-            // Accent color tints the small icon and the left edge bar.
             color: BRAND_COLOR,
             default_vibrate_timings: true,
             default_light_settings: true,
+            ...(tag ? { tag } : {}),
             ...(imageUrl ? { image: imageUrl } : {}),
           },
         },
@@ -79,9 +90,12 @@ export async function sendPush(params: FcmPushParams): Promise<boolean> {
           payload: {
             aps: {
               sound: 'default',
-              badge: 1,
+              ...(typeof badge === 'number' ? { badge } : { badge: 1 }),
               'mutable-content': 1,
               'content-available': 1,
+              // thread-id groups pushes in the iOS tray so multiple bids on
+              // the same request collapse under one "ai-fixly" conversation.
+              ...(tag ? { 'thread-id': tag } : {}),
             },
           },
           ...(imageUrl

@@ -13,6 +13,7 @@ import { AvailabilityPicker } from '../../../src/components/provider/Availabilit
 import {
   fetchPublicRequestSummary,
   submitProviderQuote,
+  QuoteAlreadySubmittedError,
 } from '../../../src/services/providerForm';
 import type { PublicRequestSummary } from '../../../src/services/providerForm';
 import { COLORS } from '../../../src/constants';
@@ -44,6 +45,7 @@ export default function ProviderQuoteScreen() {
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [alreadySubmitted, setAlreadySubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [preview, setPreview] = useState<
     | { kind: 'image'; uri: string }
@@ -82,7 +84,13 @@ export default function ProviderQuoteScreen() {
       });
       setSubmitted(true);
     } catch (err: any) {
-      setSubmitError(err?.message || 'submit_failed');
+      if (err instanceof QuoteAlreadySubmittedError) {
+        // Provider tapped the link again after already sending a quote.
+        // Show the dedicated "already submitted" state instead of an error.
+        setAlreadySubmitted(true);
+      } else {
+        setSubmitError(err?.message || 'submit_failed');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -104,6 +112,18 @@ export default function ProviderQuoteScreen() {
       <ScreenContainer>
         <View style={styles.center}>
           <ActivityIndicator color={COLORS.primary} size="large" />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (alreadySubmitted) {
+    return (
+      <ScreenContainer>
+        <View style={styles.center}>
+          <Ionicons name="information-circle" size={64} color={COLORS.info} />
+          <Text style={styles.thankTitle}>{t('providerForm.alreadySubmittedTitle')}</Text>
+          <Text style={styles.thankSubtitle}>{t('providerForm.alreadySubmittedSubtitle')}</Text>
         </View>
       </ScreenContainer>
     );

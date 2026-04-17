@@ -28,7 +28,8 @@
 import { Env } from './env';
 import { findNearbyProvidersCached } from './placesCache';
 import type { PlacesProvider } from './googlePlaces';
-import { sendWhatsAppMessage } from './twilio';
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from './twilio';
+import { normaliseCityName } from './cityNames';
 import { parseProviderReply } from './geminiParser';
 import { FirestoreClient } from './firestore';
 import { sendPush } from './fcm';
@@ -262,13 +263,15 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       `━━━━━━━━━━━━━━\n\n` +
       testMessage;
 
-    const result = await sendWhatsAppMessage({
-      accountSid: env.TWILIO_ACCOUNT_SID,
-      authToken: env.TWILIO_AUTH_TOKEN,
-      from: env.TWILIO_WHATSAPP_FROM,
+    const result = await sendProviderIntro({
+      env,
       to: testPhone,
-      body: testBody,
+      plainTextBody: testBody,
       mediaUrls: body.mediaUrls?.slice(0, 10),
+      city: extractCity(body.location.address),
+      requestId: body.requestId,
+      providerPhone: testPhone,
+      shortSummary: body.shortSummary || 'בקשת שירות',
     });
 
     // Denormalize broadcast result so the app shows "1 provider contacted"
@@ -356,13 +359,15 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
 
     // Real mode: send WhatsApp with personalized form URLs for THIS provider.
     const message = messagePrefix + buildProviderMessage(body, env, provider.phone);
-    const result = await sendWhatsAppMessage({
-      accountSid: env.TWILIO_ACCOUNT_SID,
-      authToken: env.TWILIO_AUTH_TOKEN,
-      from: env.TWILIO_WHATSAPP_FROM,
+    const result = await sendProviderIntro({
+      env,
       to: provider.phone,
-      body: message,
+      plainTextBody: message,
       mediaUrls: body.mediaUrls?.slice(0, 10),
+      city: extractCity(body.location.address),
+      requestId: body.requestId,
+      providerPhone: provider.phone,
+      shortSummary: body.shortSummary || 'בקשת שירות',
     });
 
     if (result.success) {
@@ -991,11 +996,34 @@ async function pushToCustomer(params: {
     const fcmToken = await firestore.getUserFcmToken(requestDoc.userId);
     if (!fcmToken) return;
 
+    // For bid pushes, collapse every arriving-offer notification into ONE
+    // tray entry that updates its title/body as more bids arrive. Without
+    // this the user sees a stack of "new offer from X" pushes that scroll
+    // off the top of the tray.
+    let title = params.title;
+    let body = params.body;
+    let badge: number | undefined;
+    // Stable per-request tag. Android replaces same-tag entries; iOS groups
+    // them under a single thread.
+    const tag = `req:${params.requestId}:${params.type}`;
+
+    if (params.type === 'new_bid') {
+      const bidCount = await firestore.countBidsForRequest(params.requestId);
+      if (bidCount >= 2) {
+        title = `יש לך ${bidCount} הצעות חדשות`;
+        body = `פתח את הבקשה כדי לבחור`;
+      }
+      // else: first bid → keep the original "New offer from X" title.
+      badge = bidCount;
+    }
+
     await sendPush({
       serviceAccountJson: params.env.FIREBASE_SERVICE_ACCOUNT_JSON,
       token: fcmToken,
-      title: params.title,
-      body: params.body,
+      title,
+      body,
+      tag,
+      badge,
       data: {
         requestId: params.requestId,
         type: params.type,
@@ -1073,12 +1101,26 @@ async function handleProviderQuoteSubmission(request: Request, env: Env): Promis
     ? `${body.availabilityText} • מחיר ביקור (יתכנו עלויות נוספות)`
     : body.availabilityText;
 
+  // Never use the phone number as a display/provider name — the customer
+  // browses bids anonymously until they pick one, and leaking the phone in
+  // the card would reveal the provider's identity ahead of selection.
+  const providerNameClean = body.providerName?.trim() || '';
+  const anonymousName = 'בעל מקצוע';
+
+  // Reject a second quote from the same provider on the same request.
+  // Providers sometimes tap the WhatsApp link twice or refresh the form —
+  // each submission would previously create a duplicate bid in the customer
+  // view.
+  if (await firestore.providerAlreadyBidOnRequest(body.requestId, body.providerPhone)) {
+    return jsonResponse({ error: 'already_submitted', code: 'ALREADY_SUBMITTED' }, 409, request);
+  }
+
   await firestore.createBid({
     requestId: body.requestId,
     bidId: crypto.randomUUID(),
     data: {
-      providerName: body.providerName?.trim() || body.providerPhone,
-      displayName: body.providerName?.trim(),
+      providerName: providerNameClean || anonymousName,
+      displayName: providerNameClean || anonymousName,
       providerPhone: body.providerPhone,
       price,
       availability: availabilityText,
@@ -1127,6 +1169,62 @@ async function handleProviderReportSubmission(request: Request, env: Env): Promi
  */
 function getProviderBaseUrl(env: any): string {
   return (env.PROVIDER_FORM_BASE_URL || 'https://ai-fixly-web.pages.dev').replace(/\/+$/, '');
+}
+
+/**
+ * Send the "new service request" message to a provider.
+ *
+ * When TWILIO_CONTENT_SID_PROVIDER_INTRO is configured the message goes out
+ * as a Twilio Content Template — the provider sees real WhatsApp CTA
+ * buttons ("Send a quote" / "Report") instead of inline links. Without the
+ * template configured we fall back to the plain-text message with the two
+ * URLs, which keeps everything working while the template is still awaiting
+ * Meta approval.
+ */
+async function sendProviderIntro(args: {
+  env: Env;
+  to: string;
+  plainTextBody: string;
+  mediaUrls?: string[];
+  city: string;
+  requestId: string;
+  providerPhone: string;
+  shortSummary: string;
+}) {
+  const { env, to, plainTextBody, mediaUrls, city, requestId, providerPhone, shortSummary } = args;
+  const contentSid = (env.TWILIO_CONTENT_SID_PROVIDER_INTRO || '').trim();
+
+  if (contentSid) {
+    // The approved template must accept three variables in this order:
+    //   1 → shortSummary (used in the body)
+    //   2 → requestId (stitched into the button URLs)
+    //   3 → providerPhone
+    // These match the "mapping" described in
+    //   docs/plans/2026-04-17-whatsapp-interactive-buttons.md
+    return sendWhatsAppTemplate({
+      accountSid: env.TWILIO_ACCOUNT_SID,
+      authToken: env.TWILIO_AUTH_TOKEN,
+      from: env.TWILIO_WHATSAPP_FROM,
+      to,
+      contentSid,
+      contentVariables: {
+        '1': `${city} • ${shortSummary}`,
+        '2': requestId,
+        '3': providerPhone,
+      },
+      mediaUrls,
+    });
+  }
+
+  // Fallback: free-form text + inline links.
+  return sendWhatsAppMessage({
+    accountSid: env.TWILIO_ACCOUNT_SID,
+    authToken: env.TWILIO_AUTH_TOKEN,
+    from: env.TWILIO_WHATSAPP_FROM,
+    to,
+    body: plainTextBody,
+    mediaUrls,
+  });
 }
 
 function buildProviderMessage(body: BroadcastBody, env?: any, providerPhone?: string): string {
@@ -1193,10 +1291,10 @@ function buildSelectionMessage(body: ProviderSelectedBody): string {
 function extractCity(address: string | undefined): string {
   if (!address) return 'לא צוין';
   const parts = address.split(',').map((p) => p.trim());
-  if (parts.length >= 2) {
-    return parts[parts.length - 2] || parts[parts.length - 1] || address;
-  }
-  return address;
+  const candidate = parts.length >= 2
+    ? parts[parts.length - 2] || parts[parts.length - 1] || address
+    : address;
+  return normaliseCityName(candidate);
 }
 
 const SIM_AVAILABILITY = [

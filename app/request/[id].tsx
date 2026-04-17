@@ -3,6 +3,12 @@ import {
   View, Text, ScrollView, Pressable, ActivityIndicator,
   StyleSheet, Alert, Linking, Modal, Image, Dimensions,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+} from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -329,14 +335,16 @@ export default function RequestDetailsScreen() {
               </View>
             </View>
 
-            {/* Phone reveal — only after the customer confirmed the selection */}
+            {/* Phone reveal — only after the customer confirmed the selection.
+                Phone stays hidden until the user explicitly taps "reveal"; an
+                extra friction step so the number doesn't show up by accident
+                (e.g. if the customer is sharing their screen). */}
             {selectedBid.providerPhone && (
-              <View style={styles.phoneReveal}>
-                <Ionicons name="call" size={16} color={COLORS.primary} />
-                <Text style={styles.phoneRevealText} selectable>
-                  {selectedBid.providerPhone}
-                </Text>
-              </View>
+              <PhoneRevealCard
+                phone={selectedBid.providerPhone}
+                tapToRevealLabel={t('requestDetails.tapToReveal')}
+                callLabel={t('requestDetails.callNow')}
+              />
             )}
 
             {/* Primary CTA — call directly. Chat between customer and
@@ -465,6 +473,65 @@ export default function RequestDetailsScreen() {
         </View>
       </Modal>
     </ScreenContainer>
+  );
+}
+
+/**
+ * Two-step phone reveal. The phone stays covered behind a tappable card until
+ * the customer explicitly asks to see it. First tap uncovers the number with
+ * a fade + scale animation; a second tap (or the explicit "call now" button)
+ * opens the phone dialer. This adds just enough friction that the number
+ * can't leak via a screenshot / screen-share without an intentional reveal.
+ */
+function PhoneRevealCard({
+  phone,
+  tapToRevealLabel,
+  callLabel,
+}: {
+  phone: string;
+  tapToRevealLabel: string;
+  callLabel: string;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const opacity = useSharedValue(0);
+  const coverOpacity = useSharedValue(1);
+  const scale = useSharedValue(0.92);
+
+  const reveal = () => {
+    if (revealed) {
+      Linking.openURL(`tel:${phone}`);
+      return;
+    }
+    setRevealed(true);
+    coverOpacity.value = withTiming(0, { duration: 240 });
+    opacity.value = withTiming(1, { duration: 400 });
+    scale.value = withSpring(1, { damping: 12, stiffness: 120 });
+  };
+
+  const coverStyle = useAnimatedStyle(() => ({ opacity: coverOpacity.value }));
+  const phoneStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Pressable onPress={reveal} style={styles.phoneRevealCard}>
+      {!revealed && (
+        <Animated.View style={[styles.phoneRevealCover, coverStyle]}>
+          <Ionicons name="eye-off-outline" size={20} color={COLORS.primary} />
+          <Text style={styles.phoneRevealCoverText}>{tapToRevealLabel}</Text>
+        </Animated.View>
+      )}
+      {revealed && (
+        <Animated.View style={[styles.phoneRevealContent, phoneStyle]}>
+          <Ionicons name="call" size={16} color={COLORS.primary} />
+          <Text style={styles.phoneRevealText} selectable>
+            {phone}
+          </Text>
+          <Text style={styles.phoneRevealCta}>{callLabel}</Text>
+        </Animated.View>
+      )}
+    </Pressable>
   );
 }
 
@@ -619,6 +686,42 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     letterSpacing: 1,
+  },
+  phoneRevealCard: {
+    minHeight: 72,
+    backgroundColor: COLORS.primary + '15',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '40',
+    marginBottom: 12,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  phoneRevealCover: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  phoneRevealCoverText: {
+    color: COLORS.primary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  phoneRevealContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  phoneRevealCta: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
   },
   chatCta: {
     flexDirection: 'row',

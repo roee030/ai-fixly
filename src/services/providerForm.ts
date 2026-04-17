@@ -53,6 +53,13 @@ export async function fetchPublicRequestSummary(requestId: string): Promise<Publ
   return res.json();
 }
 
+export class QuoteAlreadySubmittedError extends Error {
+  constructor() {
+    super('already_submitted');
+    this.name = 'QuoteAlreadySubmittedError';
+  }
+}
+
 /** Submit a quote for a request. */
 export async function submitProviderQuote(payload: QuoteSubmission): Promise<void> {
   const res = await fetch(`${BROKER_URL}/provider/bid`, {
@@ -60,6 +67,12 @@ export async function submitProviderQuote(payload: QuoteSubmission): Promise<voi
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  // 409 = we already have a bid from this phone for this request. Surface a
+  // distinct error so the form can show a friendly "you already submitted"
+  // state instead of "submit failed".
+  if (res.status === 409) {
+    throw new QuoteAlreadySubmittedError();
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Submit failed (HTTP ${res.status}) ${text}`);

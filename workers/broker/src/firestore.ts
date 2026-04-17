@@ -23,6 +23,8 @@ export interface RequestDoc {
  * Includes ALL media URLs and the customer description, but NEVER the
  * customer's identity (userId, name, phone, exact address are stripped).
  */
+import { normaliseCityName } from './cityNames';
+
 export interface PublicMediaItem {
   url: string;
   type: 'image' | 'video';
@@ -298,11 +300,15 @@ export class FirestoreClient {
       }
 
       // Strip the address down to just the city (last comma-separated part).
+      // Normalise English → Hebrew for known Israeli cities — the address
+      // is whatever locale the customer's device was in, and our provider
+      // forms are Hebrew-first.
       const fullAddress = fields.location?.mapValue?.fields?.address?.stringValue || '';
       const city = (() => {
         if (!fullAddress) return '';
         const parts = fullAddress.split(',').map((p: string) => p.trim()).filter(Boolean);
-        return parts.length >= 2 ? parts[parts.length - 2] : parts[0] || '';
+        const raw = parts.length >= 2 ? parts[parts.length - 2] : parts[0] || '';
+        return normaliseCityName(raw);
       })();
 
       return {
@@ -349,6 +355,100 @@ export class FirestoreClient {
     if (!response.ok) {
       const errText = await response.text();
       throw new Error(`writeProviderReport error ${response.status}: ${errText}`);
+    }
+  }
+
+  /**
+   * Total number of bids attached to a request. Used to build a
+   * "you have N offers" push instead of spamming the customer with one
+   * notification per arriving bid.
+   */
+  async countBidsForRequest(requestId: string): Promise<number> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents:runQuery`;
+      const body = {
+        structuredQuery: {
+          from: [{ collectionId: 'bids' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'requestId' },
+              op: 'EQUAL',
+              value: { stringValue: requestId },
+            },
+          },
+        },
+      };
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) return 0;
+      const rows = (await response.json()) as Array<{ document?: unknown }>;
+      return Array.isArray(rows) ? rows.filter((r) => !!r.document).length : 0;
+    } catch (err) {
+      console.warn('countBidsForRequest failed:', err);
+      return 0;
+    }
+  }
+
+  /**
+   * Returns true if a bid for {requestId} already exists for this provider
+   * phone number. Used by the public quote form to reject duplicate
+   * submissions from providers who tap the link twice.
+   *
+   * We query the `bids` collection filtered by requestId + providerPhone;
+   * a single hit is enough to short-circuit.
+   */
+  async providerAlreadyBidOnRequest(requestId: string, providerPhone: string): Promise<boolean> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents:runQuery`;
+      const body = {
+        structuredQuery: {
+          from: [{ collectionId: 'bids' }],
+          where: {
+            compositeFilter: {
+              op: 'AND',
+              filters: [
+                {
+                  fieldFilter: {
+                    field: { fieldPath: 'requestId' },
+                    op: 'EQUAL',
+                    value: { stringValue: requestId },
+                  },
+                },
+                {
+                  fieldFilter: {
+                    field: { fieldPath: 'providerPhone' },
+                    op: 'EQUAL',
+                    value: { stringValue: providerPhone },
+                  },
+                },
+              ],
+            },
+          },
+          limit: 1,
+        },
+      };
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) return false;
+      const rows = (await response.json()) as Array<{ document?: unknown }>;
+      return Array.isArray(rows) && rows.some((r) => !!r.document);
+    } catch (err) {
+      console.warn('providerAlreadyBidOnRequest failed — assuming not duplicate:', err);
+      return false;
     }
   }
 
