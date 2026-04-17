@@ -1140,6 +1140,19 @@ async function handleProviderQuoteSubmission(request: Request, env: Env): Promis
     },
   });
 
+  // Tell the customer a new bid landed. The WhatsApp-reply path already
+  // does this at line ~800; the web-form path was previously silent which
+  // meant providers submitting via the dashboard link never triggered a
+  // push. The title is built by pushToCustomer itself (it switches to
+  // "you have N offers" from the second bid onward).
+  await pushToCustomer({
+    env,
+    requestId: body.requestId,
+    type: 'new_bid',
+    title: `הצעה חדשה מ-${providerNameClean || anonymousName}`,
+    body: price != null ? `${price} ש"ח • ${availabilityText}` : availabilityText,
+  });
+
   return jsonResponse({ ok: true }, 200, request);
 }
 
