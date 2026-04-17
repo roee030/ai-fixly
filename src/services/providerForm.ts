@@ -6,6 +6,30 @@
 
 const BROKER_URL = process.env.EXPO_PUBLIC_BROKER_URL || '';
 
+/**
+ * Decompose the compound path token produced by the Twilio CTA template.
+ *
+ * WhatsApp interactive templates only allow ONE variable per button URL,
+ * placed at the end. We therefore send the broker a single token of the
+ * form "<requestId>.<phoneWithoutPlus>" and split it back here.
+ *
+ * Falls back gracefully to the legacy form where the path is just the
+ * request ID and the phone is passed as a `?phone=` query param.
+ */
+export function parseRequestToken(
+  rawRequestId: string,
+  queryPhone: string,
+): { requestId: string; providerPhone: string } {
+  const raw = (rawRequestId || '').trim();
+  if (raw.includes('.')) {
+    const [id, ...phoneParts] = raw.split('.');
+    const phoneDigits = phoneParts.join('.'); // defensive — should only be one dot
+    const withPlus = phoneDigits && !phoneDigits.startsWith('+') ? `+${phoneDigits}` : phoneDigits;
+    return { requestId: id, providerPhone: withPlus || queryPhone };
+  }
+  return { requestId: raw, providerPhone: queryPhone };
+}
+
 export interface PublicMediaItem {
   url: string;
   type: 'image' | 'video';

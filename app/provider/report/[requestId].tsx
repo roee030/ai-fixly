@@ -5,7 +5,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ScreenContainer } from '../../../src/components/layout';
 import { Button } from '../../../src/components/ui';
-import { submitProviderReport } from '../../../src/services/providerForm';
+import {
+  submitProviderReport,
+  parseRequestToken,
+} from '../../../src/services/providerForm';
 import { COLORS } from '../../../src/constants';
 import { sanitizeText } from '../../../src/utils/sanitize';
 
@@ -17,8 +20,13 @@ import { sanitizeText } from '../../../src/utils/sanitize';
 export default function ProviderReportScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ requestId: string; phone?: string }>();
-  const requestId = params.requestId;
-  const providerPhone = (params.phone || '').trim();
+  // The Twilio CTA template packs both requestId + provider phone into the
+  // single-variable URL as "<requestId>.<phone>". parseRequestToken splits
+  // them back and also handles the legacy `?phone=` form.
+  const { requestId, providerPhone } = parseRequestToken(
+    params.requestId,
+    (params.phone || '').trim(),
+  );
 
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -55,9 +55,16 @@ flips to the interactive template.
 2. Create a new template — **Type: Call-to-Action**.
 3. **Body:** `🔧 ai-fixly — בקשת שירות חדשה\n\n{{1}}` (the worker will fill
    `{{1}}` with `<city> • <shortSummary>`).
-4. **Buttons:**
-   - `שלח הצעת מחיר` → URL: `https://ai-fixly-web.pages.dev/provider/quote/{{2}}?phone={{3}}`
-   - `דווח על הבקשה` → URL: `https://ai-fixly-web.pages.dev/provider/report/{{2}}?phone={{3}}`
+4. **Buttons (exactly one variable per URL, at the end):**
+   - `שלח הצעת מחיר` → URL: `https://ai-fixly-web.pages.dev/provider/quote/{{2}}`
+   - `דווח על תקלה` → URL: `https://ai-fixly-web.pages.dev/provider/report/{{2}}`
+
+   > ⚠️ WhatsApp rejects templates with two variables in the same URL, so
+   > we **don't** use `?phone=...`. Instead the worker packs the provider
+   > phone into `{{2}}` as `<requestId>.<phoneWithoutPlus>` — the quote /
+   > report pages split it back out via `parseRequestToken()` in
+   > `src/services/providerForm.ts`.
+
 5. Submit for WhatsApp approval. Wait for the green checkmark (~24–72 h).
 6. Copy the **ContentSid** (looks like `HXxxxxxxxxxxxxxxxxxx`).
 7. Register it as a worker secret:
@@ -75,8 +82,8 @@ The next broadcast will go out as an interactive template.
 | Template var | Filled with | Why |
 |--------------|-------------|-----|
 | `{{1}}` | `<city> • <shortSummary>` | Body text the provider reads. |
-| `{{2}}` | `requestId` | Stitched into both button URLs. |
-| `{{3}}` | `providerPhone` | Query param so the form can pre-fill. |
+| `{{2}}` | `<requestId>.<phoneDigitsWithoutPlus>` | Stitched into BOTH button URLs. Single var by Twilio rule. |
 
-If you change the order in the template, change it in
-`sendProviderIntro()` too.
+If you change the order or the separator, change it in
+`sendProviderIntro()` (broker) **and** `parseRequestToken()`
+(`src/services/providerForm.ts`) together.

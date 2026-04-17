@@ -1195,12 +1195,13 @@ async function sendProviderIntro(args: {
   const contentSid = (env.TWILIO_CONTENT_SID_PROVIDER_INTRO || '').trim();
 
   if (contentSid) {
-    // The approved template must accept three variables in this order:
-    //   1 → shortSummary (used in the body)
-    //   2 → requestId (stitched into the button URLs)
-    //   3 → providerPhone
-    // These match the "mapping" described in
-    //   docs/plans/2026-04-17-whatsapp-interactive-buttons.md
+    // WhatsApp CTA templates only accept ONE variable per button URL, and
+    // it must be at the end. We work around that by packing the requestId
+    // and the provider phone into a single token separated by a dot:
+    //   "<requestId>.<phoneWithoutPlusSign>"
+    // The quote/report web pages parse this token back into its two parts.
+    const phoneToken = providerPhone.replace(/^\+/, '');
+    const requestToken = `${requestId}.${phoneToken}`;
     return sendWhatsAppTemplate({
       accountSid: env.TWILIO_ACCOUNT_SID,
       authToken: env.TWILIO_AUTH_TOKEN,
@@ -1209,8 +1210,7 @@ async function sendProviderIntro(args: {
       contentSid,
       contentVariables: {
         '1': `${city} • ${shortSummary}`,
-        '2': requestId,
-        '3': providerPhone,
+        '2': requestToken,
       },
       mediaUrls,
     });
