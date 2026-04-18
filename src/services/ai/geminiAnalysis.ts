@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIAnalysisService, AIAnalysisInput, AIAnalysisResult } from './types';
 import { ANALYSIS_PROMPT } from './prompts';
+import { logger } from '../logger';
+import { reportAiFullFailure } from './alertAiFailure';
 
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'];
 
@@ -54,8 +56,16 @@ class GeminiAnalysisService implements AIAnalysisService {
       content.push({ inlineData: { mimeType: 'image/jpeg', data: b64 } });
     }
 
+    const totalStart = Date.now();
+    const payloadKB = (input.images || []).reduce(
+      (acc, b) => acc + Math.round((b.length * 3) / 4 / 1024),
+      0,
+    );
+
     let lastError: Error | null = null;
+    const modelTimings: Array<{ model: string; ms: number; ok: boolean; reason?: string }> = [];
     for (const modelName of MODELS) {
+      const t0 = Date.now();
       try {
         const model = this.genAI.getGenerativeModel({ model: modelName });
         const result = await model.generateContent(content as any);
@@ -89,6 +99,17 @@ class GeminiAnalysisService implements AIAnalysisService {
           ? parsed.professions
           : ['handyman'];
 
+        const ms = Date.now() - t0;
+        modelTimings.push({ model: modelName, ms, ok: true });
+        logger.info('[perf] gemini.analyzeIssue', {
+          model: modelName,
+          ms: String(ms),
+          totalMs: String(Date.now() - totalStart),
+          imgs: String((input.images || []).length),
+          payloadKB: String(payloadKB),
+          professions: professions.join(','),
+        });
+
         return {
           professions,
           // Kept for backwards compatibility with existing Firestore docs
@@ -101,11 +122,31 @@ class GeminiAnalysisService implements AIAnalysisService {
         // Never retry a moderation block — it's deterministic.
         if (err instanceof ContentModerationError) throw err;
         lastError = err;
+        const ms = Date.now() - t0;
+        const reason = String(err?.message || err).slice(0, 140);
+        modelTimings.push({ model: modelName, ms, ok: false, reason });
         const is503or429 = err?.message?.includes('503') || err?.message?.includes('429');
+        logger.warn('[gemini-fallback]', {
+          model: modelName,
+          ms: String(ms),
+          retrying: String(is503or429),
+          reason,
+        });
         if (is503or429) continue;
         throw err;
       }
     }
+
+    // All models failed — raise a visible admin alert so the owner knows
+    // something is genuinely wrong (all 3 Gemini variants 503'd or the
+    // API key was revoked). Fire-and-forget, never block the error surface.
+    logger.error('[gemini-fallback] ALL MODELS FAILED', lastError as Error);
+    reportAiFullFailure({
+      timings: modelTimings,
+      payloadKB,
+      imageCount: (input.images || []).length,
+      lastError: lastError?.message || 'unknown',
+    }).catch(() => {});
 
     throw lastError || new Error('All AI models failed');
   }

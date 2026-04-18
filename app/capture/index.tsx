@@ -13,6 +13,7 @@ import { VideoPreview } from '../../src/components/ui/VideoPreview';
 import { RateLimitBanner } from '../../src/components/ui/RateLimitBanner';
 import { useImagePicker } from '../../src/hooks/useImagePicker';
 import { useRequestRateLimit } from '../../src/hooks/useRequestRateLimit';
+import { startAnalysis } from '../../src/services/ai/analysisStore';
 import { COLORS, LIMITS } from '../../src/constants';
 import { analyticsService } from '../../src/services/analytics';
 import { logAction } from '../../src/services/analytics/sessionLogger';
@@ -155,6 +156,29 @@ export default function CaptureScreen() {
         });
       } else {
         const base64Images = await getBase64Images();
+
+        // Fire the Gemini analysis NOW, before we've even navigated.
+        // Confirm screen will pick up the in-flight promise from the
+        // analysisStore instead of starting its own request — which is
+        // why the wait on the confirm screen drops from ~20 s to almost
+        // nothing. The requestKey is just a freshness stamp.
+        const requestKey = `cap-${Date.now()}`;
+        const payloadKB = base64Images.reduce(
+          (acc, b) => acc + Math.round((b.length * 3) / 4 / 1024),
+          0,
+        );
+        // Fire-and-forget; analysisStore persists the promise. Errors
+        // are handled by the confirm screen when it awaits.
+        startAnalysis({
+          requestKey,
+          base64Images,
+          textDescription: description.trim(),
+          payloadKB,
+        }).catch(() => {
+          // swallow — confirm re-awaits the same promise and shows the
+          // error UI there. Logging happens inside analysisStore.
+        });
+
         router.push({
           pathname: '/capture/confirm',
           params: {
@@ -162,6 +186,7 @@ export default function CaptureScreen() {
             base64Images: JSON.stringify(base64Images),
             description: description.trim(),
             videoAssets: videoAssetsParam,
+            analysisKey: requestKey,
           },
         });
       }

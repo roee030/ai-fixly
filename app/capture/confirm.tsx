@@ -3,12 +3,14 @@ import { View, Text, ScrollView, Image, ActivityIndicator, Pressable, Modal, Fla
 import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { VideoPreview } from '../../src/components/ui/VideoPreview';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { localizeProfession } from '../../src/utils/professionLabel';
 import { aiAnalysisService } from '../../src/services/ai';
 import { ContentModerationError } from '../../src/services/ai/geminiAnalysis';
+import { startAnalysis, awaitAnalysis, clearAnalysis } from '../../src/services/ai/analysisStore';
 import { mediaService } from '../../src/services/media';
 import { requestService } from '../../src/services/requests';
 import { useAuthStore } from '../../src/stores/useAuthStore';
@@ -27,11 +29,19 @@ import type { AIAnalysisResult } from '../../src/services/ai';
 
 export default function ConfirmScreen() {
   const { t } = useTranslation();
-  const { images, base64Images, description, videoAssets: videoAssetsParam } = useLocalSearchParams<{
+  const {
+    images,
+    base64Images,
+    description,
+    videoAssets: videoAssetsParam,
+    analysisKey,
+  } = useLocalSearchParams<{
     images: string;
     base64Images: string;
     description: string;
     videoAssets?: string;
+    /** Key that links us to the analysis already kicked off in capture. */
+    analysisKey?: string;
   }>();
 
   const user = useAuthStore((s) => s.user);
@@ -62,11 +72,24 @@ export default function ConfirmScreen() {
     setHasError(false);
     setModerationBlocked(false);
     try {
-      const base64Array: string[] = JSON.parse(base64Images || '[]');
-      const result = await aiAnalysisService.analyzeIssue({
-        images: base64Array,
-        textDescription: description,
-      });
+      // Preferred path — consume the analysis the capture screen kicked
+      // off before navigation. By the time this screen mounts, the promise
+      // is usually already resolved and this await is instantaneous.
+      //
+      // Fallback path — if we arrived here without a pre-started analysis
+      // (e.g. the user hit retry, or the store was cleared) we start a
+      // fresh one here.
+      let inFlight = analysisKey ? awaitAnalysis(analysisKey) : null;
+      if (!inFlight) {
+        const base64Array: string[] = JSON.parse(base64Images || '[]');
+        const key = analysisKey || `confirm-${Date.now()}`;
+        inFlight = startAnalysis({
+          requestKey: key,
+          base64Images: base64Array,
+          textDescription: description,
+        });
+      }
+      const result = await inFlight;
       setAnalysis(result);
       // Initialize the editable profession list with what the AI chose.
       setChosenProfessions(((result as any).professions || result.professionLabelsHe || []).slice());
@@ -372,9 +395,35 @@ const previewStyles = StyleSheet.create({
  * The actual analysis time is dominated by the model + network — we can't
  * make it faster from the client, but we can make it feel shorter.
  */
+/**
+ * "Looking for your pro" waiting screen. Instead of a generic spinner, we
+ * cycle through concrete profession icons + Hebrew labels every ~800ms
+ * and pair them with a 3-step progress caption that advances on time.
+ * The effect is that the user sees movement and a sense of progress even
+ * when the backend is quiet.
+ *
+ * Styled as a stacked pair of fading circles with the icon centred so the
+ * motion feels purposeful, not busy. Each icon + caption change is a React
+ * key change to trigger the FadeIn re-animation.
+ */
+const ANALYZING_STEPS: Array<{
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+}> = [
+  { icon: 'water-outline',       label: 'plumber',     color: '#3B82F6' },
+  { icon: 'flash-outline',       label: 'electrician', color: '#F59E0B' },
+  { icon: 'key-outline',         label: 'locksmith',   color: '#64748B' },
+  { icon: 'thermometer-outline', label: 'hvac',        color: '#10B981' },
+  { icon: 'color-palette-outline', label: 'painter',   color: '#EC4899' },
+  { icon: 'hammer-outline',      label: 'handyman',    color: '#8B5CF6' },
+];
+
 function AnalyzingView({ t }: { t: (k: string) => string }) {
-  const [tipIndex, setTipIndex] = useState(0);
-  const tips = useMemo(
+  const [iconIndex, setIconIndex] = useState(0);
+  const [captionIndex, setCaptionIndex] = useState(0);
+
+  const captions = useMemo(
     () => [
       t('confirm.tip1'),
       t('confirm.tip2'),
@@ -382,28 +431,137 @@ function AnalyzingView({ t }: { t: (k: string) => string }) {
     ],
     [t],
   );
+
   useEffect(() => {
-    const id = setInterval(() => setTipIndex((i) => (i + 1) % tips.length), 2500);
-    return () => clearInterval(id);
-  }, [tips.length]);
+    // Icons cycle faster than captions — feels alive, not pushy.
+    const iconId = setInterval(() => {
+      setIconIndex((i) => (i + 1) % ANALYZING_STEPS.length);
+    }, 700);
+    // Captions advance every ~3s, then stick on the last one so the
+    // progression feels like we genuinely got to "almost done".
+    const captionId = setInterval(() => {
+      setCaptionIndex((i) => Math.min(i + 1, captions.length - 1));
+    }, 3000);
+    return () => {
+      clearInterval(iconId);
+      clearInterval(captionId);
+    };
+  }, [captions.length]);
+
+  const step = ANALYZING_STEPS[iconIndex];
+  const stepLabel = t(`analyzing.prof.${step.label}`);
 
   return (
     <ScreenContainer>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={{ color: COLORS.text, marginTop: 16, fontSize: 18, fontWeight: '600' }}>
-          {t('confirm.analyzing')}
-        </Text>
-        <Text
-          key={tipIndex}
-          style={{ color: COLORS.textSecondary, marginTop: 12, fontSize: 14, textAlign: 'center', lineHeight: 20 }}
+      <View style={analyzingStyles.center}>
+        {/* Three concentric pulses of colour, with the icon in the middle. */}
+        <View style={[analyzingStyles.ring1, { backgroundColor: step.color + '15' }]}>
+          <View style={[analyzingStyles.ring2, { backgroundColor: step.color + '25' }]}>
+            <View style={[analyzingStyles.iconCircle, { backgroundColor: step.color }]}>
+              <Animated.View key={iconIndex} entering={FadeIn.duration(350)}>
+                <Ionicons name={step.icon} size={48} color="#FFFFFF" />
+              </Animated.View>
+            </View>
+          </View>
+        </View>
+
+        {/* Profession name re-keys on every swap so it FadeIn-s. */}
+        <Animated.Text
+          key={`name-${iconIndex}`}
+          entering={FadeIn.duration(300)}
+          style={[analyzingStyles.profName, { color: step.color }]}
         >
-          {tips[tipIndex]}
-        </Text>
+          {stepLabel}
+        </Animated.Text>
+
+        <Text style={analyzingStyles.title}>{t('confirm.analyzing')}</Text>
+
+        <Animated.Text
+          key={`cap-${captionIndex}`}
+          entering={FadeIn.duration(300)}
+          style={analyzingStyles.caption}
+        >
+          {captions[captionIndex]}
+        </Animated.Text>
+
+        {/* Bottom indeterminate bar — low-key, not a dominant element. */}
+        <View style={analyzingStyles.progressTrack}>
+          <Animated.View
+            key={`bar-${captionIndex}`}
+            entering={FadeIn.duration(400)}
+            style={[
+              analyzingStyles.progressFill,
+              { width: `${((captionIndex + 1) / captions.length) * 100}%` },
+            ]}
+          />
+        </View>
       </View>
     </ScreenContainer>
   );
 }
+
+const analyzingStyles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 14,
+  },
+  ring1: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  ring2: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Soft glow only shows on Android at elevation + iOS shadow — fine on both.
+    elevation: 8,
+  },
+  profName: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  title: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  caption: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  progressTrack: {
+    marginTop: 20,
+    width: '60%',
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.surface,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: COLORS.primary,
+  },
+});
 
 function ProfessionPickerModal({
   visible,
