@@ -1,83 +1,77 @@
-# scrape-providers — populate providers-seed.csv
+# providers-seed.csv — how it was built
 
-Collects up to 20 real service providers per profession from Google
-Places (across 10 Israeli cities), dedupes, writes to a Hebrew-friendly
-CSV at `scripts/providers-seed.csv`.
+## What's in the file
 
-## Prerequisites
+`scripts/providers-seed.csv` — UTF-8 with BOM, opens cleanly in Excel
+with Hebrew rendering. 315 rows across 13 professions, all within the
+Sharon / Emek Hefer service area (Netanya · Hadera · Emek Hefer ·
+Pardes Hanna–Karkur · Or Akiva).
 
-- Node 20+ with `tsx` available (install once: `npm i -g tsx`).
-- A Google Places API key with the **Places API (New)** enabled. If you
-  don't have one, create a restricted key at
-  https://console.cloud.google.com/apis/credentials — set an application
-  restriction to your own IP and an API restriction to "Places API (New)".
+Columns:
 
-## Run
+```
+שם עסק, מקצוע, טלפון, עיר, דירוג בגוגל
+```
+
+Row counts per profession (as of the first run):
+
+| מקצוע | rows |
+|---|---|
+| אינסטלטור | 35 |
+| הנדימן | 30 |
+| הובלות | 30 |
+| מדביר | 28 |
+| גנן | 28 |
+| טכנאי מיזוג אוויר | 27 |
+| טכנאי מחשבים | 26 |
+| נגר | 25 |
+| מנעולן | 22 |
+| חשמלאי | 22 |
+| טכנאי דודי שמש | 19 |
+| צבעי | 13 |
+| טכנאי מוצרי חשמל | 10 |
+
+## How the data was collected
+
+Google Maps (via scripted browser automation) for each
+`{profession} עמק חפר` query, scrolling the left-panel feed to load
+~30 results per search, then dedupe by phone number. Every phone is a
+real Israeli mobile / landline — confirmed against the `tel:` links on
+Google Maps business cards.
+
+Phones in `072-XXX-XXXX` format that Dapey Zahav (d.co.il) exposes
+were intentionally excluded — those are the directory's own lead-
+capture forwarding numbers, not real business lines, and they don't
+accept WhatsApp.
+
+`midrag.co.il` was tried first — it has great business names + reviews
+but hides phones behind its own "call" button (lead-capture business
+model). Not useful for our WhatsApp broadcast pipeline.
+
+## Running again / extending
+
+There's a secondary script at `scripts/scrape-providers.ts` that uses
+the Google Places API (New) for programmatic scraping. It costs money
+(~$25 for a full 80-profession sweep, well inside Google's $200/mo
+free credit). Instructions:
 
 ```bash
-export GOOGLE_PLACES_API_KEY=your_key_here    # PowerShell: $env:GOOGLE_PLACES_API_KEY="..."
+export GOOGLE_PLACES_API_KEY=your_key_here
 npx tsx scripts/scrape-providers.ts
 ```
 
-Runs ~10–20 minutes for the full 80-profession × 10-city sweep. Writes
-incrementally (append-per-profession), so a Ctrl-C or crash doesn't lose
-earlier work — just rename / delete the partial CSV if you want a clean
-restart.
+Prefer the Places API path for expansions (more professions, more
+cities): it's deterministic, billable, and easy to automate. The
+Maps-scraping path we used here is great for "get me real data RIGHT
+NOW" without waiting for a new API key to be provisioned.
 
-## Output
+## What's intentionally NOT here
 
-- `scripts/providers-seed.csv` — UTF-8 with BOM, opens cleanly in Excel
-  with Hebrew rendering. Columns:
-
-  ```
-  שם עסק, מקצוע, טלפון, עיר, דירוג בגוגל
-  ```
-
-- Progress lines stream to stderr:
-
-  ```
-  [places] profession=אינסטלטור city=תל אביב found=12
-  [scraper] ✓ אינסטלטור                    rows=20 (total=20)
-  ```
-
-  Redirect them to a file if you want a permanent run log:
-
-  ```bash
-  npx tsx scripts/scrape-providers.ts 2> run.log
-  ```
-
-## Expected coverage
-
-- The 10 cities cover ~80% of Israel's population. Mainstream professions
-  (אינסטלטור, חשמלאי, מנעולן, טכנאי מיזוג) will comfortably hit 20.
-- Niche professions in `PROFESSIONS` (snake_catcher, glass_design,
-  mouse_catcher, stone_polishing, parquet_installer, etc.) will return
-  fewer — sometimes 0 — because Google Places doesn't have them
-  categorised. That's listed by the script at the end:
-
-  ```
-  [scraper] Professions with < 10 rows:
-    - לוכד נחשים            1 rows
-    - עיצוב זכוכית            0 rows
-  ```
-
-  Either accept the gap or expand to more cities (edit `CITIES` in the
-  script).
-
-## Cost
-
-Google gives you $200/month free Places credit (~6250 text-search
-calls). A full run is `80 × 10 = 800` calls, or about $25-30 worth of
-credit. Well under free tier unless you run it repeatedly in the same
-month.
-
-## What's intentionally NOT included
-
-- **No midrag / b-hol-miktzoa HTML scraping.** Those sites are
-  JS-rendered with anti-bot measures; selectors rot quickly. The
-  Google Places-only pipeline gives us 80-100% of what we need with
-  zero maintenance burden.
-- **No phone normalisation.** The CSV keeps what Places returned
-  (international E.164 when available). If you need `+972...` formatting
-  enforced, normalise in a follow-up pass.
-- **No Google-Maps URL column.** Not asked for; can add in 30 s if useful.
+- **Ratings are empty.** Google Maps's rating rendering varies — some
+  business cards expose the number in aria text, others hide it behind
+  a mouseover. Rather than produce partial data we left the column
+  empty; the broker fills it in at broadcast time from Places.
+- **Pure service/commercial categories mixed in.** Some results may be
+  "plumbing supply store" rather than "plumber". The customer-facing
+  broadcast flow tolerates this (provider can decline) but if you want
+  pristine data, cull those rows by hand.

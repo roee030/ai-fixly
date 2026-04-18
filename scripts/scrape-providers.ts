@@ -31,20 +31,16 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-// The 10 cities to search. Covers ~80% of Israel's population. Coastal +
-// central + north + south mix so the aggregate list is geographically
-// spread.
+// Initial service-zone: Sharon coastal strip + Emek Hefer. This is the
+// area the product is actually launching in — we don't want seed data
+// from Tel Aviv / Be'er Sheva contaminating the "local pros near you"
+// experience for our first users. Expand this array as we roll out.
 const CITIES = [
-  'תל אביב',
-  'ירושלים',
-  'חיפה',
-  'ראשון לציון',
-  'פתח תקווה',
-  'אשדוד',
   'נתניה',
-  'באר שבע',
   'חדרה',
-  'רמת גן',
+  'עמק חפר',
+  'פרדס חנה כרכור',
+  'אור עקיבא',
 ];
 
 const CONCURRENCY = 5;
