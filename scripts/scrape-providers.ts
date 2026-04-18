@@ -35,12 +35,64 @@ if (!API_KEY) {
 // area the product is actually launching in — we don't want seed data
 // from Tel Aviv / Be'er Sheva contaminating the "local pros near you"
 // experience for our first users. Expand this array as we roll out.
+// Strict corridor Netanya (south) → Caesarea (north). Anything north of
+// Caesarea (Zichron/Binyamina) or south of Netanya (Herzliya/Ra'anana) is
+// out-of-zone and will be post-filtered from formattedAddress even if the
+// query happens to surface it.
 const CITIES = [
   'נתניה',
-  'חדרה',
+  'אבן יהודה',
+  'קדימה צורן',
+  'תל מונד',
+  'כפר יונה',
   'עמק חפר',
+  'חדרה',
   'פרדס חנה כרכור',
   'אור עקיבא',
+  'קיסריה',
+];
+
+// Post-filter whitelist. A result is kept only if its formattedAddress
+// contains one of these tokens. Protects against Places returning a
+// Tel Aviv locksmith for "מנעולן נתניה" because the relevance score spills.
+const ALLOWED_CITY_TOKENS = [
+  'נתניה',
+  'אבן יהודה',
+  'קדימה',
+  'צורן',
+  'תל מונד',
+  'כפר יונה',
+  'עמק חפר',
+  'חדרה',
+  'פרדס חנה',
+  'כרכור',
+  'אור עקיבא',
+  'קיסריה',
+  // Emek Hefer villages/moshavim that appear in addresses but not under
+  // the regional council name. Expand this list if real providers get
+  // excluded for legitimate in-zone villages.
+  'בת חפר',
+  'בחן',
+  'גאולים',
+  'בית יצחק',
+  'שער חפר',
+  'מכמורת',
+  'בית חרות',
+  'חבצלת השרון',
+  'בית הלוי',
+  'עולש',
+  'חגלה',
+  'גן יאשיה',
+  'הדר עם',
+  'אביחיל',
+  'בית ינאי',
+  'חופית',
+  'מעברות',
+  'עין החורש',
+  'משמר השרון',
+  'גבעת חיים',
+  'הוגלה',
+  'כפר ויתקין',
 ];
 
 const CONCURRENCY = 5;
@@ -126,14 +178,24 @@ function sleep(ms: number): Promise<void> {
 // ────────────────────────────────────────────────────────────────────────────
 function extractCity(address: string | undefined, fallback: string): string {
   if (!address) return fallback;
+  // STRICTEST path: find one of our allowed corridor tokens inside the
+  // address. If present, that is definitely the city — we already know the
+  // business is in-zone. This avoids the "Street, Netanya" two-part bug
+  // where slicing by position picks the street.
+  for (const t of ALLOWED_CITY_TOKENS) {
+    if (address.includes(t)) return t;
+  }
+  // Fallback for weird addresses that somehow passed the zone filter without
+  // a known token — pick the last non-"Israel" segment, which in Israeli
+  // formattedAddress is usually "Street, City" or "Street, City Zip, Israel".
   const parts = address
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  if (parts.length >= 2) {
-    return parts[parts.length - 2] || fallback;
-  }
-  return parts[0] || fallback;
+  const withoutCountry = parts.filter(
+    (p) => p !== 'ישראל' && p.toLowerCase() !== 'israel',
+  );
+  return withoutCountry[withoutCountry.length - 1] || fallback;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -155,16 +217,30 @@ async function fetchForCity(
     }
     const places = json.places || [];
     const rows: Provider[] = [];
+    let rejectedOutOfZone = 0;
     for (const p of places) {
       const name = p.displayName?.text?.trim();
       const phone = p.internationalPhoneNumber || p.nationalPhoneNumber || '';
       if (!name || !phone) continue;
+      // STRICT corridor filter — the whole reason for this rebuild. Reject
+      // any business whose formattedAddress doesn't contain an allowed token.
+      const address = p.formattedAddress || '';
+      const inZone = ALLOWED_CITY_TOKENS.some((t) => address.includes(t));
+      if (!inZone) {
+        rejectedOutOfZone++;
+        continue;
+      }
       rows.push({
         name,
         phone,
         city: extractCity(p.formattedAddress, city),
         rating: typeof p.rating === 'number' ? p.rating : null,
       });
+    }
+    if (rejectedOutOfZone > 0) {
+      console.error(
+        `[places] profession=${profession} city=${city} filtered_out_of_zone=${rejectedOutOfZone}`,
+      );
     }
     console.error(
       `[places] profession=${profession} city=${city} found=${rows.length}`,

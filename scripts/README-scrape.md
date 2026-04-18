@@ -3,11 +3,24 @@
 ## What's in the file
 
 `scripts/providers-seed.csv` — UTF-8 with BOM, opens cleanly in Excel
-with Hebrew rendering. **1,202 rows across 77 professions**, all within
-the Sharon / Emek Hefer service area (Netanya · Hadera · Emek Hefer ·
-Pardes Hanna–Karkur · Or Akiva · Caesarea · Zichron Yaakov · Binyamina
-· Kfar Yona · Pardes Hanna · adjacent Sharon towns that surface in the
-Maps radius).
+with Hebrew rendering. **1,320 rows across 77 professions**, every single
+one inside the Netanya → Caesarea corridor (south → north).
+
+Cities represented (from actual `formattedAddress`, not from the search
+query):
+
+| עיר | שורות |
+|---|---|
+| נתניה | 400 |
+| חדרה | 276 |
+| פרדס חנה / כרכור | 139 |
+| אור עקיבא | 113 |
+| כפר יונה | 107 |
+| אבן יהודה | 83 |
+| קדימה / צורן | 75 |
+| תל מונד | 53 |
+| קיסריה | 37 |
+| עמק חפר וכפרים (בת חפר, משמר השרון, כפר ויתקין, עין החורש, מכמורת, חופית, עולש, גן יאשיה, בית חרות) | 37 |
 
 Columns:
 
@@ -15,92 +28,90 @@ Columns:
 שם עסק, מקצוע, טלפון, עיר, דירוג בגוגל
 ```
 
-Row counts per profession (full sweep — covers every profession in
-`src/constants/problemMatrix.ts`):
-
-| מקצוע | rows |  | מקצוע | rows |
-|---|---|---|---|---|
-| אינסטלטור | 35 | | שמאי מקרקעין | 19 |
-| עבודות אלומיניום | 31 | | שירותי מנוף | 19 |
-| הנדימן | 30 | | טכנאי דודי שמש | 19 |
-| הובלות | 30 | | זיפות גגות | 19 |
-| פרגולות עץ | 29 | | דקים | 19 |
-| מדביר | 28 | | שערים ומחסומים | 18 |
-| גנן | 28 | | רצף | 17 |
-| טכנאי מיזוג אוויר | 27 | | קונסטרוקטור | 17 |
-| מעצב בית | 26 | | קבלן איטום | 17 |
-| טכנאי מחשבים | 26 | | סוככים | 17 |
-| נגר | 25 | | ניקיון משרדים | 17 |
-| טכנאי גז | 25 | | ניקוי ספות | 17 |
-| שיפוצניק | 24 | | מרחיק יונים | 17 |
-| מתקין מצלמות | 23 | | כריתת עצים | 17 |
-| מסגר | 22 | | עיצוב זכוכית | 16 |
-| מנעולן | 22 | | דודי חשמל | 16 |
-| חשמלאי | 22 | | לוכד נחשים | 15 |
-| זגג | 22 | | צבעי | 13 |
-| התקנת פרקטים | 21 | | רפד | 12 |
-| התקנת מטבחים | 21 | | קולטי שמש | 12 |
-| איתור נזילות | 21 | | מערכות סולאריות | 12 |
-| מפקח בניה | 20 | | תופרת | 11 |
-| יועץ משכנתאות | 20 | | סיוד | 11 |
-| חברת ניקיון | 20 | | ניקוי שטיחים | 11 |
-| חברת אחזקה | 20 | | ניקוי מזגנים | 11 |
-| אינטרקום | 20 | | מקלחונים | 11 |
-| שמאי רכוש | 19 | | טכנאי סלולר | 11 |
-| טכנאי תריסים | 10 | | טכנאי מוצרי חשמל | 10 |
-| טייח / קבלן גבס | 10 | | תיקון שטיחים | 9 |
-| רשתות יתושים | 8 | | מיניבוס | 8 |
-| התקנת שטיחים מקיר לקיר | 8 | | מתקין דלתות | 7 |
-| ליטוש אבן | 7 | | מערכות אזעקה | 6 |
-| הובלות קטנות | 6 | | שיש | 5 |
-| מנעולן רכב | 5 | | הסרת עובש | 5 |
-| גגן | 5 | | בדק בית | 5 |
-| מחסום חשמלי | 4 | | לוכד עכברים | 4 |
-| רשתות לחלונות | 3 | | טכנאי טלוויזיה | 3 |
-| רטיבות תת רצפתית | 2 | | קידוח בטון | 2 |
-| צלחות לווין | 2 | |  |  |
-
 ## How the data was collected
 
-Google Maps (via scripted browser automation) for each
-`{profession} עמק חפר` query, scrolling the left-panel feed to load
-~30 results per search, then dedupe by phone number. Every phone is a
-real Israeli mobile / landline — confirmed against the `tel:` links on
-Google Maps business cards.
+**`scripts/scrape-providers.ts`** — Google Places API v1 (`searchText`).
+For each of the 77 professions in `src/constants/problemMatrix.ts`, we
+queried each of the 10 corridor cities (770 total searches). Every
+result is filtered against `ALLOWED_CITY_TOKENS` based on the actual
+`formattedAddress` Google returns — so a Tel Aviv locksmith that
+Google helpfully surfaces for "מנעולן נתניה" gets rejected.
 
-Phones in `072-XXX-XXXX` format that Dapey Zahav (d.co.il) exposes
-were intentionally excluded — those are the directory's own lead-
-capture forwarding numbers, not real business lines, and they don't
-accept WhatsApp.
+## Why not the old Maps-scraping approach
 
-`midrag.co.il` was tried first — it has great business names + reviews
-but hides phones behind its own "call" button (lead-capture business
-model). Not useful for our WhatsApp broadcast pipeline.
+The previous iteration used Playwright to scroll
+`google.com/maps/search/{profession} עמק חפר` and grab names + phones
+from the left feed. It produced 1,202 rows — about 3/4 of which were
+mis-tagged with "עמק חפר" because the scraper used the *search query*
+as the city rather than reading the business's actual address. Businesses
+from Tel Aviv, Haifa, and elsewhere slipped in when Google's relevance
+score spilled over the geographic intent.
+
+The old file is preserved at `scripts/providers-seed.OLD-maps-scrape.csv`
+for reference.
 
 ## Running again / extending
-
-There's a secondary script at `scripts/scrape-providers.ts` that uses
-the Google Places API (New) for programmatic scraping. It costs money
-(~$25 for a full 80-profession sweep, well inside Google's $200/mo
-free credit). Instructions:
 
 ```bash
 export GOOGLE_PLACES_API_KEY=your_key_here
 npx tsx scripts/scrape-providers.ts
 ```
 
-Prefer the Places API path for expansions (more professions, more
-cities): it's deterministic, billable, and easy to automate. The
-Maps-scraping path we used here is great for "get me real data RIGHT
-NOW" without waiting for a new API key to be provisioned.
+Cost: ~$3-5 per full run on the Places API (Basic tier, 77 professions
+× 10 cities × ~10-20 results). Well inside Google's $200/month free
+credit, so in practice free. Runs ~5 minutes end-to-end with 5-way
+concurrency.
 
-## What's intentionally NOT here
+To expand the service zone: edit the `CITIES` array (the search targets)
+AND `ALLOWED_CITY_TOKENS` (the post-filter whitelist). Both live at the
+top of `scripts/scrape-providers.ts`. Add new neighborhoods as literal
+Hebrew strings that appear in formattedAddresses.
 
-- **Ratings are empty.** Google Maps's rating rendering varies — some
-  business cards expose the number in aria text, others hide it behind
-  a mouseover. Rather than produce partial data we left the column
-  empty; the broker fills it in at broadcast time from Places.
-- **Pure service/commercial categories mixed in.** Some results may be
-  "plumbing supply store" rather than "plumber". The customer-facing
-  broadcast flow tolerates this (provider can decline) but if you want
-  pristine data, cull those rows by hand.
+## Row counts per profession
+
+| מקצוע | rows |  | מקצוע | rows |
+|---|---|---|---|---|
+| אינסטלטור | 20 | | חשמלאי | 20 |
+| טכנאי מיזוג אוויר | 20 | | מנעולן | 20 |
+| טכנאי מוצרי חשמל | 20 | | טכנאי מחשבים | 20 |
+| טכנאי סלולר | 20 | | טכנאי טלוויזיה | 20 |
+| צבעי | 20 | | חברת ניקיון | 20 |
+| חברת הובלות | 20 | | גגן | 20 |
+| נגר | 20 | | גנן | 20 |
+| תופרת | 20 | | רפד | 20 |
+| זגג | 20 | | מדביר | 20 |
+| טכנאי תריסים | 20 | | קבלן איטום | 20 |
+| רצף | 20 | | טייח / קבלן גבס | 20 |
+| מסגר | 20 | | שיפוצניק | 20 |
+| מתקין דלתות | 20 | | אינטרקום | 20 |
+| דודי חשמל | 20 | | התקנת מטבחים | 20 |
+| יועץ משכנתאות | 20 | | עבודות אלומיניום | 20 |
+| פרגולות עץ | 20 | | דקים | 20 |
+| מערכות אזעקה | 20 | | חברת אחזקה | 20 |
+| מפקח בניה | 20 | | קונסטרוקטור | 20 |
+| מעצב בית | 20 | | שירותי מנוף | 20 |
+| שיש | 20 | | שמאי מקרקעין | 20 |
+| שמאי רכוש | 20 | | תיקון שטיחים | 20 |
+| מנעולן רכב | 20 | | הסרת עובש | 20 |
+| מקלחונים | 20 | | עיצוב זכוכית | 20 |
+| ניקוי ספות | 20 | | ניקוי שטיחים | 20 |
+| מיניבוס | 20 | | ניקוי מזגנים | 20 |
+| הובלות קטנות | 20 | | קולטי שמש | 20 |
+| מתקין מצלמות | 19 | | ליטוש אבן | 19 |
+| ניקיון משרדים | 19 | | איתור נזילות | 18 |
+| טכנאי גז | 17 | | התקנת פרקטים | 17 |
+| כריתת עצים | 17 | | מערכות סולאריות | 15 |
+| רשתות לחלונות | 15 | | לוכד עכברים | 14 |
+| צלחות לווין | 13 | | טכנאי דודי שמש | 12 |
+| סוככים | 10 | | זיפות גגות | 10 |
+| התקנת שטיחים מקיר לקיר | 9 | | בדק בית | 9 |
+| הנדימן | 8 | | רשתות יתושים | 8 |
+| מרחיק יונים | 7 | | סיוד | 6 |
+| שערים ומחסומים | 5 | | לוכד נחשים | 4 |
+| מחסום חשמלי | 4 | | רטיבות תת רצפתית | 4 |
+| קידוח בטון | 1 |  |  |  |
+
+Anything under 10 is a real gap — these niche trades genuinely have
+few dedicated businesses in a small geographic corridor. The broker
+can fall back to `הנדימן` for most of them when no dedicated provider
+is available.
