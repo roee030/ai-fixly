@@ -570,6 +570,95 @@ export class FirestoreClient {
     }
   }
 
+  /**
+   * Read the full request doc in the shape /broadcast needs. Used by the
+   * /request/expand-radius handler so we can rebuild the broadcast payload
+   * from Firestore without trusting the client's body (which would be
+   * brittle and a small attack surface). Returns null when the doc doesn't
+   * exist or can't be parsed.
+   */
+  async getRequestForReBroadcast(requestId: string): Promise<{
+    status: string;
+    professions: string[];
+    shortSummary: string;
+    mediaUrls: string[];
+    location: { lat: number; lng: number; address: string };
+  } | null> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) return null;
+      const data = (await response.json()) as any;
+      const fields = data.fields || {};
+      const status = fields.status?.stringValue || '';
+
+      const professions: string[] = [];
+      const aiProfs = fields.aiAnalysis?.mapValue?.fields?.professions?.arrayValue?.values;
+      if (Array.isArray(aiProfs)) {
+        for (const p of aiProfs) {
+          if (p?.stringValue) professions.push(p.stringValue);
+        }
+      }
+
+      const mediaUrls: string[] = [];
+      const mediaValues = fields.media?.arrayValue?.values;
+      if (Array.isArray(mediaValues)) {
+        for (const m of mediaValues) {
+          const url2 = m?.mapValue?.fields?.downloadUrl?.stringValue;
+          if (url2) mediaUrls.push(url2);
+        }
+      }
+
+      const locFields = fields.location?.mapValue?.fields;
+      const lat = Number(locFields?.lat?.doubleValue ?? locFields?.lat?.integerValue ?? NaN);
+      const lng = Number(locFields?.lng?.doubleValue ?? locFields?.lng?.integerValue ?? NaN);
+      const address = locFields?.address?.stringValue || '';
+
+      if (!isFinite(lat) || !isFinite(lng)) return null;
+
+      return {
+        status,
+        professions,
+        shortSummary: fields.aiAnalysis?.mapValue?.fields?.shortSummary?.stringValue || '',
+        mediaUrls,
+        location: { lat, lng, address },
+      };
+    } catch (err) {
+      console.error('getRequestForReBroadcast failed:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Flag a request as having had its search radius expanded. Used by the
+   * client to hide the "no replies yet, expand?" banner after the user
+   * acts on it, and by admins to spot patterns of stuck requests.
+   */
+  async markRequestRadiusExpanded(requestId: string, multiplier: number): Promise<void> {
+    const accessToken = await this.getToken();
+    const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}?updateMask.fieldPaths=radiusExpandedAt&updateMask.fieldPaths=radiusExpandedMultiplier`;
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fields: {
+          radiusExpandedAt: { timestampValue: new Date().toISOString() },
+          radiusExpandedMultiplier: { doubleValue: multiplier },
+        },
+      }),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`markRequestRadiusExpanded error ${response.status}: ${errText}`);
+    }
+  }
+
   async getRequestsForReviewReminder(): Promise<Array<{ id: string; selectedProviderName: string }>> {
     try {
       const accessToken = await this.getToken();

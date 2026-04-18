@@ -3,3 +3,4 @@ export {
   notifyProviderSelected,
   forwardChatMessage,
 } from './broadcastService';
+export { expandRequestRadius } from './expandRadius';

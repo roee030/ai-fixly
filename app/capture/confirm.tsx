@@ -8,6 +8,7 @@ import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { localizeProfession } from '../../src/utils/professionLabel';
 import { aiAnalysisService } from '../../src/services/ai';
+import { ContentModerationError } from '../../src/services/ai/geminiAnalysis';
 import { mediaService } from '../../src/services/media';
 import { requestService } from '../../src/services/requests';
 import { useAuthStore } from '../../src/stores/useAuthStore';
@@ -18,6 +19,7 @@ import { REQUEST_STATUS } from '../../src/constants/status';
 import { analyticsService } from '../../src/services/analytics';
 import { logAction } from '../../src/services/analytics/sessionLogger';
 import { broadcastToProviders } from '../../src/services/broadcast';
+import { recordSubmission } from '../../src/services/rateLimit/requestRateLimit';
 import { logger } from '../../src/services/logger';
 import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports';
 
@@ -38,6 +40,7 @@ export default function ConfirmScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [moderationBlocked, setModerationBlocked] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showProfessionPicker, setShowProfessionPicker] = useState(false);
   const [preview, setPreview] = useState<
@@ -57,6 +60,7 @@ export default function ConfirmScreen() {
   const analyzeImages = async () => {
     setIsLoading(true);
     setHasError(false);
+    setModerationBlocked(false);
     try {
       const base64Array: string[] = JSON.parse(base64Images || '[]');
       const result = await aiAnalysisService.analyzeIssue({
@@ -69,9 +73,16 @@ export default function ConfirmScreen() {
       analyticsService.trackEvent('ai_analysis_completed', { profession: result.professions[0] });
       logAction('ai_analysis_completed', 'confirm', { profession: result.professions[0] });
     } catch (err: any) {
-      console.error('AI analysis error:', err);
-      analyticsService.trackEvent('ai_analysis_failed');
-      setHasError(true);
+      // Moderation blocks are user-facing and get their own UI — don't let
+      // them bucket into the generic "analysis failed" retry state.
+      if (err instanceof ContentModerationError) {
+        setModerationBlocked(true);
+        logAction('ai_analysis_blocked', 'confirm', { category: err.category });
+      } else {
+        console.error('AI analysis error:', err);
+        analyticsService.trackEvent('ai_analysis_failed');
+        setHasError(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -125,6 +136,11 @@ export default function ConfirmScreen() {
       analyticsService.trackEvent('request_created', { requestId: request.id });
       logAction('request_confirmed', 'confirm');
 
+      // Record the successful submission for the client-side rate limiter.
+      // Persistent → survives the next app-open so the throttle still
+      // applies. Fire-and-forget; failure to persist is non-blocking.
+      void recordSubmission();
+
       // Navigate IMMEDIATELY — pass the new request id so the sent screen
       // can offer "view my request".
       router.replace({ pathname: '/capture/sent', params: { requestId: request.id } });
@@ -147,6 +163,23 @@ export default function ConfirmScreen() {
 
   if (isLoading) {
     return <AnalyzingView t={t} />;
+  }
+
+  if (moderationBlocked) {
+    return (
+      <ScreenContainer>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+          <Ionicons name="shield-outline" size={64} color={COLORS.warning} />
+          <Text style={{ color: COLORS.text, fontSize: 20, textAlign: 'center', marginTop: 16, fontWeight: '700' }}>
+            {t('confirm.moderationBlockedTitle')}
+          </Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', marginTop: 8, marginBottom: 24, lineHeight: 22 }}>
+            {t('confirm.moderationBlockedBody')}
+          </Text>
+          <Button title={t('common.back')} onPress={() => router.back()} />
+        </View>
+      </ScreenContainer>
+    );
   }
 
   if (hasError && !analysis) {

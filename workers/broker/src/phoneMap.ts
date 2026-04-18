@@ -14,6 +14,14 @@ export interface PhoneMapEntry {
   requestId: string;
   providerName: string;
   providerPhone: string;
+  /**
+   * Optional Google Places rating at the moment the provider was contacted.
+   * Stored here so the web-form bid handler can attach it to the bid doc
+   * without doing a second Places lookup (→ no extra $).
+   */
+  rating?: number | null;
+  /** Optional Places address string, same reasoning as `rating`. */
+  address?: string;
   createdAt: number;
 }
 

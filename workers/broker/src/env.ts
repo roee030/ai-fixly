@@ -46,4 +46,12 @@ export interface Env {
    * back to ai-fixly-web.pages.dev when unset.
    */
   PROVIDER_FORM_BASE_URL?: string;
+
+  /**
+   * Shared secret required on admin endpoints (e.g. /admin/kill-switch).
+   * Set via `npx wrangler secret put ADMIN_TOKEN`. Callers send it in the
+   * `x-admin-token` request header. Missing value in env = admin routes
+   * are disabled (fail closed).
+   */
+  ADMIN_TOKEN?: string;
 }

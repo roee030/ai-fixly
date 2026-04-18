@@ -10,7 +10,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { VideoPreview } from '../../src/components/ui/VideoPreview';
+import { RateLimitBanner } from '../../src/components/ui/RateLimitBanner';
 import { useImagePicker } from '../../src/hooks/useImagePicker';
+import { useRequestRateLimit } from '../../src/hooks/useRequestRateLimit';
 import { COLORS, LIMITS } from '../../src/constants';
 import { analyticsService } from '../../src/services/analytics';
 import { logAction } from '../../src/services/analytics/sessionLogger';
@@ -46,6 +48,10 @@ export default function CaptureScreen() {
   >(null);
 
   const scrollRef = useRef<ScrollView>(null);
+  // Rate-limit gate: first request is free, subsequent requests inside the
+  // hour pay an escalating cooldown (see services/rateLimit). Hook keeps
+  // the countdown live so the button label / banner update every second.
+  const { decision: rateLimit, isBlocked: isRateLimited, markSubmitted: markRequestSubmitted } = useRequestRateLimit();
   // Scroll offset captured the moment the textarea gained focus, so we can
   // restore it when the keyboard closes. Without this, scroll-to-end on
   // focus permanently shifts the page down even after the keyboard hides.
@@ -108,6 +114,10 @@ export default function CaptureScreen() {
     const photoList = Platform.OS === 'web' ? webPhotos : images;
     if (photoList.length === 0 && videos.length === 0 && !isDescriptionValid) return;
     if (!isDescriptionValid) return;
+    // Defensive: the button is already disabled while rate-limited, but if
+    // the race window lines up badly we prefer to no-op here rather than
+    // let the user spend 20s uploading for a block downstream.
+    if (isRateLimited) return;
 
     // Block submit if combined video size exceeds the upload budget. Per-file
     // limits are already enforced at pick-time; this catches the case where
@@ -212,11 +222,12 @@ export default function CaptureScreen() {
         </ScrollView>
 
         <View style={styles.bottomBar}>
+          <RateLimitBanner decision={rateLimit} />
           <Button
             title={t('confirm.sendAndFind')}
             onPress={handleAnalyze}
             isLoading={isAnalyzing}
-            disabled={!webHasPhotos || !isDescriptionValid}
+            disabled={!webHasPhotos || !isDescriptionValid || isRateLimited}
           />
         </View>
       </ScreenContainer>
@@ -425,11 +436,12 @@ export default function CaptureScreen() {
 
         {/* Bottom button */}
         <View style={styles.bottomBar}>
+          <RateLimitBanner decision={rateLimit} />
           <Button
             title={t('confirm.sendAndFind')}
             onPress={handleAnalyze}
             isLoading={isAnalyzing}
-            disabled={!hasMedia || !isDescriptionValid}
+            disabled={!hasMedia || !isDescriptionValid || isRateLimited}
           />
         </View>
       </KeyboardAvoidingView>

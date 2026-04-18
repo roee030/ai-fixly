@@ -2,6 +2,7 @@ import {
   getAuth,
   signInWithPhoneNumber,
   signOut as firebaseSignOut,
+  deleteUser as firebaseDeleteUser,
   onAuthStateChanged as firebaseOnAuthStateChanged,
 } from '@react-native-firebase/auth';
 import { AuthService, PhoneSignInResult, AuthUser } from './types';
@@ -25,6 +26,12 @@ class FirebaseAuthService implements AuthService {
 
   async signOut(): Promise<void> {
     await firebaseSignOut(this.auth);
+  }
+
+  async deleteAccount(): Promise<void> {
+    const user = this.auth.currentUser;
+    if (!user) throw new Error('Not signed in');
+    await firebaseDeleteUser(user);
   }
 
   getCurrentUser(): AuthUser | null {

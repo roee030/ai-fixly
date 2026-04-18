@@ -19,7 +19,7 @@ import { VideoPreview } from '../../src/components/ui/VideoPreview';
 import { requestService } from '../../src/services/requests';
 import { bidService } from '../../src/services/bids';
 import { chatService } from '../../src/services/chat';
-import { notifyProviderSelected } from '../../src/services/broadcast';
+import { notifyProviderSelected, expandRequestRadius } from '../../src/services/broadcast';
 import { analyticsService } from '../../src/services/analytics';
 import { logAction } from '../../src/services/analytics/sessionLogger';
 import { logger } from '../../src/services/logger';
@@ -125,15 +125,25 @@ export default function RequestDetailsScreen() {
     await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
   };
 
-  const handlePause = async () => {
+  // "Cancel request" — fires when the customer wants to withdraw before
+  // picking a provider. We used to have Pause/Resume here too; both were
+  // removed in favour of the simpler "just cancel" model. Cancel writes
+  // status=CLOSED so Firestore / broker treat it the same as a completed
+  // request (no more bids accepted, cron skips it, etc).
+  const handleCancel = async () => {
     if (!request) return;
-    await requestService.updateStatus(request.id, REQUEST_STATUS.PAUSED);
-    analyticsService.trackEvent('request_paused', { requestId: request.id });
-  };
-
-  const handleResume = async () => {
-    if (!request) return;
-    await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
+    const confirmed = await confirmDialog(
+      t('requestDetails.cancelTitle'),
+      t('requestDetails.cancelBody'),
+      t('requestDetails.cancelConfirm'),
+      t('common.cancel'),
+    );
+    if (!confirmed) return;
+    await requestService.updateStatus(request.id, REQUEST_STATUS.CLOSED);
+    // Reuse the existing `request_closed` event — "cancel" is just a
+    // close without a selection, which analytics tracks the same way.
+    analyticsService.trackEvent('request_closed', { requestId: request.id });
+    router.replace('/(tabs)/requests');
   };
 
   const handleClose = async () => {
@@ -395,6 +405,11 @@ export default function RequestDetailsScreen() {
               <View style={styles.emptyBids}>
                 <Ionicons name="hourglass-outline" size={48} color={COLORS.textTertiary} />
                 <Text style={styles.emptyBidsText}>{t('requestDetails.waitingForProviders')}</Text>
+                <StaleRequestBanner
+                  request={request}
+                  hasBids={bids.length > 0}
+                  t={t}
+                />
               </View>
             ) : (
               bids.map((bid) => {
@@ -458,16 +473,29 @@ export default function RequestDetailsScreen() {
         )}
       </ScrollView>
 
-      {/* Bottom actions — always show close while request isn't already CLOSED */}
+      {/* Bottom actions.
+          • Pre-selection → "Cancel request" (destructive, ends the request
+            with no provider).
+          • Post-selection, pre-close → "Close request" (ends + routes to
+            review so the customer can rate).
+          • After CLOSED → no actions.
+          Pause / Resume were intentionally removed — they added a second
+          status path without a real use case.                               */}
       {request.status !== REQUEST_STATUS.CLOSED && (
         <View style={styles.bottomBar}>
-          {!selectedBid && request.status === REQUEST_STATUS.OPEN && (
-            <Button title={t('requestDetails.pauseRequest')} onPress={handlePause} variant="secondary" />
+          {!selectedBid ? (
+            <Button
+              title={t('requestDetails.cancelRequest')}
+              onPress={handleCancel}
+              variant="ghost"
+            />
+          ) : (
+            <Button
+              title={t('requestDetails.closeRequest')}
+              onPress={handleClose}
+              variant="ghost"
+            />
           )}
-          {!selectedBid && request.status === REQUEST_STATUS.PAUSED && (
-            <Button title={t('requestDetails.resumeOffers')} onPress={handleResume} />
-          )}
-          <Button title={t('requestDetails.closeRequest')} onPress={handleClose} variant="ghost" />
         </View>
       )}
 
@@ -547,6 +575,132 @@ function PhoneRevealCard({
     </Pressable>
   );
 }
+
+/**
+ * Shown under "waiting for providers" when the request is older than one
+ * hour and no bids have landed. Offers to re-broadcast with a larger
+ * search radius. The banner hides itself after the user triggers it —
+ * the worker writes `radiusExpandedAt` on the request doc and we respect
+ * that here too (so the banner doesn't reappear on the next visit).
+ */
+function StaleRequestBanner({
+  request,
+  hasBids,
+  t,
+}: {
+  request: any;
+  hasBids: boolean;
+  t: (k: string, o?: any) => string;
+}) {
+  const [isExpanding, setIsExpanding] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  if (hasBids) return null;
+  if (request.radiusExpandedAt || expanded) {
+    return (
+      <Text style={staleStyles.expandedHint}>
+        {t('requestDetails.radiusAlreadyExpanded')}
+      </Text>
+    );
+  }
+
+  const createdAtMs = toDate(request.createdAt)?.getTime() ?? 0;
+  const ageMinutes = (Date.now() - createdAtMs) / 60000;
+  if (ageMinutes < 60) return null;
+
+  const broadcastCount = request?.broadcastedProviders?.length || 0;
+
+  const handleExpand = async () => {
+    setIsExpanding(true);
+    const ok = await expandRequestRadius(request.id);
+    setIsExpanding(false);
+    if (ok) setExpanded(true);
+  };
+
+  return (
+    <View style={staleStyles.banner}>
+      <Ionicons name="compass-outline" size={22} color={COLORS.primary} />
+      <View style={{ flex: 1 }}>
+        <Text style={staleStyles.title}>
+          {t('requestDetails.staleTitle', { count: broadcastCount })}
+        </Text>
+        <Text style={staleStyles.body}>
+          {t('requestDetails.staleBody')}
+        </Text>
+        <Pressable
+          style={[staleStyles.button, isExpanding && { opacity: 0.5 }]}
+          disabled={isExpanding}
+          onPress={handleExpand}
+        >
+          <Text style={staleStyles.buttonText}>
+            {isExpanding
+              ? t('common.loading')
+              : t('requestDetails.expandRadiusCta')}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function toDate(val: any): Date | null {
+  if (!val) return null;
+  if (val instanceof Date) return val;
+  if (typeof val?.toDate === 'function') {
+    try {
+      return val.toDate();
+    } catch {
+      return null;
+    }
+  }
+  if (typeof val === 'string') return new Date(val);
+  return null;
+}
+
+const staleStyles = StyleSheet.create({
+  banner: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.primary + '10',
+    borderColor: COLORS.primary + '40',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 20,
+    width: '100%',
+  },
+  title: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  body: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  button: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  expandedHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 16,
+  },
+});
 
 const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 16 },

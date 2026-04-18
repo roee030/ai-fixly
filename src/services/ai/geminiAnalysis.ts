@@ -4,6 +4,25 @@ import { ANALYSIS_PROMPT } from './prompts';
 
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'];
 
+/**
+ * Thrown when Gemini's safety classifier flags the user's media or text.
+ * Caught on the confirm screen to show a polite Hebrew message instead of
+ * a generic error.
+ */
+export class ContentModerationError extends Error {
+  category: string;
+  constructor(category: string, message?: string) {
+    super(message || `Content blocked: ${category}`);
+    this.name = 'ContentModerationError';
+    this.category = category;
+  }
+}
+
+// Safety ratings at these levels block the request. Gemini returns one of
+// NEGLIGIBLE / LOW / MEDIUM / HIGH per category. We block at MEDIUM or HIGH;
+// LOW is common for any photo with skin tones and would over-reject.
+const BLOCKING_PROBABILITIES = new Set(['MEDIUM', 'HIGH']);
+
 class GeminiAnalysisService implements AIAnalysisService {
   private genAI: GoogleGenerativeAI;
 
@@ -16,20 +35,52 @@ class GeminiAnalysisService implements AIAnalysisService {
   }
 
   async analyzeIssue(input: AIAnalysisInput): Promise<AIAnalysisResult> {
-    // MINIMAL analysis: the AI only routes to a profession key. We removed
-    // shortSummary / problemId / urgency to cut response size and latency
-    // — the customer's own text becomes the description shown to providers.
+    // The analyzer routes to a profession key. We pass images through as
+    // inlineData so the safety classifier can inspect them AND the routing
+    // has visual context for edge cases ("the photo shows a leaking pipe"
+    // is a stronger signal than "water problem" alone).
     const textPart = input.textDescription
       ? `\n\nCustomer description: "${input.textDescription}"`
       : '';
 
-    const content = [ANALYSIS_PROMPT + textPart];
+    // Shape content[] to match the SDK expectation: string parts + inlineData
+    // objects. We cap at the first 5 images — more than enough context and
+    // keeps the request small.
+    const content: Array<
+      | string
+      | { inlineData: { mimeType: string; data: string } }
+    > = [ANALYSIS_PROMPT + textPart];
+    for (const b64 of (input.images || []).slice(0, 5)) {
+      content.push({ inlineData: { mimeType: 'image/jpeg', data: b64 } });
+    }
 
     let lastError: Error | null = null;
     for (const modelName of MODELS) {
       try {
         const model = this.genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(content);
+        const result = await model.generateContent(content as any);
+
+        // ── Content moderation ───────────────────────────────────────────
+        // If the prompt itself was blocked upstream, the SDK populates
+        // promptFeedback.blockReason. Otherwise we inspect safetyRatings on
+        // the response candidate — MEDIUM/HIGH in any category kicks it
+        // back with a ContentModerationError so the UI shows the polite
+        // "image isn't suitable" message instead of a generic parse error.
+        const blockReason = result.response.promptFeedback?.blockReason;
+        if (blockReason) {
+          throw new ContentModerationError(blockReason);
+        }
+        const ratings =
+          result.response.candidates?.[0]?.safetyRatings ||
+          result.response.promptFeedback?.safetyRatings ||
+          [];
+        const flagged = ratings.find((r: any) =>
+          BLOCKING_PROBABILITIES.has(r.probability),
+        );
+        if (flagged) {
+          throw new ContentModerationError(flagged.category);
+        }
+
         const text = result.response.text();
         const jsonStr = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const parsed = JSON.parse(jsonStr);
@@ -47,6 +98,8 @@ class GeminiAnalysisService implements AIAnalysisService {
           shortSummary: '',
         };
       } catch (err: any) {
+        // Never retry a moderation block — it's deterministic.
+        if (err instanceof ContentModerationError) throw err;
         lastError = err;
         const is503or429 = err?.message?.includes('503') || err?.message?.includes('429');
         if (is503or429) continue;

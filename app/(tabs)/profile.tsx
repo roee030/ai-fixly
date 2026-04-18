@@ -10,6 +10,7 @@ import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { useAppStore } from '../../src/stores/useAppStore';
 import { authService } from '../../src/services/auth';
+import { deleteAccountCompletely } from '../../src/services/account/deleteAccount';
 import { getFirestore, doc, getDoc, updateDoc } from '../../src/services/firestore/imports';
 import { COLORS } from '../../src/constants';
 
@@ -88,6 +89,41 @@ export default function ProfileScreen() {
 
   const handleSignOut = async () => {
     await authService.signOut();
+  };
+
+  // Apple + Google require a *visible* path to delete the account inside
+  // the app itself. We use Alert.alert with the destructive style so the
+  // confirm button is red across both platforms. On `requires-recent-login`
+  // we nudge the user to sign out and sign in again before retrying — that
+  // refreshes Firebase's idea of "recent" without a dedicated re-auth UI.
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      t('deleteAccount.title'),
+      t('deleteAccount.message'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('deleteAccount.confirm'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAccountCompletely();
+            } catch (err: any) {
+              const code = err?.code || '';
+              if (code === 'auth/requires-recent-login') {
+                Alert.alert(
+                  t('deleteAccount.reauthTitle'),
+                  t('deleteAccount.reauthBody'),
+                  [{ text: t('common.ok'), onPress: () => authService.signOut() }],
+                );
+              } else {
+                Alert.alert(t('common.error'), t('deleteAccount.genericError'));
+              }
+            }
+          },
+        },
+      ],
+    );
   };
 
   // Dev-only: clears the onboarding flag and navigates to the onboarding
@@ -238,6 +274,18 @@ export default function ProfileScreen() {
           style={{ marginTop: 24 }}
         />
 
+        {/* Delete account — required visible path for Apple + Google app-
+            store publication. Styled destructive so it's unmistakable. */}
+        <Pressable
+          onPress={handleDeleteAccount}
+          style={styles.deleteAccountButton}
+          accessibilityRole="button"
+          accessibilityLabel={t('deleteAccount.button')}
+        >
+          <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+          <Text style={styles.deleteAccountText}>{t('deleteAccount.button')}</Text>
+        </Pressable>
+
         <View style={styles.legalLinks}>
           <Pressable onPress={() => router.push('/legal/terms' as any)}>
             <Text style={styles.legalLink}>{t('profile.termsOfService')}</Text>
@@ -383,6 +431,24 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     marginBottom: 10,
     textTransform: 'uppercase',
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.error + '50',
+    backgroundColor: COLORS.error + '10',
+    marginTop: 12,
+  },
+  deleteAccountText: {
+    color: COLORS.error,
+    fontSize: 14,
+    fontWeight: '700',
   },
   legalLinks: {
     flexDirection: 'row',

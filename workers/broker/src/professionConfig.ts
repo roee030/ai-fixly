@@ -53,6 +53,10 @@ const URGENCY_CONFIGS: Record<string, UrgencySearchConfig> = {
   urgent:   { radiusMeters: 40000, maxProviders: 10, tonePrefix: '⚠️ בקשה דחופה — ' },
   normal:   { radiusMeters: 20000, maxProviders: 5,  tonePrefix: '' },
   flexible: { radiusMeters: 15000, maxProviders: 5,  tonePrefix: '' },
+  // "expand" is triggered by /request/expand-radius when the original
+  // broadcast didn't find any providers who quoted. We cast a bigger net
+  // and also reach more providers in that bigger radius.
+  expand:   { radiusMeters: 40000, maxProviders: 8,  tonePrefix: '' },
 };
 
 export function getUrgencyConfig(urgency: string): UrgencySearchConfig {

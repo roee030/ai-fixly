@@ -34,6 +34,7 @@ import { parseProviderReply } from './geminiParser';
 import { FirestoreClient } from './firestore';
 import { sendPush } from './fcm';
 import { recordProviderContact, lookupProviderContact } from './phoneMap';
+import { isKillSwitchOn, setKillSwitch, listKillSwitches } from './killSwitch';
 import { getUrgencyConfig } from './professionConfig';
 import { shortenProviderName } from './nameUtils';
 import { getProvidersForWave, getNextWaveTime } from './tiering';
@@ -84,7 +85,38 @@ export default {
       if (url.pathname === '/broadcast' && request.method === 'POST') {
         const rlOk = await checkRateLimit(env.PLACES_CACHE, `broadcast:${clientIp}`, 10, 3600);
         if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        // Admin kill switch — lets the owner pause all WhatsApp outbound
+        // activity in an emergency (Twilio on fire, billing overrun, etc.)
+        // without redeploying. Returns 503 so the app shows a friendly
+        // "try again later" instead of treating it as a silent success.
+        if (await isKillSwitchOn(env.PLACES_CACHE, 'whatsapp')) {
+          return jsonResponse(
+            { error: 'service_paused', code: 'SERVICE_PAUSED' },
+            503,
+            request,
+          );
+        }
         return await handleBroadcast(request, env, ctx);
+      }
+      if (url.pathname.startsWith('/admin/kill-switch') && request.method === 'GET') {
+        if (!isAdminAuthorized(request, env)) {
+          return jsonResponse({ error: 'unauthorized' }, 401, request);
+        }
+        const state = await listKillSwitches(env.PLACES_CACHE);
+        return jsonResponse({ switches: state }, 200, request);
+      }
+      if (url.pathname === '/admin/kill-switch' && request.method === 'POST') {
+        if (!isAdminAuthorized(request, env)) {
+          return jsonResponse({ error: 'unauthorized' }, 401, request);
+        }
+        return await handleAdminKillSwitch(request, env);
+      }
+      if (url.pathname === '/request/expand-radius' && request.method === 'POST') {
+        // Re-broadcast an open request at 2× the original radius. Throttled
+        // tightly because each call costs Google Places money.
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `expand:${clientIp}`, 5, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handleExpandRadius(request, env, ctx);
       }
       if (url.pathname === '/provider/selected' && request.method === 'POST') {
         const rlOk = await checkRateLimit(env.PLACES_CACHE, `selected:${clientIp}`, 20, 3600);
@@ -155,6 +187,41 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
   }
   if (!body.location) {
     return jsonResponse({ error: 'Missing location' }, 400, request);
+  }
+
+  // Per-user rate limit (defense in depth — the client already enforces a
+  // more granular escalating cooldown). We identify the user by looking up
+  // the request doc's userId; Firestore rules guarantee only the owner can
+  // create the request, so whoever called /broadcast with this requestId is
+  // that user. Cap: 5 broadcasts per UID per hour — matches the client-side
+  // spam-block threshold so a malicious client that bypasses the UI still
+  // can't spend Twilio credits faster than the UI would let them.
+  try {
+    const firestore = new FirestoreClient(
+      env.FIREBASE_PROJECT_ID,
+      env.FIREBASE_SERVICE_ACCOUNT_JSON,
+    );
+    const reqDoc = await firestore.getRequest(body.requestId);
+    const uid = reqDoc?.userId;
+    if (uid) {
+      const rlOk = await checkRateLimit(
+        env.PLACES_CACHE,
+        `broadcast:uid:${uid}`,
+        5,
+        3600,
+      );
+      if (!rlOk) {
+        console.warn(`[broadcast] per-uid rate limit hit for uid=${uid}`);
+        return jsonResponse(
+          { error: 'rate_limited', code: 'RATE_LIMITED', retryAfterSec: 3600 },
+          429,
+          request,
+        );
+      }
+    }
+  } catch (err) {
+    // Fail open on the uid lookup — we already have the IP-based limit.
+    console.warn('[broadcast] per-uid rate-limit lookup failed:', err);
   }
 
   // Test mode takes priority over dry-run. When TEST_PHONE_OVERRIDE is set,
@@ -246,6 +313,8 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       requestId: body.requestId,
       providerName: first.name,
       providerPhone: first.phone || testPhone,
+      rating: first.rating ?? null,
+      address: first.address,
     });
 
     // Store refCode mapping for precise reply routing
@@ -314,6 +383,8 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       requestId: body.requestId,
       providerName: provider.name,
       providerPhone: provider.phone,
+      rating: provider.rating ?? null,
+      address: provider.address,
     });
 
     // Store refCode mapping for precise reply routing
@@ -424,6 +495,108 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
 // =========================================================================
 // /provider/selected
 // =========================================================================
+
+// =========================================================================
+// /request/expand-radius
+//
+// Customer invokes this when their request has been sitting open with no
+// replies for a while. We re-broadcast the same request with a larger
+// search radius so we reach providers who were outside the original zone.
+// Firestore is the source of truth for the request itself — we pull media,
+// description, and location fresh rather than trusting the client's body.
+// =========================================================================
+
+interface ExpandRadiusBody {
+  requestId: string;
+  /** Optional multiplier (default 2×). Capped at 3× to avoid runaway $$. */
+  multiplier?: number;
+}
+
+/**
+ * Gate for admin-only endpoints. Uses a shared-secret header because the
+ * admin screen lives inside our app with a known set of Firebase UIDs, so
+ * we don't need a full bearer-token mint. Keep the token rotated.
+ */
+function isAdminAuthorized(request: Request, env: Env): boolean {
+  const expected = (env.ADMIN_TOKEN || '').trim();
+  if (!expected) return false;
+  const header = request.headers.get('x-admin-token') || '';
+  return header === expected;
+}
+
+interface KillSwitchBody {
+  name: 'whatsapp' | 'aiAnalysis';
+  enabled: boolean;
+}
+
+async function handleAdminKillSwitch(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json()) as KillSwitchBody;
+  if (!body.name || typeof body.enabled !== 'boolean') {
+    return jsonResponse({ error: 'Invalid body' }, 400, request);
+  }
+  if (body.name !== 'whatsapp' && body.name !== 'aiAnalysis') {
+    return jsonResponse({ error: 'Unknown switch' }, 400, request);
+  }
+  await setKillSwitch(env.PLACES_CACHE, body.name, body.enabled);
+  console.log(`[admin] kill switch ${body.name} → ${body.enabled ? 'ON' : 'OFF'}`);
+  const state = await listKillSwitches(env.PLACES_CACHE);
+  return jsonResponse({ ok: true, switches: state }, 200, request);
+}
+
+async function handleExpandRadius(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const body = (await request.json()) as ExpandRadiusBody;
+  if (!body.requestId) {
+    return jsonResponse({ error: 'Missing requestId' }, 400, request);
+  }
+  const multiplier = Math.min(Math.max(body.multiplier || 2, 1.5), 3);
+
+  const firestore = new FirestoreClient(
+    env.FIREBASE_PROJECT_ID,
+    env.FIREBASE_SERVICE_ACCOUNT_JSON,
+  );
+  const doc = await firestore.getRequestForReBroadcast(body.requestId);
+  if (!doc) {
+    return jsonResponse({ error: 'request_not_found' }, 404, request);
+  }
+  if (doc.status !== 'open') {
+    return jsonResponse({ error: 'request_not_open', status: doc.status }, 400, request);
+  }
+
+  // Rebuild the broadcast payload from the Firestore request and delegate to
+  // the main handleBroadcast path — all the usual Places search, test-mode
+  // routing, and Twilio send logic runs unchanged. We override the urgency
+  // to `'expand'` which carries the bumped radius.
+  const reBroadcastBody: BroadcastBody & { urgency?: string } = {
+    requestId: body.requestId,
+    professions: doc.professions,
+    shortSummary: doc.shortSummary || '',
+    mediaUrls: doc.mediaUrls,
+    location: doc.location,
+    urgency: 'expand',
+  } as any;
+
+  // Synthesize an inner POST so handleBroadcast works unchanged. Cleaner
+  // than refactoring the giant function to take a plain object.
+  const inner = new Request(request.url, {
+    method: 'POST',
+    headers: request.headers,
+    body: JSON.stringify(reBroadcastBody),
+  });
+
+  // Mark the request so the client can hide the "expand" banner and show
+  // a new waiting state — best-effort.
+  try {
+    await firestore.markRequestRadiusExpanded(body.requestId, multiplier);
+  } catch (err) {
+    console.warn('[expand-radius] mark failed:', err);
+  }
+
+  return handleBroadcast(inner, env, ctx);
+}
 
 interface ProviderSelectedBody {
   requestId: string;
@@ -1126,6 +1299,15 @@ async function handleProviderQuoteSubmission(request: Request, env: Env): Promis
 
   const notesClean = (body.notes || '').trim().slice(0, 500);
 
+  // Enrich the bid with the provider's Google Places rating, which we
+  // captured on the KV entry at broadcast time. Saves an extra Places
+  // lookup here (every call costs $$) and ensures the customer sees the
+  // same star rating they'd see if they searched Google for the provider.
+  const contact = await lookupProviderContact(env.PLACES_CACHE, body.providerPhone);
+  const providerRating: number | null =
+    typeof contact?.rating === 'number' ? contact.rating : null;
+  const providerAddress: string | undefined = contact?.address;
+
   await firestore.createBid({
     requestId: body.requestId,
     bidId: crypto.randomUUID(),
@@ -1136,7 +1318,8 @@ async function handleProviderQuoteSubmission(request: Request, env: Env): Promis
       price,
       availability: availabilityText,
       availabilityStartAt: body.availabilityStartAt,
-      rating: null,
+      rating: providerRating,
+      ...(providerAddress ? { address: providerAddress } : {}),
       // Store the provider's free-text notes as a first-class field so
       // the customer-facing bid card can render it directly. `rawReply`
       // is kept for audit / parser compatibility but no longer the only

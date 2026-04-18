@@ -2,6 +2,7 @@ import {
   getAuth,
   signInWithPhoneNumber,
   signOut as firebaseSignOut,
+  deleteUser as firebaseDeleteUser,
   onAuthStateChanged as firebaseOnAuthStateChanged,
   RecaptchaVerifier,
   type ConfirmationResult,
@@ -58,6 +59,13 @@ class FirebaseAuthWebService implements AuthService {
   async signOut(): Promise<void> {
     const auth = getAuthInstance();
     await firebaseSignOut(auth);
+  }
+
+  async deleteAccount(): Promise<void> {
+    const auth = getAuthInstance();
+    const user = auth.currentUser;
+    if (!user) throw new Error('Not signed in');
+    await firebaseDeleteUser(user);
   }
 
   getCurrentUser(): AuthUser | null {
