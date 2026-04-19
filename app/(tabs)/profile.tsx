@@ -12,6 +12,7 @@ import { useAppStore } from '../../src/stores/useAppStore';
 import { authService } from '../../src/services/auth';
 import { deleteAccountCompletely } from '../../src/services/account/deleteAccount';
 import { getFirestore, doc, getDoc, updateDoc } from '../../src/services/firestore/imports';
+import { useProviderProfile } from '../../src/hooks/useProviderProfile';
 import { COLORS } from '../../src/constants';
 
 const LANGUAGES = [
@@ -152,6 +153,8 @@ export default function ProfileScreen() {
             </Text>
           </View>
         </View>
+
+        <ProviderBadge />
 
         {/* Phone (read-only) */}
         <View style={styles.fieldContainer}>
@@ -482,4 +485,65 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
+  providerBadgeWrap: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    backgroundColor: COLORS.primary + '12',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '44',
+    gap: 8,
+  },
+  providerBadgeRow: {
+    flexDirection: 'row' as any,
+    alignItems: 'center',
+    gap: 8,
+  },
+  providerBadgeTitle: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700' as any,
+  },
+  providerBadgeProfession: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '700' as any,
+  },
+  providerBadgeCta: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700' as any,
+  },
 });
+
+/**
+ * Compact provider banner shown at the top of the profile screen for
+ * users with `providerProfile` set. Renders nothing for regular customers.
+ * Tapping opens the Dashboard tab.
+ */
+function ProviderBadge() {
+  const { t } = useTranslation();
+  const { profile, isProvider } = useProviderProfile();
+  if (!isProvider || !profile) return null;
+  return (
+    <Pressable
+      style={styles.providerBadgeWrap}
+      onPress={() => router.push('/(tabs)/dashboard' as any)}
+    >
+      <View style={styles.providerBadgeRow}>
+        <Ionicons name="briefcase" size={16} color={COLORS.primary} />
+        <Text style={styles.providerBadgeTitle}>{t('providerDashboard.profileBadge')}</Text>
+      </View>
+      <Text style={styles.providerBadgeProfession}>{profile.professionLabelHe}</Text>
+      <View style={styles.providerBadgeRow}>
+        <Text style={styles.providerBadgeCta}>{t('providerDashboard.profileSeeDashboard')}</Text>
+        <Ionicons
+          name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
+          size={14}
+          color={COLORS.primary}
+        />
+      </View>
+    </Pressable>
+  );
+}

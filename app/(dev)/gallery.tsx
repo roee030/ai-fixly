@@ -52,6 +52,7 @@ const SCREENS: ScreenCard[] = [
   { name: 'Provider Quote', nameHe: 'הצעת מחיר (בעל מקצוע)', route: '/provider/quote/demo-request', icon: 'cash-outline', group: 'בעל מקצוע' },
   { name: 'Provider Report', nameHe: 'דיווח בעיה (בעל מקצוע)', route: '/provider/report/demo-request', icon: 'flag-outline', group: 'בעל מקצוע' },
   { name: 'Provider Join', nameHe: 'הצטרפות בעל מקצוע', route: '/join', icon: 'briefcase-outline', group: 'בעל מקצוע' },
+  { name: 'Provider Dashboard', nameHe: 'לוח הבקרה (בעל מקצוע)', route: '/(tabs)/dashboard', icon: 'analytics-outline', group: 'בעל מקצוע' },
 
   // SEO / Web
   { name: 'Service: Plumber', nameHe: 'דף שירות: אינסטלטור', route: '/services/plumber', icon: 'water-outline', group: 'דפי שירות (SEO)' },

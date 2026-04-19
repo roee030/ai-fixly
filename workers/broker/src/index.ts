@@ -35,6 +35,7 @@ import { FirestoreClient } from './firestore';
 import { sendPush } from './fcm';
 import { recordProviderContact, lookupProviderContact } from './phoneMap';
 import { isKillSwitchOn, setKillSwitch, listKillSwitches } from './killSwitch';
+import { verifyFirebaseIdToken } from './firebaseAuthVerify';
 import { getUrgencyConfig } from './professionConfig';
 import { shortenProviderName } from './nameUtils';
 import { getProvidersForWave, getNextWaveTime } from './tiering';
@@ -110,6 +111,17 @@ export default {
           return jsonResponse({ error: 'unauthorized' }, 401, request);
         }
         return await handleAdminKillSwitch(request, env);
+      }
+      if (url.pathname === '/admin/register-provider' && request.method === 'POST') {
+        if (!isAdminAuthorized(request, env)) {
+          return jsonResponse({ error: 'unauthorized' }, 401, request);
+        }
+        return await handleAdminRegisterProvider(request, env);
+      }
+      if (url.pathname === '/provider/vacation' && request.method === 'POST') {
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `vacation:${clientIp}`, 30, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handleProviderVacation(request, env);
       }
       if (url.pathname === '/request/expand-radius' && request.method === 'POST') {
         // Re-broadcast an open request at 2× the original radius. Throttled
@@ -378,6 +390,28 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       continue;
     }
 
+    // Vacation check: if this phone belongs to a registered provider in
+    // our app AND they've toggled vacation mode on, skip them. Phones
+    // not in our DB (most Places-discovered providers) get the WhatsApp
+    // anyway — the toggle is opt-in only for providers who joined the app.
+    try {
+      const registeredProvider = await firestore.getProviderProfileByPhone(provider.phone);
+      if (registeredProvider?.isOnVacation) {
+        console.log(`[dispatch] skipping ${provider.phone} — on vacation`);
+        results.push({
+          name: provider.name,
+          phone: provider.phone,
+          sent: false,
+          reason: 'on_vacation',
+        });
+        continue;
+      }
+    } catch (err) {
+      // Don't fail the whole dispatch if the vacation check throws —
+      // the legacy "send to everyone" behavior is the safer fallback.
+      console.warn(`[dispatch] vacation check failed for ${provider.phone}:`, err);
+    }
+
     // Record phone → requestId so future webhooks can route
     await recordProviderContact(env.PLACES_CACHE, provider.phone, {
       requestId: body.requestId,
@@ -541,6 +575,105 @@ async function handleAdminKillSwitch(request: Request, env: Env): Promise<Respon
   console.log(`[admin] kill switch ${body.name} → ${body.enabled ? 'ON' : 'OFF'}`);
   const state = await listKillSwitches(env.PLACES_CACHE);
   return jsonResponse({ ok: true, switches: state }, 200, request);
+}
+
+/**
+ * POST /provider/vacation
+ * Toggle the caller's own vacation flag. The caller is identified by
+ * their Firebase ID token in `Authorization: Bearer <token>`.
+ *
+ * Auth flow: verify the JWT against Firebase's public keys (cached in KV),
+ * then write to that uid's `users.providerProfile.isOnVacation`.
+ *
+ * Returns 401 on missing/bad token, 403 if the user isn't a provider,
+ * 200 with `{ok:true}` on success.
+ */
+async function handleProviderVacation(request: Request, env: Env): Promise<Response> {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!token) return jsonResponse({ error: 'unauthorized' }, 401, request);
+
+  let uid: string;
+  try {
+    const decoded = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID, env.PLACES_CACHE);
+    uid = decoded.sub;
+  } catch (err: any) {
+    console.warn('[provider/vacation] token verify failed:', err?.message || err);
+    return jsonResponse({ error: 'unauthorized' }, 401, request);
+  }
+
+  let body: { isOnVacation?: boolean };
+  try {
+    body = (await request.json()) as { isOnVacation?: boolean };
+  } catch {
+    return jsonResponse({ error: 'invalid_body' }, 400, request);
+  }
+  if (typeof body.isOnVacation !== 'boolean') {
+    return jsonResponse({ error: 'isOnVacation_required' }, 400, request);
+  }
+
+  const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  try {
+    await firestore.setProviderVacation(uid, body.isOnVacation);
+  } catch (err: any) {
+    console.error('[provider/vacation] write failed:', err);
+    return jsonResponse({ error: 'write_failed' }, 500, request);
+  }
+  console.log(`[provider/vacation] uid=${uid} isOnVacation=${body.isOnVacation}`);
+  return jsonResponse({ ok: true }, 200, request);
+}
+
+interface AdminRegisterProviderBody {
+  uid: string;
+  phone: string;
+  profession: string;
+  professionLabelHe: string;
+  location: { lat: number; lng: number };
+  serviceRadiusKm?: number;
+}
+
+/**
+ * POST /admin/register-provider
+ * Owner tooling endpoint — flips a regular user account to a provider by
+ * attaching the providerProfile sub-document. Called by the
+ * `add-provider` and `import-providers` CLI scripts.
+ */
+async function handleAdminRegisterProvider(request: Request, env: Env): Promise<Response> {
+  let body: AdminRegisterProviderBody;
+  try {
+    body = (await request.json()) as AdminRegisterProviderBody;
+  } catch {
+    return jsonResponse({ error: 'invalid_body' }, 400, request);
+  }
+
+  if (
+    !body.uid ||
+    !body.phone ||
+    !body.profession ||
+    !body.professionLabelHe ||
+    typeof body.location?.lat !== 'number' ||
+    typeof body.location?.lng !== 'number'
+  ) {
+    return jsonResponse({ error: 'missing_required_fields' }, 400, request);
+  }
+
+  const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  try {
+    await firestore.setProviderProfile(body.uid, {
+      profession: body.profession,
+      professionLabelHe: body.professionLabelHe,
+      phone: body.phone,
+      location: body.location,
+      serviceRadiusKm: body.serviceRadiusKm || 20,
+      isOnVacation: false,
+      approvedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.error('[admin/register-provider] write failed:', err);
+    return jsonResponse({ error: 'write_failed', detail: String(err?.message || err) }, 500, request);
+  }
+  console.log(`[admin/register-provider] uid=${body.uid} profession=${body.profession}`);
+  return jsonResponse({ ok: true }, 200, request);
 }
 
 async function handleExpandRadius(

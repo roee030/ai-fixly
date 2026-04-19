@@ -1,0 +1,10 @@
+# Sample CSV for `npx tsx scripts/import-providers.ts`.
+# Lines starting with # are comments and ignored.
+# Required columns: uid, phone, profession, lat, lng. Optional: radiusKm (default 20).
+#
+# Get the uid from Firebase Console → Authentication → Users tab.
+# Profession keys live in src/constants/problemMatrix.ts (plumber, electrician, etc).
+#
+uid,phone,profession,lat,lng,radiusKm
+PASTE_UID_HERE,+972501234567,plumber,32.3215,34.8532,20
+PASTE_UID_HERE,+972527654321,electrician,32.4365,34.9201,15

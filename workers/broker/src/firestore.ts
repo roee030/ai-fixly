@@ -173,6 +173,149 @@ export class FirestoreClient {
   }
 
   /**
+   * Look up a registered provider by phone number. Used during dispatch
+   * to honor the vacation toggle: if the matched user is a registered
+   * provider AND on vacation, we skip them and move to the next candidate.
+   *
+   * Returns null when no user has this phone in their providerProfile —
+   * i.e., the phone came from Google Places but the provider hasn't been
+   * onboarded into our app. They get the WhatsApp anyway (legacy behavior).
+   */
+  async getProviderProfileByPhone(phone: string): Promise<{
+    uid: string;
+    isOnVacation: boolean;
+  } | null> {
+    if (!phone) return null;
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents:runQuery`;
+      const body = {
+        structuredQuery: {
+          from: [{ collectionId: 'users' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'providerProfile.phone' },
+              op: 'EQUAL',
+              value: { stringValue: phone },
+            },
+          },
+          limit: 1,
+        },
+      };
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) return null;
+      const rows = (await response.json()) as Array<{ document?: any }>;
+      const doc = rows.find((r) => r.document)?.document;
+      if (!doc) return null;
+      const uid = String(doc.name || '').split('/').pop() || '';
+      const profile = doc.fields?.providerProfile?.mapValue?.fields;
+      const isOnVacation = profile?.isOnVacation?.booleanValue === true;
+      return { uid, isOnVacation };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Update the vacation flag on a user's providerProfile. Called from
+   * the `/provider/vacation` endpoint after the caller's ID token has
+   * been verified.
+   */
+  async setProviderVacation(uid: string, isOnVacation: boolean): Promise<void> {
+    const accessToken = await this.getToken();
+    // updateMask.fieldPaths uses dot-paths into a Map, properly URL-encoded.
+    const fieldPath = encodeURIComponent('providerProfile.isOnVacation');
+    const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/users/${uid}?updateMask.fieldPaths=${fieldPath}`;
+    const body = {
+      fields: {
+        providerProfile: {
+          mapValue: {
+            fields: {
+              isOnVacation: { booleanValue: isOnVacation },
+            },
+          },
+        },
+      },
+    };
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`setProviderVacation error ${response.status}: ${errText}`);
+    }
+  }
+
+  /**
+   * Write the full providerProfile sub-document. Called by the
+   * `/admin/register-provider` endpoint (used by the CLI scripts).
+   * Overwrites the entire providerProfile field — this is intentional
+   * so re-running the CLI with new data idempotently re-attaches the
+   * provider with fresh values (e.g. updated location or radius).
+   */
+  async setProviderProfile(uid: string, profile: {
+    profession: string;
+    professionLabelHe: string;
+    phone: string;
+    location: { lat: number; lng: number };
+    serviceRadiusKm: number;
+    isOnVacation: boolean;
+    approvedAt: string;  // ISO
+  }): Promise<void> {
+    const accessToken = await this.getToken();
+    const fieldPath = encodeURIComponent('providerProfile');
+    const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/users/${uid}?updateMask.fieldPaths=${fieldPath}`;
+    const body = {
+      fields: {
+        providerProfile: {
+          mapValue: {
+            fields: {
+              profession: { stringValue: profile.profession },
+              professionLabelHe: { stringValue: profile.professionLabelHe },
+              phone: { stringValue: profile.phone },
+              location: {
+                mapValue: {
+                  fields: {
+                    lat: { doubleValue: profile.location.lat },
+                    lng: { doubleValue: profile.location.lng },
+                  },
+                },
+              },
+              serviceRadiusKm: { integerValue: String(profile.serviceRadiusKm) },
+              isOnVacation: { booleanValue: profile.isOnVacation },
+              approvedAt: { timestampValue: profile.approvedAt },
+            },
+          },
+        },
+      },
+    };
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`setProviderProfile error ${response.status}: ${errText}`);
+    }
+  }
+
+  /**
    * Write a chat message to /serviceRequests/{requestId}/messages.
    * Used by the webhook when a provider replies after being selected.
    */
