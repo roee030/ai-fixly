@@ -90,6 +90,7 @@ class FirebaseBidService implements BidService {
       price: typeof data.price === 'number' ? data.price : 0,
       availability: data.availability || '',
       availabilityStartAt: toIsoOrNull(data.availabilityStartAt),
+      availabilityEndAt: toIsoOrNull(data.availabilityEndAt),
       rating: typeof data.rating === 'number' ? data.rating : null,
       address: data.address,
       // `notes` is the preferred new field; we also fall back to the

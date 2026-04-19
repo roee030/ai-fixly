@@ -10,12 +10,20 @@ export interface Bid {
   price: number;
   availability: string;
   /**
-   * Canonical UTC ISO timestamp for when the provider said they could
-   * start. Set by the worker via Gemini when parsing the reply. May be
-   * undefined for legacy bids created before this field existed.
+   * Canonical UTC ISO timestamp for the start of the provider's offered
+   * 2-hour arrival window. Set either by the web form (provider picked
+   * a chip) or by Gemini (provider replied with free-form WhatsApp text).
+   * May be undefined for legacy bids created before this field existed.
    * Use `formatAvailability(bid, now)` to render it.
    */
   availabilityStartAt?: string | null;
+  /**
+   * Canonical UTC ISO timestamp for the end of the provider's offered
+   * window. Always 2 hours after `availabilityStartAt` for new bids.
+   * Older bids may only have the start — formatter falls back to
+   * single-time rendering in that case.
+   */
+  availabilityEndAt?: string | null;
   rating: number | null;
   address?: string;
   /**

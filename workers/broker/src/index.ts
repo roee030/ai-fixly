@@ -967,6 +967,7 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
         price: parsed.price,
         availability: parsed.availability,
         availabilityStartAt: parsed.availabilityStartAt,
+        availabilityEndAt: parsed.availabilityEndAt,
         rawReply: parsed.rawText,
         receivedAt: new Date().toISOString(),
         isReal: true,
@@ -1253,6 +1254,12 @@ interface ProviderQuoteBody {
   price: string;            // arrives as numeric string from the form
   isVisitFee: boolean;
   availabilityStartAt: string;
+  /**
+   * Optional only for backwards compatibility — the picker always sends both
+   * start and end since the time-window refactor. Old clients that haven't
+   * upgraded may still POST without it; we accept and persist nothing extra.
+   */
+  availabilityEndAt?: string;
   availabilityText: string;
   notes?: string;
 }
@@ -1318,6 +1325,7 @@ async function handleProviderQuoteSubmission(request: Request, env: Env): Promis
       price,
       availability: availabilityText,
       availabilityStartAt: body.availabilityStartAt,
+      availabilityEndAt: body.availabilityEndAt || null,
       rating: providerRating,
       ...(providerAddress ? { address: providerAddress } : {}),
       // Store the provider's free-text notes as a first-class field so

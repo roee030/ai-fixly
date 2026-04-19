@@ -1,29 +1,19 @@
 import { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { COLORS } from '../../constants';
+import { COLORS, TIME_WINDOWS, formatWindowRange, type TimeWindow } from '../../constants';
 
 /**
  * Two-step availability picker for the provider quote form.
- * Step 1: pick a day (today / tomorrow / day-after).
- * Step 2: pick a time-of-day window (morning / noon / afternoon / evening).
+ *   Step 1: pick a day (today / tomorrow / day-after).
+ *   Step 2: pick ONE 2-hour time window from the canonical TIME_WINDOWS list.
  *
- * The picker emits a canonical UTC ISO timestamp (start of the chosen
- * window in Israel local time) plus a human label for display. The
- * customer-side `formatAvailability` then renders that timestamp in
- * whichever language the customer is using.
+ * Emits canonical UTC ISO timestamps for both the start and end of the
+ * chosen window. The customer's BidCard renders the same range so what
+ * the provider promised matches what the customer sees, byte-for-byte.
  */
 
 type DayOption = 'today' | 'tomorrow' | 'dayAfter';
-type SlotOption = 'morning' | 'noon' | 'afternoon' | 'evening';
-
-// Hours that anchor each window (Israel local).
-const SLOT_HOURS: Record<SlotOption, number> = {
-  morning: 9,
-  noon: 12,
-  afternoon: 16,
-  evening: 19,
-};
 
 const DAY_OFFSET: Record<DayOption, number> = {
   today: 0,
@@ -31,30 +21,41 @@ const DAY_OFFSET: Record<DayOption, number> = {
   dayAfter: 2,
 };
 
+export interface AvailabilitySelection {
+  startIso: string;
+  endIso: string;
+  /** Human-readable label like "מחר 09:00–11:00", for the UI confirmation. */
+  label: string;
+}
+
 interface Props {
-  onChange: (selection: { iso: string; label: string } | null) => void;
+  onChange: (selection: AvailabilitySelection | null) => void;
 }
 
 export function AvailabilityPicker({ onChange }: Props) {
   const { t } = useTranslation();
   const [day, setDay] = useState<DayOption | null>(null);
-  const [slot, setSlot] = useState<SlotOption | null>(null);
+  const [windowKey, setWindowKey] = useState<string | null>(null);
 
   // Persist current selection upward whenever it changes.
-  const apply = (nextDay: DayOption | null, nextSlot: SlotOption | null) => {
+  const apply = (nextDay: DayOption | null, nextWindowKey: string | null) => {
     setDay(nextDay);
-    setSlot(nextSlot);
-    if (!nextDay || !nextSlot) {
+    setWindowKey(nextWindowKey);
+    if (!nextDay || !nextWindowKey) {
       onChange(null);
       return;
     }
-    const iso = computeIsoFor(nextDay, nextSlot);
-    const label = `${t(`providerForm.day_${nextDay}`)} • ${t(`providerForm.slot_${nextSlot}`)}`;
-    onChange({ iso, label });
+    const w = TIME_WINDOWS.find((x) => x.key === nextWindowKey);
+    if (!w) {
+      onChange(null);
+      return;
+    }
+    const { startIso, endIso } = computeRangeIsosFor(nextDay, w);
+    const label = `${t(`providerForm.day_${nextDay}`)} ${formatWindowRange(w)}`;
+    onChange({ startIso, endIso, label });
   };
 
   const days: DayOption[] = useMemo(() => ['today', 'tomorrow', 'dayAfter'], []);
-  const slots: SlotOption[] = useMemo(() => ['morning', 'noon', 'afternoon', 'evening'], []);
 
   return (
     <View style={styles.container}>
@@ -65,7 +66,7 @@ export function AvailabilityPicker({ onChange }: Props) {
         {days.map((d) => {
           const active = day === d;
           return (
-            <Pressable key={d} onPress={() => apply(d, slot)} style={[styles.chip, active && styles.chipActive]}>
+            <Pressable key={d} onPress={() => apply(d, windowKey)} style={[styles.chip, active && styles.chipActive]}>
               <Text style={[styles.chipText, active && styles.chipTextActive]}>
                 {t(`providerForm.day_${d}`)}
               </Text>
@@ -74,15 +75,19 @@ export function AvailabilityPicker({ onChange }: Props) {
         })}
       </View>
 
-      {/* Step 2: time-of-day, revealed once a day is picked */}
+      {/* Step 2: 2-hour windows, revealed once a day is picked */}
       {day && (
         <View style={[styles.row, { marginTop: 10 }]}>
-          {slots.map((s) => {
-            const active = slot === s;
+          {TIME_WINDOWS.map((w) => {
+            const active = windowKey === w.key;
             return (
-              <Pressable key={s} onPress={() => apply(day, s)} style={[styles.chip, active && styles.chipActive]}>
+              <Pressable
+                key={w.key}
+                onPress={() => apply(day, w.key)}
+                style={[styles.chip, active && styles.chipActive]}
+              >
                 <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                  {t(`providerForm.slot_${s}`)}
+                  {formatWindowRange(w)}
                 </Text>
               </Pressable>
             );
@@ -94,13 +99,11 @@ export function AvailabilityPicker({ onChange }: Props) {
 }
 
 /**
- * Compute the ISO timestamp (UTC) of the start of the picked window.
- * Israel offset is approximated month-based (matches the rest of the app).
+ * Compute UTC ISO timestamps for the start and end of the chosen window
+ * on the chosen day, in Israel local time.
  */
-function computeIsoFor(day: DayOption, slot: SlotOption): string {
+function computeRangeIsosFor(day: DayOption, w: TimeWindow): { startIso: string; endIso: string } {
   const offsetDays = DAY_OFFSET[day];
-  const hourLocal = SLOT_HOURS[slot];
-
   const now = new Date();
   const israelOffsetH = israelOffsetHours(now);
 
@@ -111,8 +114,12 @@ function computeIsoFor(day: DayOption, slot: SlotOption): string {
     now.getUTCDate(),
     -israelOffsetH,  // shift back so 00:00 Israel == this UTC
   );
-  const ts = utcMidnightToday + (offsetDays * 24 + hourLocal) * 60 * 60 * 1000;
-  return new Date(ts).toISOString();
+  const startTs = utcMidnightToday + (offsetDays * 24 + w.startHour) * 60 * 60 * 1000;
+  const endTs = utcMidnightToday + (offsetDays * 24 + w.endHour) * 60 * 60 * 1000;
+  return {
+    startIso: new Date(startTs).toISOString(),
+    endIso: new Date(endTs).toISOString(),
+  };
 }
 
 function israelOffsetHours(d: Date): number {

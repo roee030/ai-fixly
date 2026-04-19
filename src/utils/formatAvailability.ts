@@ -1,17 +1,23 @@
 /**
  * Renders a bid's availability as a localized human-friendly string that
- * stays accurate as time passes. The bid carries a canonical UTC ISO
- * timestamp (availabilityStartAt) computed by Gemini when the provider
- * replied; this helper converts that to human-friendly relative text
- * based on "now" in Israel local time.
+ * stays accurate as time passes. New bids carry a canonical UTC ISO range
+ * (availabilityStartAt + availabilityEndAt — the 2-hour window the
+ * provider picked); legacy bids may have only a start. This helper
+ * converts that to friendly relative text based on "now" in Israel local.
+ *
+ * Format with both endpoints:  "מחר 09:00–11:00"
+ * Format with start only:      "מחר 09:00"  (back-compat for old bids)
  *
  * Cases:
  *   - Past time        → t('availability.past')
- *   - Same Israel-day  → t('availability.today', { time: 'HH:MM' })
+ *   - Same Israel-day  → t('availability.today', { time })
  *   - Next day         → t('availability.tomorrow', { time })
  *   - Within a week    → t('availability.dayAtTime', { day, time })
  *   - Further out      → "DD/MM HH:MM" (absolute)
  *   - No ISO           → raw text fallback, or t('availability.soon')
+ *
+ * `time` is the formatted range when both ends exist, otherwise just the
+ * start hour — both work as a single token in the i18n template.
  *
  * Accepts an optional `t` function so the util stays pure and testable.
  * When `t` is omitted, falls back to Hebrew literals (backwards compat).
@@ -21,6 +27,7 @@ type TFunction = (key: string, opts?: Record<string, any>) => string;
 
 export interface BidAvailability {
   availabilityStartAt?: string | null;
+  availabilityEndAt?: string | null;
   availability?: string | null;
 }
 
@@ -73,7 +80,20 @@ export function formatAvailability(bid: BidAvailability, now: Date, t?: TFunctio
 
   const hh = String(targetIsrael.getUTCHours()).padStart(2, '0');
   const mm = String(targetIsrael.getUTCMinutes()).padStart(2, '0');
-  const time = `${hh}:${mm}`;
+  const startHHMM = `${hh}:${mm}`;
+
+  // If we have an end timestamp, render the full window range. Otherwise
+  // fall back to just the start time (back-compat for legacy bids).
+  let time = startHHMM;
+  if (bid.availabilityEndAt) {
+    const end = new Date(bid.availabilityEndAt);
+    if (!isNaN(end.getTime())) {
+      const endIsrael = new Date(end.getTime() + israelOffsetHours(end) * 60 * 60 * 1000);
+      const eh = String(endIsrael.getUTCHours()).padStart(2, '0');
+      const em = String(endIsrael.getUTCMinutes()).padStart(2, '0');
+      time = `${startHHMM}\u2013${eh}:${em}`;
+    }
+  }
 
   if (dayDiff === 0) {
     return t ? t('availability.today', { time }) : HE_FALLBACK.today(time);

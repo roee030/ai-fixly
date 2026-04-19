@@ -138,6 +138,51 @@ describe('formatAvailability', () => {
     });
   });
 
+  describe('range rendering (new bids with availabilityEndAt)', () => {
+    it('renders "מחר 09:00–11:00" when both endpoints are present', () => {
+      const start = israelSummer(2026, 7, 16, 9, 0);
+      const end = israelSummer(2026, 7, 16, 11, 0);
+      expect(
+        formatAvailability(
+          { availabilityStartAt: start, availabilityEndAt: end, availability: null },
+          nowSummer,
+        )
+      ).toBe('מחר 09:00\u201311:00');
+    });
+
+    it('renders "היום 15:00–17:00" for a same-day window', () => {
+      const start = israelSummer(2026, 7, 15, 15, 0);
+      const end = israelSummer(2026, 7, 15, 17, 0);
+      expect(
+        formatAvailability(
+          { availabilityStartAt: start, availabilityEndAt: end, availability: null },
+          nowSummer,
+        )
+      ).toBe('היום 15:00\u201317:00');
+    });
+
+    it('renders "יום שבת 13:00–15:00" for 3 days ahead', () => {
+      const start = israelSummer(2026, 7, 18, 13, 0);
+      const end = israelSummer(2026, 7, 18, 15, 0);
+      expect(
+        formatAvailability(
+          { availabilityStartAt: start, availabilityEndAt: end, availability: null },
+          nowSummer,
+        )
+      ).toBe('יום שבת 13:00\u201315:00');
+    });
+
+    it('falls back to start-only when end is malformed', () => {
+      const start = israelSummer(2026, 7, 16, 9, 0);
+      expect(
+        formatAvailability(
+          { availabilityStartAt: start, availabilityEndAt: 'not-a-date', availability: null },
+          nowSummer,
+        )
+      ).toBe('מחר 09:00');
+    });
+  });
+
   describe('winter / DST boundary', () => {
     it('handles winter (UTC+2) correctly', () => {
       // Monday 2026-01-12 10:00 Israel time = 08:00 UTC

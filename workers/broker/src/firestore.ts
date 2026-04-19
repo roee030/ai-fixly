@@ -467,6 +467,12 @@ export class FirestoreClient {
        * "tomorrow morning" becomes concrete and ages gracefully).
        */
       availabilityStartAt?: string | null;
+      /**
+       * UTC ISO end of the provider's offered window (always 2 hours after
+       * `availabilityStartAt` for new bids). Optional for legacy WhatsApp
+       * bids parsed by Gemini before the time-window refactor.
+       */
+      availabilityEndAt?: string | null;
       rating?: number | null;
       address?: string;
       rawReply: string;
@@ -507,6 +513,11 @@ export class FirestoreClient {
     if (data.availabilityStartAt) {
       firestoreDoc.fields.availabilityStartAt = {
         timestampValue: data.availabilityStartAt,
+      };
+    }
+    if (data.availabilityEndAt) {
+      firestoreDoc.fields.availabilityEndAt = {
+        timestampValue: data.availabilityEndAt,
       };
     }
     if (data.rating !== undefined && data.rating !== null) {

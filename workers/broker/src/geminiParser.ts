@@ -12,14 +12,21 @@
 export interface ParsedReply {
   interested: boolean;
   price: number | null;
-  /** Raw availability text from the reply, e.g. "מחר בבוקר" */
+  /** Raw availability text from the reply, e.g. "מחר 09:00–11:00" */
   availability: string | null;
   /**
    * Best-effort ISO 8601 timestamp (UTC) for when the provider said they
-   * could start. Computed by Gemini relative to `nowInIsrael` in the prompt.
-   * May be null if the reply is vague (e.g. "this week") or can't be parsed.
+   * could start. Computed by Gemini relative to `nowInIsrael` in the prompt
+   * by snapping the provider's free text to the closest 2-hour window.
+   * Null when the reply is vague (e.g. "this week") or can't be parsed.
    */
   availabilityStartAt: string | null;
+  /**
+   * UTC ISO of the END of the 2-hour window. Always exactly 2 hours after
+   * `availabilityStartAt` for non-null replies. Kept as a separate field so
+   * the customer-facing renderer doesn't have to recompute it.
+   */
+  availabilityEndAt: string | null;
   rawText: string;
 }
 
@@ -38,28 +45,48 @@ Return ONLY a JSON object with these exact fields:
 {
   "interested": true | false,
   "price": number or null (in ILS/shekels, just the number),
-  "availability": "short string describing when they can come, in Hebrew" or null,
-  "availabilityStartAt": "ISO 8601 timestamp in UTC (Z suffix) representing the start of the time window the provider mentioned, or null if unclear",
+  "availability": "short Hebrew string describing the chosen 2-hour window, e.g. 'מחר 09:00–11:00'" or null,
+  "availabilityStartAt": "ISO 8601 timestamp in UTC (Z suffix) for the START of the chosen 2-hour window, or null",
+  "availabilityEndAt": "ISO 8601 timestamp in UTC (Z suffix) for the END of the chosen 2-hour window, or null. ALWAYS exactly 2 hours after availabilityStartAt.",
   "reasoning": "brief explanation"
 }
 
-Rules for availabilityStartAt:
-- Compute relative to the "Current time in Israel" given above
-- "תוך שעתיים" / "in 2 hours" → now + 2h, in UTC
-- "מחר בבוקר" / "tomorrow morning" → next day at 09:00 Israel time, in UTC
-- "מחר אחה״צ" / "tomorrow afternoon" → next day at 15:00 Israel time, in UTC
-- "מחר בערב" / "tomorrow evening" → next day at 19:00 Israel time, in UTC
-- "היום בערב" / "today evening" → today at 19:00 Israel time, in UTC
-- "יום ראשון" / "Sunday" → next Sunday (default 09:00 if no time given), in UTC
-- Exact time like "מחר ב-10:30" → next day 10:30 Israel time, in UTC
-- If the provider says "today" and it's already past that time of day, pick tomorrow
-- If unclear (just "this week"), return null
-- IMPORTANT: Convert to UTC! If Israel time is 09:00 and DST is on (+3), UTC is 06:00.
+CRITICAL — Snap to one of these 7 fixed 2-hour windows in Israel local time:
+  W1: 07:00–09:00
+  W2: 09:00–11:00
+  W3: 11:00–13:00
+  W4: 13:00–15:00
+  W5: 15:00–17:00
+  W6: 17:00–19:00
+  W7: 19:00–21:00
+
+You MUST pick the window whose midpoint is closest to what the provider said.
+Examples (assume tomorrow):
+  - "מחר בבוקר"             → W2 (09:00–11:00)  — generic morning
+  - "מחר מוקדם"             → W1 (07:00–09:00)
+  - "מחר ב-10:30"            → W2 (09:00–11:00)  — 10:30 is inside
+  - "מחר בצהריים"           → W3 (11:00–13:00)
+  - "מחר אחה״צ"             → W4 (13:00–15:00)
+  - "מחר 16:00"              → W5 (15:00–17:00)
+  - "מחר אחר הצהריים מאוחר" → W5 (15:00–17:00)
+  - "מחר בערב"              → W6 (17:00–19:00)
+  - "מחר בערב מאוחר"        → W7 (19:00–21:00)
+  - "תוך שעתיים"            → window covering now+2h, in Israel local time
+  - "יום ראשון בבוקר"        → next Sunday W2 (09:00–11:00)
+  - Outside 07:00–21:00 → snap to nearest end (W1 or W7)
+  - Vague ("this week", "soon") → null for all three fields
+
+Times are in Israel local. ALWAYS convert to UTC for the ISO output:
+- Israel summer (DST, +3): subtract 3 hours.
+- Israel winter (+2): subtract 2 hours.
+The "Current time in Israel" line above tells you which offset is active.
+
+availability text format: "<day prefix> HH:MM–HH:MM" in Hebrew, e.g.:
+  "היום 15:00–17:00", "מחר 09:00–11:00", "יום ראשון 13:00–15:00"
 
 General rules:
 - If the provider clearly declines (לא, לא מעוניין, busy, cannot) → interested: false
 - If they give a price, extract just the number (350 from "350 שקל")
-- availability text should be short and natural Hebrew: "מחר בבוקר", "יום ראשון אחה״צ", "תוך שעתיים"
 
 Reply with JSON only, no markdown, no code fences.`;
 }
@@ -110,13 +137,24 @@ export async function parseProviderReply(params: {
       price?: number | null;
       availability?: string | null;
       availabilityStartAt?: string | null;
+      availabilityEndAt?: string | null;
     };
+
+    // Trust Gemini's start, then derive end as start+2h regardless of what
+    // it returned. Belt-and-suspenders: even when the model forgets the
+    // end field or returns a non-2h delta, the customer always sees a
+    // sensible 2-hour window matching the picker.
+    const startIso = validateIsoOrNull(parsed.availabilityStartAt);
+    const endIso = startIso
+      ? new Date(new Date(startIso).getTime() + 2 * 60 * 60 * 1000).toISOString()
+      : null;
 
     return {
       interested: parsed.interested ?? false,
       price: typeof parsed.price === 'number' ? parsed.price : null,
       availability: parsed.availability || null,
-      availabilityStartAt: validateIsoOrNull(parsed.availabilityStartAt),
+      availabilityStartAt: startIso,
+      availabilityEndAt: endIso,
       rawText: replyText,
     };
   } catch {
@@ -126,6 +164,7 @@ export async function parseProviderReply(params: {
       price: null,
       availability: null,
       availabilityStartAt: null,
+      availabilityEndAt: null,
       rawText: replyText,
     };
   }

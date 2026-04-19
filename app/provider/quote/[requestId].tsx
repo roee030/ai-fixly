@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { ScreenContainer } from '../../../src/components/layout';
 import { Button } from '../../../src/components/ui';
 import { VideoPreview } from '../../../src/components/ui/VideoPreview';
-import { AvailabilityPicker } from '../../../src/components/provider/AvailabilityPicker';
+import { AvailabilityPicker, type AvailabilitySelection } from '../../../src/components/provider/AvailabilityPicker';
 import {
   fetchPublicRequestSummary,
   submitProviderQuote,
@@ -49,7 +49,7 @@ export default function ProviderQuoteScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [price, setPrice] = useState('');
   const [isVisitFee, setIsVisitFee] = useState(false);
-  const [availability, setAvailability] = useState<{ iso: string; label: string } | null>(null);
+  const [availability, setAvailability] = useState<AvailabilitySelection | null>(null);
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -86,7 +86,8 @@ export default function ProviderQuoteScreen() {
         providerName: providerName || undefined,
         price: sanitizeNumeric(price.trim()),
         isVisitFee,
-        availabilityStartAt: availability!.iso,
+        availabilityStartAt: availability!.startIso,
+        availabilityEndAt: availability!.endIso,
         availabilityText: availability!.label,
         notes: notes.trim() ? sanitizeText(notes.trim(), 500) : undefined,
       });

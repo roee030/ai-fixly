@@ -55,8 +55,9 @@ export interface QuoteSubmission {
   providerName?: string;
   price: string;
   isVisitFee: boolean;
-  availabilityStartAt: string;  // ISO timestamp
-  availabilityText: string;     // human-readable, e.g. "מחר אחר הצהריים"
+  availabilityStartAt: string;  // ISO timestamp — start of the 2-hour window
+  availabilityEndAt: string;    // ISO timestamp — end of the 2-hour window
+  availabilityText: string;     // human-readable, e.g. "מחר 09:00–11:00"
   notes?: string;
 }
 
