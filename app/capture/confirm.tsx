@@ -24,6 +24,7 @@ import { broadcastToProviders } from '../../src/services/broadcast';
 import { recordSubmission } from '../../src/services/rateLimit/requestRateLimit';
 import { logger } from '../../src/services/logger';
 import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports';
+import { draftService } from '../../src/services/drafts';
 
 import type { AIAnalysisResult } from '../../src/services/ai';
 
@@ -135,6 +136,19 @@ export default function ConfirmScreen() {
     try {
 
       const tempId = `req_${Date.now()}`;
+
+      // Save a resumable draft BEFORE we start uploading. If uploads or
+      // createRequest fail, the draft survives so the user can resume
+      // from the capture screen's resume-prompt modal.
+      await draftService.save(user.uid, {
+        imageUris,
+        videoAssets,
+        description,
+        analysis,
+        chosenProfessions,
+        analysisKey: analysisKey as string | undefined,
+      });
+
       // Upload everything in parallel — images and videos. Videos carry their
       // poster frame so the WhatsApp preview / provider quote page can show
       // a still frame next to the play link.
@@ -164,6 +178,9 @@ export default function ConfirmScreen() {
       await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
       analyticsService.trackEvent('request_created', { requestId: request.id });
       logAction('request_confirmed', 'confirm');
+
+      // Request is persisted — we no longer need the local draft.
+      void draftService.remove(user.uid);
 
       // Record the successful submission for the client-side rate limiter.
       // Persistent → survives the next app-open so the throttle still

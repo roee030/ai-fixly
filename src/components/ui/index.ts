@@ -8,3 +8,4 @@ export { FadeInView } from './FadeInView';
 export { Skeleton } from './Skeleton';
 export { SkeletonImage } from './SkeletonImage';
 export { RequestCardSkeleton, RequestListSkeleton } from './RequestCardSkeleton';
+export { ResumeDraftModal } from './ResumeDraftModal';
