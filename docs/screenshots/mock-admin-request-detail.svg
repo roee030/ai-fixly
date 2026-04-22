@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 620" direction="rtl">
+  <rect width="280" height="620" fill="#0F0F1A"/>
+
+  <!-- Header -->
+  <rect x="0" y="0" width="280" height="50" fill="#141421"/>
+  <rect x="14" y="12" width="26" height="26" rx="8" fill="#191926"/>
+  <text x="27" y="30" text-anchor="middle" fill="#E5E7EB" font-family="system-ui" font-size="14">←</text>
+  <text x="260" y="24" text-anchor="end" fill="#FFF" font-family="system-ui" font-size="13" font-weight="700">חדרה · נסגרה</text>
+  <text x="260" y="40" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9">22/4/2026 14:02</text>
+
+  <!-- Customer text card -->
+  <rect x="14" y="60" width="252" height="60" rx="10" fill="#191926" stroke="#2D2D40"/>
+  <text x="260" y="78" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">תיאור לקוח</text>
+  <text x="260" y="98" text-anchor="end" fill="#FFF" font-family="system-ui" font-size="11">צינור דולף מתחת לכיור</text>
+  <text x="260" y="112" text-anchor="end" fill="#FFF" font-family="system-ui" font-size="11">במטבח, מאז הבוקר</text>
+
+  <!-- AI analysis -->
+  <rect x="14" y="128" width="252" height="56" rx="10" fill="#191926" stroke="#2D2D40"/>
+  <text x="260" y="146" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">ניתוח AI</text>
+  <rect x="190" y="154" width="70" height="22" rx="6" fill="rgba(99,102,241,0.2)"/>
+  <text x="225" y="170" text-anchor="middle" fill="#6366F1" font-family="system-ui" font-size="10" font-weight="700">plumber</text>
+  <text x="260" y="180" text-anchor="end" fill="#6B7280" font-family="system-ui" font-size="8">Gemini: 3.4s</text>
+
+  <!-- Broadcast card -->
+  <rect x="14" y="192" width="252" height="64" rx="10" fill="#191926" stroke="#2D2D40"/>
+  <text x="260" y="210" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">שידור</text>
+  <g font-family="system-ui" font-size="18" font-weight="700" text-anchor="middle">
+    <text x="48" y="240" fill="#22C55E">7</text>
+    <text x="108" y="240" fill="#EF4444">1</text>
+    <text x="168" y="240" fill="#E5E7EB">12</text>
+    <text x="228" y="240" fill="#6366F1">16'</text>
+  </g>
+  <g font-family="system-ui" font-size="8" text-anchor="middle" fill="#6B7280">
+    <text x="48" y="252">נשלח</text>
+    <text x="108" y="252">נכשל</text>
+    <text x="168" y="252">נמצאו</text>
+    <text x="228" y="252">לתגובה</text>
+  </g>
+
+  <!-- Timeline header -->
+  <rect x="14" y="264" width="252" height="200" rx="10" fill="#191926"/>
+  <text x="260" y="282" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">אירועי שירות (8)</text>
+
+  <!-- Timeline rows -->
+  <g font-family="system-ui" font-size="9">
+    <circle cx="252" cy="300" r="4" fill="#6366F1"/>
+    <text x="240" y="304" text-anchor="end" fill="#9CA3AF" font-size="8">14:02:01</text>
+    <text x="190" y="304" text-anchor="end" fill="#6366F1" font-weight="700">ניתוח AI</text>
+    <text x="140" y="304" text-anchor="end" fill="#6B7280">3.4s · 2 תמונות</text>
+
+    <circle cx="252" cy="318" r="4" fill="#10B981"/>
+    <text x="240" y="322" text-anchor="end" fill="#9CA3AF" font-size="8">14:02:04</text>
+    <text x="190" y="322" text-anchor="end" fill="#10B981" font-weight="700">העלאה</text>
+    <text x="140" y="322" text-anchor="end" fill="#6B7280">0.8s · 2.1MB</text>
+
+    <circle cx="252" cy="336" r="4" fill="#F59E0B"/>
+    <text x="240" y="340" text-anchor="end" fill="#9CA3AF" font-size="8">14:02:06</text>
+    <text x="190" y="340" text-anchor="end" fill="#F59E0B" font-weight="700">חיפוש Places</text>
+    <text x="140" y="340" text-anchor="end" fill="#6B7280">12 נמצאו</text>
+
+    <circle cx="252" cy="354" r="4" fill="#22C55E"/>
+    <text x="240" y="358" text-anchor="end" fill="#9CA3AF" font-size="8">14:02:08</text>
+    <text x="190" y="358" text-anchor="end" fill="#22C55E" font-weight="700">WhatsApp</text>
+    <text x="140" y="358" text-anchor="end" fill="#6B7280">+972-52-...</text>
+
+    <circle cx="252" cy="372" r="4" fill="#22C55E"/>
+    <text x="240" y="376" text-anchor="end" fill="#9CA3AF" font-size="8">14:02:09</text>
+    <text x="190" y="376" text-anchor="end" fill="#22C55E" font-weight="700">WhatsApp</text>
+    <text x="140" y="376" text-anchor="end" fill="#6B7280">+972-54-...</text>
+
+    <circle cx="252" cy="390" r="4" fill="#EF4444"/>
+    <text x="240" y="394" text-anchor="end" fill="#9CA3AF" font-size="8">14:02:10</text>
+    <text x="190" y="394" text-anchor="end" fill="#EF4444" font-weight="700">נכשל</text>
+    <text x="140" y="394" text-anchor="end" fill="#6B7280">invalid number</text>
+
+    <circle cx="252" cy="408" r="4" fill="#22C55E"/>
+    <text x="240" y="412" text-anchor="end" fill="#9CA3AF" font-size="8">14:18:22</text>
+    <text x="190" y="412" text-anchor="end" fill="#22C55E" font-weight="700">תגובה ראשונה</text>
+    <text x="140" y="412" text-anchor="end" fill="#6B7280">16' אחרי</text>
+
+    <circle cx="252" cy="426" r="4" fill="#8B5CF6"/>
+    <text x="240" y="430" text-anchor="end" fill="#9CA3AF" font-size="8">16:45:00</text>
+    <text x="190" y="430" text-anchor="end" fill="#8B5CF6" font-weight="700">ביקורת</text>
+    <text x="140" y="430" text-anchor="end" fill="#6B7280">⭐ 5 · ₪380</text>
+  </g>
+
+  <!-- Review card -->
+  <rect x="14" y="476" width="252" height="90" rx="10" fill="#191926" stroke="#2D2D40"/>
+  <text x="260" y="494" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">דירוג לקוח</text>
+  <text x="260" y="516" text-anchor="end" fill="#FFF" font-family="system-ui" font-size="14" font-weight="700">⭐⭐⭐⭐⭐ · ₪380</text>
+  <text x="260" y="538" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="11" font-style="italic">"עבודה מצוינת, מקצועי ויעיל"</text>
+  <text x="260" y="556" text-anchor="end" fill="#6B7280" font-family="system-ui" font-size="9">נשלח 23/4/2026 16:45</text>
+</svg>

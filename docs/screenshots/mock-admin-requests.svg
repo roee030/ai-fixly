@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 520" direction="rtl">
+  <rect width="280" height="520" fill="#0F0F1A"/>
+
+  <!-- Header -->
+  <rect x="0" y="0" width="280" height="44" fill="#141421"/>
+  <text x="260" y="28" text-anchor="end" fill="#FFF" font-family="system-ui" font-size="14" font-weight="700">📊 לוח בקרה</text>
+
+  <!-- Tabs with Requests active -->
+  <rect x="0" y="44" width="280" height="36" fill="#0F0F1A"/>
+  <rect x="14" y="52" width="58" height="20" rx="10" fill="#191926"/>
+  <text x="43" y="66" text-anchor="middle" fill="#9CA3AF" font-family="system-ui" font-size="10">סקירה</text>
+  <rect x="78" y="52" width="58" height="20" rx="10" fill="rgba(99,102,241,0.2)"/>
+  <text x="107" y="66" text-anchor="middle" fill="#6366F1" font-family="system-ui" font-size="10" font-weight="700">בקשות</text>
+  <rect x="142" y="52" width="50" height="20" rx="10" fill="#191926"/>
+  <text x="167" y="66" text-anchor="middle" fill="#9CA3AF" font-family="system-ui" font-size="10">משפך</text>
+
+  <!-- Page title + CSV -->
+  <text x="258" y="104" text-anchor="end" fill="#FFF" font-family="system-ui" font-size="16" font-weight="700">בקשות</text>
+  <rect x="14" y="88" width="56" height="22" rx="6" fill="#6366F1"/>
+  <text x="42" y="103" text-anchor="middle" fill="#FFF" font-family="system-ui" font-size="10" font-weight="700">⬇ CSV</text>
+
+  <!-- Filter chips -->
+  <text x="258" y="132" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="10">סטטוס:</text>
+  <rect x="180" y="122" width="38" height="18" rx="9" fill="rgba(99,102,241,0.2)"/>
+  <text x="199" y="134" text-anchor="middle" fill="#6366F1" font-family="system-ui" font-size="9" font-weight="700">הכל</text>
+  <rect x="138" y="122" width="38" height="18" rx="9" fill="#191926"/>
+  <text x="157" y="134" text-anchor="middle" fill="#9CA3AF" font-family="system-ui" font-size="9">פתוחה</text>
+  <rect x="82" y="122" width="52" height="18" rx="9" fill="#191926"/>
+  <text x="108" y="134" text-anchor="middle" fill="#9CA3AF" font-family="system-ui" font-size="9">בתהליך</text>
+  <rect x="36" y="122" width="42" height="18" rx="9" fill="#191926"/>
+  <text x="57" y="134" text-anchor="middle" fill="#9CA3AF" font-family="system-ui" font-size="9">נסגרה</text>
+
+  <!-- Table header -->
+  <rect x="14" y="152" width="252" height="26" fill="#191926"/>
+  <text x="258" y="169" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">עיר</text>
+  <text x="205" y="169" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">מקצוע</text>
+  <text x="140" y="169" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">TTFR</text>
+  <text x="100" y="169" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">שולם</text>
+  <text x="50" y="169" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="9" font-weight="700">⭐</text>
+
+  <!-- Rows with urgency tinting -->
+  <!-- Green: closed + 5-star -->
+  <rect x="14" y="178" width="252" height="32" fill="rgba(34,197,94,0.08)"/>
+  <text x="258" y="198" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">חדרה</text>
+  <text x="205" y="198" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">אינסטלטור</text>
+  <text x="140" y="198" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">8'</text>
+  <text x="100" y="198" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">₪380</text>
+  <text x="50" y="198" text-anchor="end" fill="#F59E0B" font-family="system-ui" font-size="10">⭐⭐⭐⭐⭐</text>
+
+  <!-- Normal -->
+  <rect x="14" y="210" width="252" height="32" fill="#141421"/>
+  <text x="258" y="230" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">נתניה</text>
+  <text x="205" y="230" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">חשמלאי</text>
+  <text x="140" y="230" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">22'</text>
+  <text x="100" y="230" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">₪520</text>
+  <text x="50" y="230" text-anchor="end" fill="#F59E0B" font-family="system-ui" font-size="10">⭐⭐⭐⭐</text>
+
+  <!-- Yellow: slow -->
+  <rect x="14" y="242" width="252" height="32" fill="rgba(245,158,11,0.10)"/>
+  <text x="258" y="262" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">חיפה</text>
+  <text x="205" y="262" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">מזגנים</text>
+  <text x="140" y="262" text-anchor="end" fill="#F59E0B" font-family="system-ui" font-size="10">—</text>
+  <text x="100" y="262" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="10">—</text>
+  <text x="50" y="262" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="10">—</text>
+
+  <!-- Red: stalled 4h+ -->
+  <rect x="14" y="274" width="252" height="32" fill="rgba(239,68,68,0.12)"/>
+  <text x="258" y="294" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">רמת גן</text>
+  <text x="205" y="294" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">צבעי</text>
+  <text x="140" y="294" text-anchor="end" fill="#EF4444" font-family="system-ui" font-size="10" font-weight="700">5h+</text>
+  <text x="100" y="294" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="10">—</text>
+  <text x="50" y="294" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="10">—</text>
+
+  <!-- More normal rows -->
+  <rect x="14" y="306" width="252" height="32" fill="#141421"/>
+  <text x="258" y="326" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">תל אביב</text>
+  <text x="205" y="326" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">מנעולן</text>
+  <text x="140" y="326" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">12'</text>
+  <text x="100" y="326" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">₪280</text>
+  <text x="50" y="326" text-anchor="end" fill="#F59E0B" font-family="system-ui" font-size="10">⭐⭐⭐⭐⭐</text>
+
+  <rect x="14" y="338" width="252" height="32" fill="rgba(34,197,94,0.06)"/>
+  <text x="258" y="358" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">הרצליה</text>
+  <text x="205" y="358" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">אינסטלטור</text>
+  <text x="140" y="358" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">18'</text>
+  <text x="100" y="358" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">₪450</text>
+  <text x="50" y="358" text-anchor="end" fill="#F59E0B" font-family="system-ui" font-size="10">⭐⭐⭐⭐</text>
+
+  <rect x="14" y="370" width="252" height="32" fill="#141421"/>
+  <text x="258" y="390" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">כפר סבא</text>
+  <text x="205" y="390" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">הנדימן</text>
+  <text x="140" y="390" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">15'</text>
+  <text x="100" y="390" text-anchor="end" fill="#E5E7EB" font-family="system-ui" font-size="10">₪320</text>
+  <text x="50" y="390" text-anchor="end" fill="#9CA3AF" font-family="system-ui" font-size="10">—</text>
+
+  <!-- Meta footer -->
+  <text x="258" y="424" text-anchor="end" fill="#6B7280" font-family="system-ui" font-size="10">47 תוצאות</text>
+</svg>
