@@ -134,6 +134,7 @@
   .zone-badge.auth { background: rgba(245,158,11,0.15); color: var(--warning); border: 1px solid rgba(245,158,11,0.3); }
   .zone-badge.provider { background: rgba(99,102,241,0.15); color: var(--primary); border: 1px solid rgba(99,102,241,0.3); }
   .zone-badge.provider-app { background: rgba(34,211,238,0.15); color: #22D3EE; border: 1px solid rgba(34,211,238,0.3); }
+  .zone-badge.admin { background: rgba(236,72,153,0.15); color: #EC4899; border: 1px solid rgba(236,72,153,0.3); }
 
   /* Legend */
   .legend {
@@ -206,7 +207,7 @@ const SCREENS = [
   // Main tabs
   { id: 'home',            title: '6. Home (hub)',          route: '/(tabs)/',                img: 'screenshots/mock-home.png',           zone: 'auth', next: ['capture', 'request-details'], label: 'Snap', x: 2200, y: 60 },
   { id: 'my-requests',     title: '7. My Requests',         route: '/(tabs)/requests',        img: 'screenshots/mock-my-requests.png',    zone: 'auth', next: ['request-details'], x: 2200, y: 1000 },
-  { id: 'profile',         title: '7b. Profile',            route: '/(tabs)/profile',         img: 'screenshots/mock-profile-tab.png',    zone: 'auth', next: ['provider-dashboard'], label: 'If provider', x: 2200, y: 1950 },
+  { id: 'profile',         title: '7b. Profile',            route: '/(tabs)/profile',         img: 'screenshots/mock-profile-tab.png',    zone: 'auth', next: ['provider-dashboard', 'admin-overview'], label: 'If provider / admin', x: 2200, y: 1950 },
 
   // Capture flow
   { id: 'capture',         title: '8. Capture',             route: '/capture',                img: 'screenshots/mock-capture.png',        zone: 'auth', next: ['confirm'], label: 'Send for analysis', x: 2640, y: 60 },
@@ -226,6 +227,16 @@ const SCREENS = [
   // Provider in-app (registered providers see these tabs after the owner
   // attaches a `providerProfile` to their user via the add-provider CLI).
   { id: 'provider-dashboard', title: 'Provider Dashboard', route: '/(tabs)/dashboard', placeholder: 'Visible only to users with a <strong>providerProfile</strong> attached to their user record.<br><br>Header (greeting + profession badge), <strong>vacation toggle</strong>, monthly stats (quotes / jobs done / win rate), and live <strong>bid history</strong> with status badges (sent / picked / completed / lost / expired).', zone: 'provider-app', next: [], x: 2640, y: 1950 },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Admin dashboard (whitelisted UIDs only). Added 2026-04-22.
+  // ──────────────────────────────────────────────────────────────────────
+  { id: 'admin-overview',       title: 'Admin: Overview',          route: '/admin',                       placeholder: '5 live charts from <strong>adminStats/daily-*</strong> rollups: requests/day, time-to-first-bid, revenue, avg rating, reviews.<br><br>30d/90d toggle + per-city filter sourced from bounding-box buckets. Manual refresh, no real-time listeners.', zone: 'admin', next: ['admin-requests', 'admin-funnel', 'admin-providers'], x: 500, y: 3900 },
+  { id: 'admin-requests',       title: 'Admin: Requests List',     route: '/admin/requests',              placeholder: 'All requests with filters (status, city, has-review), urgency row tinting (red = stalled 4h+, yellow = 1h+, green = closed with rating >= 4).<br><br><strong>CSV export</strong> of filtered view. Row click → per-request detail.', zone: 'admin', next: ['admin-request-detail'], x: 1000, y: 3900 },
+  { id: 'admin-request-detail', title: 'Admin: Request Detail',    route: '/admin/requests/[id]',         placeholder: 'Customer text + media, AI analysis (professions + Gemini ms), broadcast summary (sent/failed/found/TTFR), <strong>service timeline</strong> with colored dots per event (gemini / upload / places_search / twilio_send / first_response / review_submitted), bids received, customer review with cost + rating + comment.', zone: 'admin', next: [], x: 1500, y: 3900 },
+  { id: 'admin-funnel',         title: 'Admin: Funnel',            route: '/admin/funnel',                placeholder: 'Conversion totals from daily rollups: requests → reviews.<br><br>Ticket avg + total gross over 30 days. Deep funnel (app_opened → captured → submitted) flagged TBD until session_logs land in the rollup.', zone: 'admin', next: [], x: 1000, y: 4500 },
+  { id: 'admin-providers',      title: 'Admin: Providers List',    route: '/admin/providers',             placeholder: 'Top providers from <strong>providers_agg</strong> ordered by totalGrossValue desc. Win rate, rating color, response time. Rows clickable → provider detail.', zone: 'admin', next: ['admin-provider-detail'], x: 500, y: 4500 },
+  { id: 'admin-provider-detail', title: 'Admin: Provider Detail',  route: '/admin/providers/[phone]',     placeholder: 'Lifetime stats (offers/accepted/completed/rating/avg-price/total-gross), job history (every request matched, with customer review + cost + comment). <strong>CSV export</strong> of jobs table. Click row → request detail.', zone: 'admin', next: ['admin-request-detail'], x: 1500, y: 4500 },
 ];
 
 /* =========================================================================

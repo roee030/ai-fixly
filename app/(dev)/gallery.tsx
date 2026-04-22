@@ -66,10 +66,13 @@ const SCREENS: ScreenCard[] = [
   { name: 'Accessibility', nameHe: 'הצהרת נגישות', route: '/legal/accessibility', icon: 'accessibility-outline', group: 'משפטי' },
 
   // Admin
-  { name: 'Admin Dashboard', nameHe: 'לוח בקרה', route: '/admin', icon: 'stats-chart-outline', group: 'ניהול' },
+  { name: 'Admin Dashboard', nameHe: 'לוח בקרה — סקירה + גרפים', route: '/admin', icon: 'stats-chart-outline', group: 'ניהול' },
+  { name: 'Admin: Requests', nameHe: 'ניהול: רשימת בקשות', route: '/admin/requests', icon: 'list-outline', group: 'ניהול' },
+  { name: 'Admin: Request Detail', nameHe: 'ניהול: פרטי בקשה (דמו)', route: '/admin/requests/demo-request', icon: 'document-text-outline', group: 'ניהול' },
   { name: 'Admin: Funnel', nameHe: 'ניהול: משפך המרה', route: '/admin/funnel', icon: 'funnel-outline', group: 'ניהול' },
   { name: 'Admin: Geo', nameHe: 'ניהול: מפת גיאו', route: '/admin/geo', icon: 'map-outline', group: 'ניהול' },
   { name: 'Admin: Providers', nameHe: 'ניהול: בעלי מקצוע', route: '/admin/providers', icon: 'people-outline', group: 'ניהול' },
+  { name: 'Admin: Provider Detail', nameHe: 'ניהול: פרטי בעל מקצוע (דמו)', route: '/admin/providers/+972501234567', icon: 'person-circle-outline', group: 'ניהול' },
   { name: 'Admin: Revenue', nameHe: 'ניהול: הכנסות', route: '/admin/revenue', icon: 'cash-outline', group: 'ניהול' },
   { name: 'Push Diagnostic', nameHe: 'דיאגנוסטיקה: התראות', route: '/(dev)/push-test', icon: 'bug-outline', group: 'ניהול' },
 ];
