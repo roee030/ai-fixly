@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, FlatList, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, FlatList, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -8,7 +8,7 @@ import { RequestListSkeleton } from '../../src/components/ui';
 import { useRequestsStore } from '../../src/stores/useRequestsStore';
 import { REQUEST_STATUS } from '../../src/constants/status';
 import { primaryProfessionLabel } from '../../src/utils/professionLabel';
-import { COLORS, SPACING, RADII } from '../../src/constants';
+import { COLORS } from '../../src/constants';
 
 import type { ServiceRequest } from '../../src/services/requests';
 
@@ -66,21 +66,6 @@ export default function RequestsScreen() {
     router.push({ pathname: '/request/[id]', params: { id } });
   };
 
-  // Summary counters for the alert header (only on the FILTERED set).
-  const alertCounts = useMemo(() => {
-    let stalled = 0; // open + >4h + 0 bids
-    let slow = 0;    // open + >1h + 0 bids
-    for (const r of filtered) {
-      if (r.status !== REQUEST_STATUS.OPEN) continue;
-      const bids = bidCounts[r.id] || 0;
-      if (bids > 0) continue;
-      const ageMs = Date.now() - new Date(r.createdAt).getTime();
-      if (ageMs > 4 * 3600_000) stalled++;
-      else if (ageMs > 3600_000) slow++;
-    }
-    return { stalled, slow };
-  }, [filtered, bidCounts]);
-
   const renderRequest = ({ item }: { item: ServiceRequest }) => {
     const ai = item.aiAnalysis as any;
     const professionLabel = primaryProfessionLabel(ai, t);
@@ -92,23 +77,14 @@ export default function RequestsScreen() {
       unread > 0 &&
       (item.status === REQUEST_STATUS.OPEN || item.status === REQUEST_STATUS.PAUSED);
 
-    const urgency = getUrgency(item, bidCount);
-
     return (
-      <Pressable onPress={() => openRequest(item.id)} style={[styles.requestCard, urgency.tintStyle]}>
+      <Pressable onPress={() => openRequest(item.id)} style={styles.requestCard}>
         <View style={styles.requestIcon}>
           <Ionicons name="build" size={22} color={COLORS.primary} />
         </View>
 
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <View style={styles.titleRow}>
-            <Text style={styles.requestTitle}>{professionLabel || t('requests.serviceRequest')}</Text>
-            {urgency.label && (
-              <Text style={[styles.urgencyTag, { color: urgency.color }]}>
-                {urgency.label}
-              </Text>
-            )}
-          </View>
+          <Text style={styles.requestTitle}>{professionLabel || t('requests.serviceRequest')}</Text>
           <Text style={styles.requestSummary} numberOfLines={1}>
             {showBadge
               ? t('requests.newOffers', { count: unread })
@@ -162,33 +138,10 @@ export default function RequestsScreen() {
     <ScreenContainer>
       <Text style={styles.header}>{t('requests.title')}</Text>
 
-      {/* Alert header — only renders when there's something urgent. */}
-      {(alertCounts.stalled > 0 || alertCounts.slow > 0) && (
-        <View style={styles.alertBanner}>
-          <Ionicons name="alert-circle" size={18} color={COLORS.error} />
-          <Text style={styles.alertText}>
-            {alertCounts.stalled > 0 && (
-              <Text style={{ color: COLORS.error, fontWeight: '700' }}>
-                {alertCounts.stalled} תקועות
-              </Text>
-            )}
-            {alertCounts.stalled > 0 && alertCounts.slow > 0 && <Text> · </Text>}
-            {alertCounts.slow > 0 && (
-              <Text style={{ color: COLORS.warning, fontWeight: '700' }}>
-                {alertCounts.slow} איטיות
-              </Text>
-            )}
-          </Text>
-        </View>
-      )}
-
-      {/* Filters */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipStrip}
-      >
-        <Text style={styles.chipLabel}>תאריך:</Text>
+      {/* Filters — wrap-to-new-line instead of horizontal scroll so the
+          labels don't get clipped when the row is wider than the screen. */}
+      <View style={styles.chipRow}>
+        <Text style={styles.chipLabel}>תאריך</Text>
         {DATE_OPTIONS.map((o) => (
           <Pressable
             key={o.k}
@@ -200,13 +153,9 @@ export default function RequestsScreen() {
             </Text>
           </Pressable>
         ))}
-      </ScrollView>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipStrip}
-      >
-        <Text style={styles.chipLabel}>סטטוס:</Text>
+      </View>
+      <View style={styles.chipRow}>
+        <Text style={styles.chipLabel}>סטטוס</Text>
         {STATUS_OPTIONS.map((o) => (
           <Pressable
             key={o.k}
@@ -218,12 +167,6 @@ export default function RequestsScreen() {
             </Text>
           </Pressable>
         ))}
-      </ScrollView>
-
-      {/* Legend */}
-      <View style={styles.legend}>
-        <LegendItem color={COLORS.error} label="תקועה — אין הצעות מעל 4 שעות" />
-        <LegendItem color={COLORS.warning} label="איטית — אין הצעות מעל שעה" />
       </View>
 
       {!isInitialized ? (
@@ -257,15 +200,6 @@ export default function RequestsScreen() {
 // Helpers
 // ──────────────────────────────────────────────────────────────────────────
 
-function LegendItem({ color, label }: { color: string; label: string }) {
-  return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, { backgroundColor: color }]} />
-      <Text style={styles.legendText}>{label}</Text>
-    </View>
-  );
-}
-
 function rangeCutoffMs(range: DateRange): number | null {
   const DAY = 24 * 3600_000;
   switch (range) {
@@ -274,32 +208,6 @@ function rangeCutoffMs(range: DateRange): number | null {
     case '30d': return 30 * DAY;
     case 'all': return null;
   }
-}
-
-function getUrgency(r: ServiceRequest, bidCount: number): {
-  tintStyle: object;
-  label: string;
-  color: string;
-} {
-  if (r.status !== REQUEST_STATUS.OPEN || bidCount > 0) {
-    return { tintStyle: {}, label: '', color: '' };
-  }
-  const ageMs = Date.now() - new Date(r.createdAt).getTime();
-  if (ageMs > 4 * 3600_000) {
-    return {
-      tintStyle: { backgroundColor: COLORS.error + '12', borderColor: COLORS.error + '40' },
-      label: '🚨 תקועה',
-      color: COLORS.error,
-    };
-  }
-  if (ageMs > 3600_000) {
-    return {
-      tintStyle: { backgroundColor: COLORS.warning + '12', borderColor: COLORS.warning + '40' },
-      label: '⏰ איטית',
-      color: COLORS.warning,
-    };
-  }
-  return { tintStyle: {}, label: '', color: '' };
 }
 
 function formatOpenDate(d: Date | string): string {
@@ -333,35 +241,24 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 16,
   },
-  alertBanner: {
+  chipRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.error + '14',
-    borderRadius: RADII.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: COLORS.error + '30',
-    marginBottom: SPACING.sm,
-  },
-  alertText: { fontSize: 13, color: COLORS.text },
-  chipStrip: {
-    flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
     paddingVertical: 4,
-    paddingHorizontal: 2,
+    marginBottom: 4,
   },
   chipLabel: {
     fontSize: 12,
     color: COLORS.textTertiary,
-    fontWeight: '600',
-    marginHorizontal: 6,
+    fontWeight: '700',
+    marginLeft: 2,
+    marginRight: 8,
   },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 999,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -371,19 +268,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '20',
     borderColor: COLORS.primary,
   },
-  chipText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
+  chipText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
   chipTextActive: { color: COLORS.primary, fontWeight: '700' },
-  legend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 2,
-    marginBottom: 8,
-  },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { fontSize: 11, color: COLORS.textSecondary },
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -418,18 +304,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   requestTitle: {
     color: COLORS.text,
     fontSize: 15,
-    fontWeight: '700',
-  },
-  urgencyTag: {
-    fontSize: 11,
     fontWeight: '700',
   },
   requestSummary: {

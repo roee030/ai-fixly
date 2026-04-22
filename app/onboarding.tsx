@@ -165,10 +165,11 @@ export default function OnboardingScreen() {
             offset: SCREEN_WIDTH * index,
             index,
           })}
-          // In RTL Android reverses the internal order automatically,
-          // but on iOS + web we need the flag. inverted={isRTL} keeps
-          // "next slide" feeling natural for Hebrew readers.
-          inverted={isRTL && Platform.OS !== 'android'}
+          // NOT inverting the list, regardless of RTL. React Native's
+          // I18nManager already flips horizontal scroll direction on
+          // RTL devices, so slide 0 is always displayed first and swipe
+          // advances to slide 1, 2. Adding `inverted` caused slide 2
+          // to show first with reverse swipe, which is what the user hit.
         />
 
         {/* Dots */}
