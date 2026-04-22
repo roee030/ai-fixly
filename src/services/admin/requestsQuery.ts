@@ -27,6 +27,8 @@ export interface QueryAdminRequestsParams {
   city?: string;
   status?: string;
   hasReview?: boolean;
+  /** Milliseconds ago — e.g. 7*24*3600*1000 for last 7 days. Omit for all. */
+  sinceMs?: number;
   maxResults?: number;
 }
 
@@ -77,11 +79,30 @@ export async function queryAdminRequests(
     };
   });
 
-  // hasReview is an in-memory filter — Firestore doesn't index "does field
-  // exist" cheaply. Acceptable because we've already capped at maxResults.
-  const filtered = params.hasReview === undefined
-    ? rows
-    : rows.filter((r) => (params.hasReview ? r.rating !== undefined : r.rating === undefined));
+  // In-memory filters — Firestore doesn't index "field exists" cheaply,
+  // and dateRange is a post-cap trim. Acceptable because we've already
+  // capped at maxResults.
+  let filtered = rows;
+  if (params.hasReview !== undefined) {
+    filtered = filtered.filter((r) =>
+      params.hasReview ? r.rating !== undefined : r.rating === undefined,
+    );
+  }
+  if (params.sinceMs !== undefined) {
+    const cutoff = Date.now() - params.sinceMs;
+    filtered = filtered.filter((r) => r.createdAt.getTime() >= cutoff);
+  }
 
   return filtered;
+}
+
+export function dateRangeToMs(range: 'today' | '7d' | '30d' | '90d' | 'all'): number | undefined {
+  const DAY = 24 * 60 * 60 * 1000;
+  switch (range) {
+    case 'today': return DAY;
+    case '7d':    return 7 * DAY;
+    case '30d':   return 30 * DAY;
+    case '90d':   return 90 * DAY;
+    case 'all':   return undefined;
+  }
 }

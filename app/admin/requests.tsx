@@ -6,25 +6,26 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, RADII } from '../../src/constants';
 import { useAdminQuery } from '../../src/hooks/useAdminQuery';
-import { queryAdminRequests } from '../../src/services/admin/requestsQuery';
+import { queryAdminRequests, dateRangeToMs } from '../../src/services/admin/requestsQuery';
 import type { AdminRequestRow } from '../../src/services/admin/requestsQuery';
 import { RequestsTable } from '../../src/components/admin/RequestsTable';
 import { FiltersBar, type FilterState } from '../../src/components/admin/FiltersBar';
 import { CITY_LABELS_HE } from '../../src/constants/cities';
 import { toCsv, downloadCsv } from '../../src/utils/csvExport';
 
-const DEFAULT_FILTERS: FilterState = { status: 'all', city: 'all', hasReview: 'all' };
+const DEFAULT_FILTERS: FilterState = { status: 'all', city: 'all', hasReview: 'all', dateRange: '30d' };
 
 export default function RequestsListPage() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
-  const cacheKey = `admin:requests:${filters.status}:${filters.city}:${filters.hasReview}`;
+  const cacheKey = `admin:requests:${filters.status}:${filters.city}:${filters.hasReview}:${filters.dateRange}`;
   const fetcher = useCallback(() => queryAdminRequests({
     status: filters.status === 'all' ? undefined : filters.status,
     city:   filters.city === 'all' ? undefined : filters.city,
     hasReview: filters.hasReview === 'all' ? undefined : filters.hasReview === 'yes',
+    sinceMs: dateRangeToMs(filters.dateRange),
   }), [filters]);
 
   const { data, isLoading, error, refresh } = useAdminQuery(cacheKey, fetcher);
@@ -34,7 +35,7 @@ export default function RequestsListPage() {
   const handleExportCsv = async () => {
     const csv = toCsv(rows, [
       { key: 'id', header: 'ID' },
-      { key: 'createdAt', header: 'נוצרה' },
+      { key: 'createdAt', header: 'תאריך פתיחה' },
       { key: 'city', header: 'עיר' },
       { key: 'status', header: 'סטטוס' },
       { key: 'timeToFirstResponse', header: 'זמן לתגובה ראשונה (דק)' },
