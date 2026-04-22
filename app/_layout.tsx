@@ -12,6 +12,7 @@ import { analyticsService } from '../src/services/analytics';
 import { useNotifications } from '../src/hooks/useNotifications';
 import { useBackToHome } from '../src/hooks/useBackToHome';
 import { usePermissionsGuard } from '../src/hooks/usePermissionsGuard';
+import { useAutoUpdate } from '../src/hooks/useAutoUpdate';
 import { useAppStore } from '../src/stores/useAppStore';
 
 // Disable React DevTools in production to prevent inspection
@@ -59,6 +60,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useNotifications();
   useBackToHome();
   usePermissionsGuard();
+  useAutoUpdate();
 
   // Wait for Expo Router's root navigator to mount before navigating.
   // Calling router.replace() before this is ready throws
