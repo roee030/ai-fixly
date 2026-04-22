@@ -22,6 +22,7 @@ const ALLOW_DEV_ACCESS = __DEV__;
 
 const TABS = [
   { name: 'index', label: 'סקירה', icon: 'pulse-outline' as const },
+  { name: 'requests', label: 'בקשות', icon: 'list-outline' as const },
   { name: 'funnel', label: 'משפך', icon: 'analytics-outline' as const },
   { name: 'providers', label: 'ספקים', icon: 'people-outline' as const },
   { name: 'geo', label: 'גיאוגרפיה', icon: 'map-outline' as const },
