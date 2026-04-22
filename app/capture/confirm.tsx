@@ -23,8 +23,10 @@ import { logAction } from '../../src/services/analytics/sessionLogger';
 import { broadcastToProviders } from '../../src/services/broadcast';
 import { recordSubmission } from '../../src/services/rateLimit/requestRateLimit';
 import { logger } from '../../src/services/logger';
-import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports';
+import { getFirestore, doc, getDoc, updateDoc } from '../../src/services/firestore/imports';
 import { draftService } from '../../src/services/drafts';
+import { eventLogger } from '../../src/services/observability';
+import { resolveCity } from '../../src/utils/resolveCity';
 
 import type { AIAnalysisResult } from '../../src/services/ai';
 
@@ -149,17 +151,48 @@ export default function ConfirmScreen() {
         analysisKey: analysisKey as string | undefined,
       });
 
-      // Upload everything in parallel — images and videos. Videos carry their
-      // poster frame so the WhatsApp preview / provider quote page can show
-      // a still frame next to the play link.
+      // Upload everything in parallel — images and videos. Wrap each call
+      // in timing so we can emit per-upload events once we have the real
+      // request id a few lines later.
+      const uploadStart = Date.now();
+      const imageTimings: Array<{ sizeMB: number; durationMs: number; ok: boolean }> = [];
+      const videoTimings: Array<{ sizeMB: number; durationMs: number; ok: boolean }> = [];
+
       const uploadedImages = await Promise.all(
-        imageUris.map((uri) => mediaService.uploadImage(uri, user.uid, tempId)),
+        imageUris.map(async (uri) => {
+          const t0 = Date.now();
+          try {
+            const result = await mediaService.uploadImage(uri, user.uid, tempId);
+            imageTimings.push({
+              sizeMB: (result as any).sizeMB ?? 0,
+              durationMs: Date.now() - t0,
+              ok: true,
+            });
+            return result;
+          } catch (err) {
+            imageTimings.push({ sizeMB: 0, durationMs: Date.now() - t0, ok: false });
+            throw err;
+          }
+        }),
       );
       const uploadedVideos = await Promise.all(
-        videoAssets.map((v) =>
-          mediaService.uploadVideo(v.uri, user.uid, tempId, v.thumbnailUri),
-        ),
+        videoAssets.map(async (v) => {
+          const t0 = Date.now();
+          try {
+            const result = await mediaService.uploadVideo(v.uri, user.uid, tempId, v.thumbnailUri);
+            videoTimings.push({
+              sizeMB: (result as any).sizeMB ?? 0,
+              durationMs: Date.now() - t0,
+              ok: true,
+            });
+            return result;
+          } catch (err) {
+            videoTimings.push({ sizeMB: 0, durationMs: Date.now() - t0, ok: false });
+            throw err;
+          }
+        }),
       );
+      const uploadMs = Date.now() - uploadStart;
       const uploadedMedia = [...uploadedImages, ...uploadedVideos];
 
       // Override AI-chosen professions with whatever the user finalised in
@@ -167,6 +200,7 @@ export default function ConfirmScreen() {
       // while honouring the user's correction.
       const finalAnalysis = { ...analysis, professions: chosenProfessions } as AIAnalysisResult;
 
+      const writeStart = Date.now();
       const request = await requestService.createRequest({
         userId: user.uid,
         media: uploadedMedia,
@@ -174,10 +208,64 @@ export default function ConfirmScreen() {
         location,
         textDescription: description,
       });
+      const writeMs = Date.now() - writeStart;
 
       await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
       analyticsService.trackEvent('request_created', { requestId: request.id });
       logAction('request_confirmed', 'confirm');
+
+      // ── Observability: fire-and-forget event stream ────────────────────
+      // All four blocks below run in the background. None blocks navigation
+      // or broadcast. Any failure inside eventLogger swallows silently.
+      const perf = (analysis as any).__perf as AIAnalysisResult['__perf'];
+      if (perf) {
+        void eventLogger.log(request.id, {
+          type: 'gemini',
+          ok: true,
+          durationMs: perf.ms,
+          metadata: { model: perf.model, imageCount: perf.imageCount, payloadKB: perf.payloadKB },
+        });
+      }
+      for (const timing of imageTimings) {
+        void eventLogger.log(request.id, {
+          type: 'upload_image',
+          ok: timing.ok,
+          durationMs: timing.durationMs,
+          metadata: { sizeMB: timing.sizeMB },
+        });
+      }
+      for (const timing of videoTimings) {
+        void eventLogger.log(request.id, {
+          type: 'upload_video',
+          ok: timing.ok,
+          durationMs: timing.durationMs,
+          metadata: { sizeMB: timing.sizeMB },
+        });
+      }
+      void eventLogger.log(request.id, {
+        type: 'firestore_write',
+        ok: true,
+        durationMs: writeMs,
+      });
+
+      // Client-computed summaries denormalized onto the request doc for
+      // fast admin list reads. locationSummary uses the bounding-box
+      // resolver — zero API calls, no latency impact.
+      try {
+        const db = getFirestore();
+        await updateDoc(doc(db, 'serviceRequests', request.id), {
+          locationSummary: resolveCity(location.lat, location.lng),
+          serviceSummary: {
+            geminiMs: perf?.ms ?? 0,
+            uploadMs,
+            firestoreWriteMs: writeMs,
+            totalMs: (perf?.ms ?? 0) + uploadMs + writeMs,
+            hadError: false,
+          },
+        });
+      } catch (err) {
+        logger.warn('[confirm] summary write failed', { err: String(err) });
+      }
 
       // Request is persisted — we no longer need the local draft.
       void draftService.remove(user.uid);

@@ -1,5 +1,6 @@
 import { logger } from '../logger';
 import { analyticsService } from '../analytics';
+import { eventLogger } from '../observability';
 
 function brokerUrl(): string | null {
   return process.env.EXPO_PUBLIC_BROKER_URL || null;
@@ -108,6 +109,15 @@ export async function broadcastToProviders(input: BroadcastInput): Promise<Broad
     return result;
   } catch (err) {
     logger.error('[broadcast] Failed', err as Error, { requestId: input.requestId });
+    // Admin-visible signal: broker was unreachable or returned an error.
+    // The customer still sees the "sent" screen per product spec; the
+    // admin alerts feed + request detail page surface this.
+    void eventLogger.log(input.requestId, {
+      type: 'broadcast_failed',
+      ok: false,
+      durationMs: 0,
+      error: String(err).slice(0, 200),
+    });
     throw err;
   }
 }
