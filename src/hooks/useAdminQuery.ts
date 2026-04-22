@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 /**
- * Admin-dashboard data hook. Wraps an arbitrary async query with:
- *   - 60s in-memory cache keyed by `key` (page-to-page navigation doesn't re-fetch)
- *   - manual `refresh()` for pull-to-refresh buttons
- *   - `isLoading` / `error` that a consumer can render
+ * Admin-dashboard data hook.
  *
- * We deliberately DO NOT subscribe to Firestore listeners here. The admin
- * page refreshes on demand — listeners on lists of thousands of requests
- * would be expensive and unnecessary.
+ * - Short in-memory cache keyed by `key` so navigating between detail
+ *   pages and back avoids a re-fetch within the cache TTL.
+ * - When `key` changes (e.g. a filter chip is tapped), we refresh
+ *   automatically — no manual "refresh" button press required.
+ * - `refresh()` is exposed for pull-to-refresh / explicit re-fetch.
  */
 
-const CACHE_MS = 60 * 1000;
+const CACHE_MS = 30 * 1000;
 const cache = new Map<string, { at: number; data: unknown }>();
 
 export interface UseAdminQueryResult<T> {
@@ -48,10 +47,19 @@ export function useAdminQuery<T>(
     }
   }, [key]);
 
+  // When `key` changes (filter / param update), re-read the cache for
+  // the new key. If cached fresh → use it instantly. Otherwise → fetch.
+  // This is what makes chip filters update results without a refresh tap.
   useEffect(() => {
-    if (data) return;
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < CACHE_MS) {
+      setData(hit.data as T);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
     void refresh();
-  }, [key, data, refresh]);
+  }, [key, refresh]);
 
   return { data, isLoading, error, refresh };
 }

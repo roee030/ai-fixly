@@ -16,9 +16,11 @@ import {
 const CITIES = ['hadera', 'netanya', 'tlv', 'ramat_gan', 'haifa', 'kfar_saba'];
 const PROFESSIONS = ['plumber', 'electrician', 'locksmith', 'painter', 'handyman'];
 
-export async function seedAdminMocks(): Promise<{ requests: number; providers: number; days: number }> {
+export async function seedAdminMocks(): Promise<{
+  requests: number; providers: number; days: number; events: number; jobs: number; alerts: number;
+}> {
   const db = getFirestore();
-  const counts = { requests: 0, providers: 0, days: 0 };
+  const counts = { requests: 0, providers: 0, days: 0, events: 0, jobs: 0, alerts: 0 };
 
   // ── 14 days of adminStats/daily-* ─────────────────────────────────────
   const today = new Date();
@@ -139,8 +141,74 @@ export async function seedAdminMocks(): Promise<{ requests: number; providers: n
       };
     }
 
-    await addDoc(collection(db, 'serviceRequests'), req);
+    const requestRef = await addDoc(collection(db, 'serviceRequests'), req);
     counts.requests++;
+
+    // Events subcollection — powers the service timeline on
+    // /admin/requests/[id]. 6 events per request gives a realistic mix.
+    const eventTypes: Array<{ type: string; ok: boolean; duration: number; meta?: Record<string, unknown> }> = [
+      { type: 'gemini', ok: true, duration: 3200, meta: { model: 'gemini-2.5-flash', imageCount: 2 } },
+      { type: 'upload_image', ok: true, duration: 850, meta: { sizeMB: 2.1 } },
+      { type: 'places_search', ok: true, duration: 420, meta: { profession: prof, foundCount: 12 } },
+      { type: 'twilio_send', ok: true, duration: 1100, meta: { providerPhone: mockProviders[i % mockProviders.length].phone } },
+      { type: 'twilio_send', ok: failedCount > 0 ? false : true, duration: 980, meta: { providerPhone: '+972541111111' } },
+    ];
+    if (status !== 'open' || sentCount > 0) {
+      eventTypes.push({
+        type: 'first_response', ok: true, duration: 0,
+        meta: { providerPhone: mockProviders[i % mockProviders.length].phone, minutesAfterBroadcast: req.timeToFirstResponse },
+      });
+    }
+    for (let ei = 0; ei < eventTypes.length; ei++) {
+      const ev = eventTypes[ei];
+      const when = new Date(createdAt.getTime() + ei * 500);
+      await addDoc(collection(db, 'serviceRequests', requestRef.id, 'events'), {
+        type: ev.type,
+        ok: ev.ok,
+        durationMs: ev.duration,
+        error: ev.ok ? undefined : 'mock-error',
+        metadata: ev.meta || {},
+        startedAt: when,
+      });
+      counts.events++;
+    }
+
+    // Provider jobs subcollection — powers /admin/providers/[phone] history.
+    if (status === 'closed') {
+      const provider = mockProviders[i % mockProviders.length];
+      await setDoc(
+        doc(db, 'providers_agg', provider.phone, 'jobs', requestRef.id),
+        {
+          requestId: requestRef.id,
+          bidPrice: (req as any).selectedBidPrice ?? 300,
+          pricePaid: (req.reviewSummary as any)?.pricePaid ?? 320,
+          rating: (req.reviewSummary as any)?.rating ?? 5,
+          comment: (req.reviewSummary as any)?.comment ?? '',
+          customerReviewedAt: (req.reviewSummary as any)?.submittedAt ?? new Date(),
+          status: 'completed',
+          completedAt: (req.reviewSummary as any)?.submittedAt ?? new Date(),
+        },
+      );
+      counts.jobs++;
+    }
+  }
+
+  // ── Admin alerts ─────────────────────────────────────────────────────
+  // Powers the alerts feed on overview (Phase 5). 3 alerts of varying
+  // severity so the UI has something to render.
+  const alerts = [
+    { type: 'stale_request', severity: 'critical' as const, message: 'בקשה פתוחה 5 שעות בלי הצעות — חדרה, אינסטלטור' },
+    { type: 'low_rating', severity: 'warning' as const, message: 'דוד מ. (אינסטלטור נתניה) ירד מתחת ל-3 כוכבים החודש' },
+    { type: 'twilio_failure', severity: 'info' as const, message: 'Twilio דחה 2 מספרים בשידור האחרון' },
+  ];
+  for (const a of alerts) {
+    await addDoc(collection(db, 'admin_alerts'), {
+      ...a,
+      createdAt: new Date(Date.now() - Math.random() * 12 * 3600_000),
+      metadata: {},
+      read: false,
+    });
+    counts.alerts++;
   }
 
   return counts;

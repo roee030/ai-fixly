@@ -31,7 +31,7 @@ export function SeedMocksButton() {
               const counts = await seedAdminMocks();
               Alert.alert(
                 'הושלם',
-                `נוצרו: ${counts.days} ימי stats, ${counts.providers} בעלי מקצוע, ${counts.requests} בקשות.`,
+                `נוצרו:\n${counts.days} ימי stats\n${counts.providers} בעלי מקצוע\n${counts.requests} בקשות\n${counts.events} אירועי שירות\n${counts.jobs} היסטוריות עבודה\n${counts.alerts} התראות`,
               );
             } catch (err) {
               Alert.alert('שגיאה', String((err as Error).message || err));
