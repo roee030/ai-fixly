@@ -8,3 +8,17 @@ export type {
   ProviderBidHistoryItem,
   ProviderMonthlyStats,
 } from './providerProfile';
+export type {
+  RequestEvent,
+  RequestEventType,
+  BroadcastSummary,
+  ServiceSummary,
+  LocationSummary,
+  ReviewSummary,
+} from './observability';
+export type {
+  ProviderAggregate,
+  ProviderAggregateStats,
+  ProviderJobRecord,
+} from './providerAggregate';
+export type { AdminDailyStats, DailyCityStats } from './adminStats';
