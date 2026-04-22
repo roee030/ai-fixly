@@ -94,33 +94,41 @@ export default function OnboardingScreen() {
   const opacity = useSharedValue(1);
   const translateX = useSharedValue(0);
   const pendingIndex = useRef<number | null>(null);
+  const isTransitioning = useRef(false);
 
   const applyIndex = (index: number) => {
     setCurrentSlide(index);
-    // Instant reset is fine: opacity is 0 so the user never sees the jump.
     translateX.value = 0;
-    opacity.value = withTiming(1, {
-      duration: ANIM_DURATION / 2,
-      easing: Easing.out(Easing.ease),
-    });
+    opacity.value = withTiming(
+      1,
+      { duration: ANIM_DURATION, easing: Easing.out(Easing.ease) },
+      () => { isTransitioning.current = false; },
+    );
   };
 
   const goToIndex = (index: number) => {
     if (index === currentSlide) return;
+    // Guard against re-entry: if the user taps a dot or swipes while we're
+    // mid-transition, ignore the new input rather than stacking animations.
+    if (isTransitioning.current) return;
+    isTransitioning.current = true;
+
     pendingIndex.current = index;
-    // Animate translateX back to 0 alongside the opacity fade — without
-    // this, a mid-swipe transition produces a hard snap the user
-    // perceives as "the screen jumped" rather than "the screen slid".
-    translateX.value = withTiming(0, { duration: ANIM_DURATION / 2 });
-    opacity.value = withTiming(0, {
-      duration: ANIM_DURATION / 2,
-      easing: Easing.in(Easing.ease),
-    }, () => {
-      if (pendingIndex.current !== null) {
-        runOnJS(applyIndex)(pendingIndex.current);
-        pendingIndex.current = null;
-      }
-    });
+    // Snap translateX back to 0 INSTANTLY so the incoming fade starts from
+    // center, not drifting. The pure opacity fade is what the eye reads as
+    // "transition between slides" — the drift from animating translateX
+    // simultaneously was the "jump" the user was seeing.
+    translateX.value = 0;
+    opacity.value = withTiming(
+      0,
+      { duration: ANIM_DURATION, easing: Easing.in(Easing.ease) },
+      () => {
+        if (pendingIndex.current !== null) {
+          runOnJS(applyIndex)(pendingIndex.current);
+          pendingIndex.current = null;
+        }
+      },
+    );
   };
 
   const finish = async () => {
@@ -205,20 +213,37 @@ export default function OnboardingScreen() {
             {currentSlide + 1}/{slides.length}
           </Text>
 
-          {/* Next / Finish button */}
-          <Pressable
-            onPress={goNext}
-            style={[styles.nextBtn, { backgroundColor: slide.color }]}
-          >
-            <Text style={styles.nextText}>
-              {isLast ? t('onboarding.letsStart') : t('common.next')}
-            </Text>
-            <Ionicons
-              name={isLast ? 'checkmark' : isRTL ? 'arrow-back' : 'arrow-forward'}
-              size={22}
-              color="#FFF"
-            />
-          </Pressable>
+          {/* Navigation row — previous (when applicable) + next/finish.
+              A visible back button removes the guesswork of "can I go back?"
+              that you have to discover via swipe-right. */}
+          <View style={styles.navRow}>
+            {currentSlide > 0 ? (
+              <Pressable onPress={goPrev} style={styles.prevBtn} hitSlop={10}>
+                <Ionicons
+                  name={isRTL ? 'arrow-forward' : 'arrow-back'}
+                  size={20}
+                  color={COLORS.textSecondary}
+                />
+                <Text style={styles.prevText}>{t('common.back', 'חזור')}</Text>
+              </Pressable>
+            ) : (
+              <View style={{ flex: 1 }} />
+            )}
+
+            <Pressable
+              onPress={goNext}
+              style={[styles.nextBtn, { backgroundColor: slide.color }]}
+            >
+              <Text style={styles.nextText}>
+                {isLast ? t('onboarding.letsStart') : t('common.next')}
+              </Text>
+              <Ionicons
+                name={isLast ? 'checkmark' : isRTL ? 'arrow-back' : 'arrow-forward'}
+                size={22}
+                color="#FFF"
+              />
+            </Pressable>
+          </View>
         </View>
       </View>
     </GestureHandlerRootView>
@@ -342,15 +367,37 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 40,
+    marginHorizontal: 24,
+  },
+  prevBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  prevText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
   nextBtn: {
+    flex: 1,
     borderRadius: 16,
     paddingVertical: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginBottom: 40,
-    marginHorizontal: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
