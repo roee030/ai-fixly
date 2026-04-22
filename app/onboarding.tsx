@@ -1,34 +1,39 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   Platform,
+  FlatList,
   useWindowDimensions,
   I18nManager,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ListRenderItemInfo,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  runOnJS,
-  Easing,
-} from 'react-native-reanimated';
-import {
-  Gesture,
-  GestureDetector,
-  GestureHandlerRootView,
-} from 'react-native-gesture-handler';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { COLORS } from '../src/constants';
+import { COLORS, SPACING } from '../src/constants';
 import { useAppStore } from '../src/stores/useAppStore';
 
+/**
+ * Onboarding — native-swipe carousel.
+ *
+ * Rebuilt from scratch with FlatList + pagingEnabled instead of a
+ * hand-rolled Gesture.Pan + opacity fade. Two reasons:
+ *   1. Native swipe feel — same as every stock iOS/Android pager.
+ *   2. Rock-solid transitions. The previous opacity+translateX combo
+ *      was racing with React state updates, producing the "slide 2 → 3
+ *      doesn't work" bug.
+ *
+ * Slide 1: only a big primary "Next" button.
+ * Slides 2+: "Back" (ghost) next to "Next" (primary).
+ * The last slide's Next becomes "Start" and routes to the phone-auth flow.
+ */
+
 const DESKTOP_MAX_WIDTH = 480;
-const SWIPE_THRESHOLD = 50;
-const ANIM_DURATION = 280;
 
 interface Example {
   icon: keyof typeof Ionicons.glyphMap;
@@ -45,15 +50,14 @@ interface Slide {
 
 export default function OnboardingScreen() {
   const { t } = useTranslation();
-  const [currentSlide, setCurrentSlide] = useState(0);
   const setHasSeenOnboarding = useAppStore((s) => s.setHasSeenOnboarding);
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && windowWidth >= 768;
   const SCREEN_WIDTH = isDesktop ? Math.min(windowWidth, DESKTOP_MAX_WIDTH) : windowWidth;
-  // RTL-aware direction: in RTL, "next" means going right-to-left visually,
-  // so positive deltaX (swipe right) = previous, negative = next.
-  // In LTR, it's the opposite.
   const isRTL = I18nManager.isRTL;
+
+  const listRef = useRef<FlatList<Slide>>(null);
+  const [currentSlide, setCurrentSlide] = useState(0);
 
   const slides: Slide[] = [
     {
@@ -91,44 +95,10 @@ export default function OnboardingScreen() {
     },
   ];
 
-  const opacity = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const pendingIndex = useRef<number | null>(null);
-  const isTransitioning = useRef(false);
-
-  const applyIndex = (index: number) => {
+  const scrollToIndex = (index: number) => {
+    if (index < 0 || index >= slides.length) return;
+    listRef.current?.scrollToIndex({ index, animated: true });
     setCurrentSlide(index);
-    translateX.value = 0;
-    opacity.value = withTiming(
-      1,
-      { duration: ANIM_DURATION, easing: Easing.out(Easing.ease) },
-      () => { isTransitioning.current = false; },
-    );
-  };
-
-  const goToIndex = (index: number) => {
-    if (index === currentSlide) return;
-    // Guard against re-entry: if the user taps a dot or swipes while we're
-    // mid-transition, ignore the new input rather than stacking animations.
-    if (isTransitioning.current) return;
-    isTransitioning.current = true;
-
-    pendingIndex.current = index;
-    // Snap translateX back to 0 INSTANTLY so the incoming fade starts from
-    // center, not drifting. The pure opacity fade is what the eye reads as
-    // "transition between slides" — the drift from animating translateX
-    // simultaneously was the "jump" the user was seeing.
-    translateX.value = 0;
-    opacity.value = withTiming(
-      0,
-      { duration: ANIM_DURATION, easing: Easing.in(Easing.ease) },
-      () => {
-        if (pendingIndex.current !== null) {
-          runOnJS(applyIndex)(pendingIndex.current);
-          pendingIndex.current = null;
-        }
-      },
-    );
   };
 
   const finish = async () => {
@@ -137,104 +107,122 @@ export default function OnboardingScreen() {
   };
 
   const goNext = () => {
-    if (currentSlide < slides.length - 1) {
-      goToIndex(currentSlide + 1);
-    } else {
-      void finish();
-    }
+    if (currentSlide === slides.length - 1) void finish();
+    else scrollToIndex(currentSlide + 1);
   };
 
-  const goPrev = () => {
-    if (currentSlide > 0) goToIndex(currentSlide - 1);
-  };
+  const goPrev = () => scrollToIndex(currentSlide - 1);
 
-  // Swipe gesture: in RTL, swiping right (positive translationX) means
-  // "previous", swiping left (negative) means "next". Flipped in LTR.
-  const pan = Gesture.Pan()
-    .activeOffsetX([-10, 10])
-    .onUpdate((e) => {
-      translateX.value = e.translationX;
-    })
-    .onEnd((e) => {
-      const dx = e.translationX;
-      const wentForward = isRTL ? dx < -SWIPE_THRESHOLD : dx > SWIPE_THRESHOLD;
-      const wentBack = isRTL ? dx > SWIPE_THRESHOLD : dx < -SWIPE_THRESHOLD;
-      if (wentForward) runOnJS(goNext)();
-      else if (wentBack) runOnJS(goPrev)();
-      else translateX.value = withTiming(0, { duration: 150 });
-    });
+  // Track the active slide by scroll offset — this is what makes the
+  // dots + buttons stay in sync with native swipe gestures.
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const x = e.nativeEvent.contentOffset.x;
+      const index = Math.round(x / SCREEN_WIDTH);
+      if (index !== currentSlide && index >= 0 && index < slides.length) {
+        setCurrentSlide(index);
+      }
+    },
+    [SCREEN_WIDTH, currentSlide, slides.length],
+  );
 
-  const slideStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateX: translateX.value }],
-  }));
+  const renderSlide = useCallback(
+    ({ item }: ListRenderItemInfo<Slide>) => (
+      <SlideView slide={item} width={SCREEN_WIDTH} />
+    ),
+    [SCREEN_WIDTH],
+  );
 
   const slide = slides[currentSlide];
+  const isFirst = currentSlide === 0;
   const isLast = currentSlide === slides.length - 1;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={[styles.container, isDesktop && { alignItems: 'center' }]}>
-        <View style={isDesktop ? { width: DESKTOP_MAX_WIDTH, flex: 1 } : { flex: 1 }}>
-          {/* Top bar - skip button only */}
-          <View style={styles.topBar}>
-            <View style={{ flex: 1 }} />
-            <Pressable onPress={() => void finish()} hitSlop={20}>
-              <Text style={styles.skipText}>{t('common.skip')}</Text>
+    <View style={[styles.container, isDesktop && { alignItems: 'center' }]}>
+      <View style={isDesktop ? { width: DESKTOP_MAX_WIDTH, flex: 1 } : { flex: 1 }}>
+        {/* Top bar — skip only */}
+        <View style={styles.topBar}>
+          <View style={{ flex: 1 }} />
+          <Pressable onPress={() => void finish()} hitSlop={20}>
+            <Text style={styles.skipText}>{t('common.skip')}</Text>
+          </Pressable>
+        </View>
+
+        {/* Native-paging carousel */}
+        <FlatList
+          ref={listRef}
+          data={slides}
+          renderItem={renderSlide}
+          keyExtractor={(_, i) => String(i)}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          // Required so scrollToIndex lands right even on wide devices.
+          getItemLayout={(_, index) => ({
+            length: SCREEN_WIDTH,
+            offset: SCREEN_WIDTH * index,
+            index,
+          })}
+          // In RTL Android reverses the internal order automatically,
+          // but on iOS + web we need the flag. inverted={isRTL} keeps
+          // "next slide" feeling natural for Hebrew readers.
+          inverted={isRTL && Platform.OS !== 'android'}
+        />
+
+        {/* Dots */}
+        <View style={styles.dots}>
+          {slides.map((_, i) => (
+            <Pressable key={i} onPress={() => scrollToIndex(i)} hitSlop={8}>
+              <View
+                style={[
+                  styles.dot,
+                  i === currentSlide && {
+                    backgroundColor: slide.color,
+                    width: 28,
+                  },
+                ]}
+              />
             </Pressable>
-          </View>
+          ))}
+        </View>
+        <Text style={styles.counter}>
+          {currentSlide + 1}/{slides.length}
+        </Text>
 
-          {/* Swipeable slide */}
-          <GestureDetector gesture={pan}>
-            <Animated.View style={[styles.slideWrap, slideStyle]}>
-              <SlideView slide={slide} width={SCREEN_WIDTH} />
-            </Animated.View>
-          </GestureDetector>
-
-          {/* Dots - tappable */}
-          <View style={styles.dots}>
-            {slides.map((_, i) => (
-              <Pressable key={i} onPress={() => goToIndex(i)} hitSlop={8}>
-                <View
-                  style={[
-                    styles.dot,
-                    i === currentSlide && {
-                      backgroundColor: slide.color,
-                      width: 28,
-                      height: 8,
-                      borderRadius: 4,
-                    },
-                  ]}
-                />
-              </Pressable>
-            ))}
-          </View>
-          <Text style={styles.counter}>
-            {currentSlide + 1}/{slides.length}
-          </Text>
-
-          {/* Navigation row — previous (when applicable) + next/finish.
-              A visible back button removes the guesswork of "can I go back?"
-              that you have to discover via swipe-right. */}
-          <View style={styles.navRow}>
-            {currentSlide > 0 ? (
-              <Pressable onPress={goPrev} style={styles.prevBtn} hitSlop={10}>
-                <Ionicons
-                  name={isRTL ? 'arrow-forward' : 'arrow-back'}
-                  size={20}
-                  color={COLORS.textSecondary}
-                />
-                <Text style={styles.prevText}>{t('common.back', 'חזור')}</Text>
-              </Pressable>
-            ) : (
-              <View style={{ flex: 1 }} />
-            )}
-
+        {/* Button row — first slide has ONE big button; rest have Next + Back. */}
+        {isFirst ? (
+          <View style={styles.btnRowSingle}>
             <Pressable
               onPress={goNext}
-              style={[styles.nextBtn, { backgroundColor: slide.color }]}
+              style={[styles.primaryBtn, { backgroundColor: slide.color }]}
+              accessibilityRole="button"
             >
-              <Text style={styles.nextText}>
+              <Text style={styles.primaryBtnText}>{t('common.next')}</Text>
+              <Ionicons
+                name={isRTL ? 'arrow-back' : 'arrow-forward'}
+                size={22}
+                color="#FFF"
+              />
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.btnRowDual}>
+            <Pressable onPress={goPrev} style={styles.ghostBtn} accessibilityRole="button">
+              <Ionicons
+                name={isRTL ? 'arrow-forward' : 'arrow-back'}
+                size={20}
+                color={COLORS.textSecondary}
+              />
+              <Text style={styles.ghostBtnText}>{t('common.back', 'חזור')}</Text>
+            </Pressable>
+            <Pressable
+              onPress={goNext}
+              style={[styles.primaryBtn, { backgroundColor: slide.color, flex: 1 }]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.primaryBtnText}>
                 {isLast ? t('onboarding.letsStart') : t('common.next')}
               </Text>
               <Ionicons
@@ -244,9 +232,9 @@ export default function OnboardingScreen() {
               />
             </Pressable>
           </View>
-        </View>
+        )}
       </View>
-    </GestureHandlerRootView>
+    </View>
   );
 }
 
@@ -256,10 +244,8 @@ function SlideView({ slide, width }: { slide: Slide; width: number }) {
       <View style={[styles.iconWrap, { backgroundColor: slide.color + '20' }]}>
         <Ionicons name={slide.icon} size={56} color={slide.color} />
       </View>
-
       <Text style={styles.title}>{slide.title}</Text>
       <Text style={styles.subtitle}>{slide.subtitle}</Text>
-
       <View style={styles.examples}>
         {slide.examples.map((ex, i) => (
           <View
@@ -276,10 +262,7 @@ function SlideView({ slide, width }: { slide: Slide; width: number }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -292,12 +275,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  slideWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   slide: {
+    flex: 1,
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
@@ -339,27 +318,23 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: COLORS.surface,
     borderRadius: 20,
-    paddingHorizontal: 14,
     paddingVertical: 8,
+    paddingHorizontal: 14,
     borderWidth: 1,
   },
-  exampleText: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  exampleText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     gap: 8,
-    marginTop: 8,
-    marginBottom: 12,
+    marginVertical: 20,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.textTertiary,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.border,
   },
   counter: {
     color: COLORS.textTertiary,
@@ -367,31 +342,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
-  navRow: {
+  btnRowSingle: {
+    paddingHorizontal: 24,
+    marginBottom: 40,
+  },
+  btnRowDual: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingHorizontal: 24,
     marginBottom: 40,
-    marginHorizontal: 24,
   },
-  prevBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  prevText: {
-    color: COLORS.textSecondary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  nextBtn: {
-    flex: 1,
+  primaryBtn: {
     borderRadius: 16,
     paddingVertical: 18,
     flexDirection: 'row',
@@ -404,9 +366,25 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  nextText: {
+  primaryBtnText: {
     color: '#FFF',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  ghostBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  ghostBtnText: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
