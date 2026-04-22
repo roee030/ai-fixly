@@ -320,7 +320,11 @@ export default function CaptureScreen() {
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 240 }}
+          // Small paddingBottom — enough for the bottom bar clearance only.
+          // KeyboardAvoidingView + automaticallyAdjustKeyboardInsets handles
+          // the keyboard dynamically; a static 240 left a blank strip below
+          // the textarea after dismiss.
+          contentContainerStyle={{ paddingBottom: 100 }}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
           // Track the live scroll offset so we can remember where the user

@@ -10,6 +10,7 @@ import { useAdminQuery } from '../../src/hooks/useAdminQuery';
 import { queryDailyStats } from '../../src/services/admin/dailyStatsQuery';
 import { SimpleLineChart } from '../../src/components/admin/charts/SimpleLineChart';
 import { SimpleBarChart } from '../../src/components/admin/charts/SimpleBarChart';
+import { SeedMocksButton } from '../../src/components/admin/SeedMocksButton';
 
 /**
  * Admin overview. Five charts + filters, all powered by adminStats/daily-*
@@ -80,6 +81,9 @@ export default function OverviewPage() {
         <Pressable onPress={refresh} style={styles.iconBtn}>
           <Ionicons name="refresh" size={16} color={COLORS.text} />
         </Pressable>
+
+        {/* Dev-only mock seeder — no-op in production */}
+        <SeedMocksButton />
       </View>
 
       {cityPickerOpen && (
