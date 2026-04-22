@@ -99,7 +99,7 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer>
-      {/* Top bar */}
+      {/* Top bar — avatar + bell only, no brand text */}
       <View style={styles.topBar}>
         <Pressable
           onPress={() => router.push('/(tabs)/profile')}
@@ -108,7 +108,6 @@ export default function HomeScreen() {
         >
           <Text style={styles.avatarText}>{initial}</Text>
         </Pressable>
-        <Text style={styles.brandText}>ai-fixly</Text>
         <View style={styles.iconBtn}>
           <Ionicons name="notifications-outline" size={22} color={COLORS.text} />
         </View>
@@ -124,7 +123,9 @@ export default function HomeScreen() {
           <Text style={styles.prompt}>יש לך בעיה? נפתור תוך דקות.</Text>
         </FadeInView>
 
-        {/* Hero — pulsing animated rings around a solid core */}
+        {/* Hero — pulsing animated rings BEHIND a solid core.
+            All three layers are absolute-positioned at the same x/y
+            anchor so they stack concentrically instead of drifting. */}
         <View style={styles.heroWrap}>
           <Pressable
             onPress={() => router.push('/capture')}
@@ -135,12 +136,8 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="דווח על בעיה"
           >
-            {/* Pulsing outer rings */}
-            <View style={styles.ringContainer} pointerEvents="none">
-              <Animated.View style={[styles.pulseRing, ring1Style]} />
-              <Animated.View style={[styles.pulseRing, ring2Style]} />
-            </View>
-            {/* Static core */}
+            <Animated.View style={[styles.pulseRing, ring1Style]} pointerEvents="none" />
+            <Animated.View style={[styles.pulseRing, ring2Style]} pointerEvents="none" />
             <View style={styles.coreCircle}>
               <Ionicons name="camera" size={52} color="#FFFFFF" />
             </View>
@@ -207,12 +204,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
-  brandText: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
   iconBtn: {
     width: 40,
     height: 40,
@@ -257,22 +248,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Holds the two pulsing rings; same size as heroContent.
-  ringContainer: {
-    position: 'absolute',
-    width: RING_SIZE,
-    height: RING_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // Rings anchor to the CENTER of heroContent via explicit top/left.
+  // alignItems: 'center' alone doesn't center absolute-positioned
+  // siblings in React Native — the anchor defaults to (0,0). Using a
+  // computed offset guarantees all three stacked layers share the same
+  // center point regardless of platform.
   pulseRing: {
     position: 'absolute',
+    top: (RING_SIZE - CORE_SIZE) / 2,
+    left: (RING_SIZE - CORE_SIZE) / 2,
     width: CORE_SIZE,
     height: CORE_SIZE,
     borderRadius: CORE_SIZE / 2,
     backgroundColor: COLORS.primary,
   },
   coreCircle: {
+    position: 'absolute',
+    top: (RING_SIZE - CORE_SIZE) / 2,
+    left: (RING_SIZE - CORE_SIZE) / 2,
     width: CORE_SIZE,
     height: CORE_SIZE,
     borderRadius: CORE_SIZE / 2,
