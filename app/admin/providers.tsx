@@ -1,4 +1,5 @@
-import { View, Text, ScrollView, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { router } from 'expo-router';
 import { COLORS, SPACING, RADII } from '../../src/constants';
 import { MOCK_PROVIDERS } from '../../src/services/admin/mockData';
 
@@ -136,7 +137,14 @@ function BidWinTable() {
         const winRate = p.offersSent > 0 ? Math.round((p.completed / p.offersSent) * 100) : 0;
         const isLow = (p.avgResponseMinutes ?? 0) > 120 || winRate === 0;
         return (
-          <View key={p.phone} style={[styles.tableRow, isLow && styles.tableRowBad]}>
+          <Pressable
+            key={p.phone}
+            onPress={() => router.push({
+              pathname: '/admin/providers/[phone]',
+              params: { phone: p.phone },
+            } as never)}
+            style={[styles.tableRow, isLow && styles.tableRowBad]}
+          >
             <Text style={[styles.td, styles.thName]} numberOfLines={1}>{p.displayName}</Text>
             <Text style={[styles.td, styles.thSmall]}>{p.accepted}</Text>
             <Text style={[styles.td, styles.thSmall]}>{p.completed}</Text>
@@ -149,7 +157,7 @@ function BidWinTable() {
             }]}>
               {formatTime(p.avgResponseMinutes)}
             </Text>
-          </View>
+          </Pressable>
         );
       })}
     </View>

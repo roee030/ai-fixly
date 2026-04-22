@@ -1,258 +1,196 @@
-import { View, Text, ScrollView, StyleSheet, Platform, useWindowDimensions } from 'react-native';
-import { COLORS, SPACING, RADII } from '../../src/constants';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  MOCK_HEADLINE, MOCK_ACTIVE_REQUESTS, MOCK_LOW_RATED, MOCK_ALERTS,
-} from '../../src/services/admin/mockData';
+  View, Text, ScrollView, StyleSheet, Platform, Pressable,
+  useWindowDimensions, ActivityIndicator,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, SPACING, RADII } from '../../src/constants';
+import { CITY_BOXES, CITY_LABELS_HE } from '../../src/constants/cities';
+import { useAdminQuery } from '../../src/hooks/useAdminQuery';
+import { queryDailyStats } from '../../src/services/admin/dailyStatsQuery';
+import { SimpleLineChart } from '../../src/components/admin/charts/SimpleLineChart';
+import { SimpleBarChart } from '../../src/components/admin/charts/SimpleBarChart';
 
-function formatWaitTime(minutes: number): string {
-  if (minutes < 60) return `${minutes} דק'`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours} שע'`;
-}
-
-function waitTimeColor(minutes: number): string {
-  if (minutes < 30) return '#22C55E';
-  if (minutes <= 120) return '#F59E0B';
-  return '#EF4444';
-}
-
-function waveIndicator(wave: number): string {
-  if (wave === 1) return '1';
-  if (wave === 2) return '2';
-  return '3';
-}
-
-function waveColor(wave: number): string {
-  if (wave === 1) return '#22C55E';
-  if (wave === 2) return '#F59E0B';
-  return '#EF4444';
-}
-
-function severityColor(severity: string): string {
-  if (severity === 'critical') return '#EF4444';
-  if (severity === 'warning') return '#F59E0B';
-  return '#6366F1';
-}
-
-function severityIcon(severity: string): string {
-  if (severity === 'critical') return '\u{1F534}';
-  if (severity === 'warning') return '\u{1F7E1}';
-  return '\u{1F535}';
-}
-
-function timeAgo(date: Date): string {
-  const diff = Date.now() - date.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `לפני ${mins} דקות`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `לפני ${hours} שעות`;
-  const days = Math.floor(hours / 24);
-  return `לפני ${days} ימים`;
-}
-
+/**
+ * Admin overview. Five charts + filters, all powered by adminStats/daily-*
+ * pre-rolled docs written every 5 minutes by the worker cron. Manual
+ * refresh; no realtime listeners.
+ */
 export default function OverviewPage() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
+
+  const [days, setDays] = useState<30 | 90>(30);
+  const [city, setCity] = useState<string | 'all'>('all');
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
+
+  const fetcher = useCallback(() => queryDailyStats(days), [days]);
+  const { data, isLoading, refresh } = useAdminQuery(`admin:stats:${days}`, fetcher);
+
+  const series = useMemo(() => {
+    if (!data) return null;
+
+    const pickValue = (
+      row: typeof data[number],
+      key: 'requestsCreated' | 'reviewsSubmitted' | 'avgTimeToFirstResponseMin' | 'grossValue' | 'avgRating',
+    ): number => {
+      if (city === 'all') return row[key] ?? 0;
+      const bucket = row.byCity?.[city];
+      return (bucket as any)?.[key] ?? 0;
+    };
+
+    return {
+      requests: data.map((r) => ({ x: r.date.slice(5), y: pickValue(r, 'requestsCreated') })),
+      timeToFirstBid: data.map((r) => ({ x: r.date.slice(5), y: pickValue(r, 'avgTimeToFirstResponseMin') })),
+      revenue: data.map((r) => ({ x: r.date.slice(5), y: pickValue(r, 'grossValue') })),
+      rating: data.map((r) => ({ x: r.date.slice(5), y: pickValue(r, 'avgRating') })),
+      reviews: data.map((r) => ({ x: r.date.slice(5), y: pickValue(r, 'reviewsSubmitted') })),
+    };
+  }, [data, city]);
 
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, isDesktop && styles.contentDesktop]}
     >
-      <HeadlineStats />
-      <SectionTitle text="בקשות פעילות" />
-      <ActiveRequestsTable />
-      <LowRatedAlerts />
-      <SectionTitle text="התראות אחרונות" />
-      <RecentAlerts />
-    </ScrollView>
-  );
-}
-
-function HeadlineStats() {
-  const h = MOCK_HEADLINE;
-  const cards = [
-    { label: 'בקשות היום', value: String(h.todayRequests) },
-    { label: 'שידוכים היום', value: String(h.todayMatches) },
-    { label: 'זמן תגובה ממוצע', value: `${h.avgResponseMinutes} דק'` },
-  ];
-
-  return (
-    <View style={styles.cardsRow}>
-      {cards.map((c) => (
-        <View key={c.label} style={styles.card}>
-          <Text style={styles.cardValue}>{c.value}</Text>
-          <Text style={styles.cardLabel}>{c.label}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function SectionTitle({ text }: { text: string }) {
-  return <Text style={styles.sectionTitle}>{text}</Text>;
-}
-
-function ActiveRequestsTable() {
-  const sorted = [...MOCK_ACTIVE_REQUESTS].sort((a, b) => b.minutesOpen - a.minutesOpen);
-
-  return (
-    <View style={styles.table}>
-      <View style={styles.tableHeader}>
-        <Text style={[styles.th, styles.thPhone]}>לקוח</Text>
-        <Text style={[styles.th, styles.thProf]}>מקצוע</Text>
-        <Text style={[styles.th, styles.thArea]}>אזור</Text>
-        <Text style={[styles.th, styles.thSmall]}>גל</Text>
-        <Text style={[styles.th, styles.thSmall]}>הצעות</Text>
-        <Text style={[styles.th, styles.thTime]}>ממתין</Text>
-      </View>
-      {sorted.map((req) => {
-        const isUrgent = req.bidCount === 0 && req.minutesOpen > 60;
-        return (
-          <View
-            key={req.id}
-            style={[styles.tableRow, isUrgent && styles.tableRowUrgent]}
+      {/* Global filters */}
+      <View style={styles.filterRow}>
+        <View style={styles.toggleGroup}>
+          <Pressable
+            onPress={() => setDays(30)}
+            style={[styles.toggleBtn, days === 30 && styles.toggleBtnActive]}
           >
-            <Text style={[styles.td, styles.thPhone]} numberOfLines={1}>
-              {req.customerPhone}
-            </Text>
-            <Text style={[styles.td, styles.thProf]} numberOfLines={1}>
-              {req.profession}
-            </Text>
-            <Text style={[styles.td, styles.thArea]} numberOfLines={1}>
-              {req.area}
-            </Text>
-            <View style={[styles.thSmall, { alignItems: 'center' }]}>
-              <View style={[styles.waveBadge, { backgroundColor: waveColor(req.wave) + '20' }]}>
-                <Text style={[styles.waveText, { color: waveColor(req.wave) }]}>
-                  {waveIndicator(req.wave)}
-                </Text>
-              </View>
-            </View>
-            <Text style={[styles.td, styles.thSmall, { textAlign: 'center' }]}>
-              {req.bidCount}
-            </Text>
-            <Text
-              style={[
-                styles.td, styles.thTime,
-                { color: waitTimeColor(req.minutesOpen), fontWeight: '700' },
-              ]}
+            <Text style={[styles.toggleText, days === 30 && styles.toggleTextActive]}>30 ימים</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setDays(90)}
+            style={[styles.toggleBtn, days === 90 && styles.toggleBtnActive]}
+          >
+            <Text style={[styles.toggleText, days === 90 && styles.toggleTextActive]}>90 ימים</Text>
+          </Pressable>
+        </View>
+
+        <Pressable onPress={() => setCityPickerOpen((o) => !o)} style={styles.cityBtn}>
+          <Ionicons name="location-outline" size={14} color={COLORS.text} />
+          <Text style={styles.cityBtnText}>
+            {city === 'all' ? 'כל הערים' : CITY_LABELS_HE[city] || city}
+          </Text>
+        </Pressable>
+
+        <Pressable onPress={refresh} style={styles.iconBtn}>
+          <Ionicons name="refresh" size={16} color={COLORS.text} />
+        </Pressable>
+      </View>
+
+      {cityPickerOpen && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cityStrip}>
+          <Pressable onPress={() => { setCity('all'); setCityPickerOpen(false); }} style={[styles.chip, city === 'all' && styles.chipActive]}>
+            <Text style={[styles.chipText, city === 'all' && styles.chipTextActive]}>כל הערים</Text>
+          </Pressable>
+          {CITY_BOXES.map((b) => (
+            <Pressable
+              key={b.city}
+              onPress={() => { setCity(b.city); setCityPickerOpen(false); }}
+              style={[styles.chip, city === b.city && styles.chipActive]}
             >
-              {formatWaitTime(req.minutesOpen)}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
+              <Text style={[styles.chipText, city === b.city && styles.chipTextActive]}>
+                {CITY_LABELS_HE[b.city] || b.city}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
 
-function LowRatedAlerts() {
-  if (MOCK_LOW_RATED.length === 0) return null;
-
-  return (
-    <View style={styles.lowRatedSection}>
-      <Text style={styles.lowRatedTitle}>ספקים עם דירוג נמוך</Text>
-      {MOCK_LOW_RATED.map((p, i) => (
-        <View key={i} style={styles.lowRatedCard}>
-          <View style={styles.lowRatedHeader}>
-            <Text style={styles.lowRatedName}>{p.name}</Text>
-            <Text style={styles.lowRatedProf}>{p.profession}</Text>
-            <Text style={styles.lowRatedRating}>{p.rating}</Text>
-            <Text style={styles.lowRatedReviews}>{p.reviews} ביקורות</Text>
-          </View>
-          <Text style={styles.lowRatedReview}>"{p.lastReview}"</Text>
+      {isLoading && !data && (
+        <View style={styles.centered}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
         </View>
-      ))}
-    </View>
-  );
-}
+      )}
 
-function RecentAlerts() {
-  const recent = MOCK_ALERTS.slice(0, 5);
-
-  return (
-    <View style={styles.alertsList}>
-      {recent.map((alert) => (
-        <View
-          key={alert.id}
-          style={[styles.alertRow, !alert.read && styles.alertUnread]}
-        >
-          <Text style={styles.alertIcon}>{severityIcon(alert.severity)}</Text>
-          <View style={styles.alertBody}>
-            <Text style={styles.alertMessage}>{alert.message}</Text>
-            <Text style={styles.alertTime}>{timeAgo(alert.createdAt)}</Text>
-          </View>
+      {series && (
+        <View style={styles.grid}>
+          <SimpleLineChart
+            title="בקשות ליום"
+            data={series.requests}
+            color="#6366F1"
+          />
+          <SimpleLineChart
+            title="זמן לתגובה (דק)"
+            data={series.timeToFirstBid}
+            color="#F59E0B"
+            formatValue={(v) => `${Math.round(v)}'`}
+          />
+          <SimpleBarChart
+            title="הכנסות ברוטו"
+            data={series.revenue}
+            color="#22C55E"
+            formatValue={(v) => `₪${v.toLocaleString('he-IL')}`}
+          />
+          <SimpleLineChart
+            title="דירוג ממוצע"
+            data={series.rating}
+            color="#EC4899"
+            formatValue={(v) => v.toFixed(1)}
+          />
+          <SimpleBarChart
+            title="ביקורות שהוגשו"
+            data={series.reviews}
+            color="#8B5CF6"
+          />
         </View>
-      ))}
-    </View>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: SPACING.md, paddingBottom: 40 },
+  content: { padding: SPACING.md, paddingBottom: 40, gap: SPACING.sm },
   contentDesktop: { maxWidth: 900, alignSelf: 'center', width: '100%' },
 
-  cardsRow: { flexDirection: 'row', gap: 10, marginBottom: SPACING.lg, flexWrap: 'wrap' },
-  card: {
-    flex: 1, minWidth: 140, backgroundColor: COLORS.surface,
-    borderRadius: RADII.md, padding: SPACING.md, alignItems: 'center',
+  filterRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    flexWrap: 'wrap', marginBottom: SPACING.xs,
   },
-  cardValue: { fontSize: 28, fontWeight: 'bold', color: COLORS.text, marginBottom: 4 },
-  cardLabel: { fontSize: 12, color: COLORS.textSecondary },
-
-  sectionTitle: {
-    fontSize: 16, fontWeight: '700', color: COLORS.text,
-    marginTop: SPACING.md, marginBottom: SPACING.sm,
+  toggleGroup: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADII.sm,
+    padding: 2,
+    gap: 2,
   },
-
-  table: { backgroundColor: COLORS.surface, borderRadius: RADII.md, overflow: 'hidden' },
-  tableHeader: {
-    flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 12,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  toggleBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADII.sm - 2 },
+  toggleBtnActive: { backgroundColor: COLORS.primary },
+  toggleText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
+  toggleTextActive: { color: '#FFFFFF' },
+  cityBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: RADII.sm,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  tableRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, paddingHorizontal: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
+  cityBtnText: { fontSize: 12, color: COLORS.text, fontWeight: '600' },
+  iconBtn: {
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: RADII.sm,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  tableRowUrgent: { backgroundColor: 'rgba(239, 68, 68, 0.08)' },
-  th: { fontSize: 11, fontWeight: '700', color: COLORS.textTertiary },
-  td: { fontSize: 13, color: COLORS.text },
-  thPhone: { flex: 2 },
-  thProf: { flex: 2 },
-  thArea: { flex: 1.5 },
-  thSmall: { flex: 1, textAlign: 'center' },
-  thTime: { flex: 1.2, textAlign: 'center' },
-
-  waveBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: RADII.sm },
-  waveText: { fontSize: 11, fontWeight: '700' },
-
-  lowRatedSection: {
-    marginTop: SPACING.lg, backgroundColor: 'rgba(239, 68, 68, 0.08)',
-    borderRadius: RADII.md, padding: SPACING.md,
-    borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.25)',
+  cityStrip: { flexDirection: 'row' },
+  chip: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: RADII.sm,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border,
+    marginRight: 6,
   },
-  lowRatedTitle: { fontSize: 14, fontWeight: '700', color: '#EF4444', marginBottom: SPACING.sm },
-  lowRatedCard: { backgroundColor: COLORS.surface, borderRadius: RADII.sm, padding: SPACING.sm },
-  lowRatedHeader: { flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 4 },
-  lowRatedName: { fontSize: 13, fontWeight: '700', color: COLORS.text },
-  lowRatedProf: { fontSize: 12, color: COLORS.textSecondary },
-  lowRatedRating: { fontSize: 12, fontWeight: '700', color: '#F59E0B' },
-  lowRatedReviews: { fontSize: 11, color: COLORS.textTertiary },
-  lowRatedReview: { fontSize: 12, color: COLORS.textSecondary, fontStyle: 'italic' },
-
-  alertsList: {
-    backgroundColor: COLORS.surface, borderRadius: RADII.md, overflow: 'hidden',
+  chipActive: {
+    backgroundColor: COLORS.primary + '20',
+    borderColor: COLORS.primary,
   },
-  alertRow: {
-    flexDirection: 'row', gap: 10, padding: SPACING.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
-  },
-  alertUnread: { backgroundColor: 'rgba(99, 102, 241, 0.06)' },
-  alertIcon: { fontSize: 14, marginTop: 2 },
-  alertBody: { flex: 1 },
-  alertMessage: { fontSize: 13, color: COLORS.text, lineHeight: 18 },
-  alertTime: { fontSize: 11, color: COLORS.textTertiary, marginTop: 2 },
+  chipText: { fontSize: 12, color: COLORS.textSecondary },
+  chipTextActive: { color: COLORS.primary, fontWeight: '700' },
+  grid: { gap: SPACING.sm },
+  centered: { padding: SPACING.lg, alignItems: 'center' },
 });
