@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
 import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports';
+import { SeedMocksButton } from '../../src/components/admin/SeedMocksButton';
 
 /**
  * Admin access — driven by a Firestore `adminUids/{uid}` document.
@@ -125,6 +126,11 @@ function AdminTopNav() {
           <Ionicons name="arrow-back" size={20} color={COLORS.text} />
         </Pressable>
         <Text style={styles.navTitle}>📊 לוח בקרה</Text>
+        {/* Dev-only seed button — visible on every admin page so the
+            user can hydrate mock data from wherever they happen to be. */}
+        <View style={{ marginLeft: 'auto' }}>
+          <SeedMocksButton />
+        </View>
       </View>
       {/* Horizontal scroll — 6 tabs don't fit on a phone width.
           Keeps each tab at its natural width, lets the user swipe. */}

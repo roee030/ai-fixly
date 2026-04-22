@@ -22,18 +22,20 @@ import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports'
  * Home — zero header, single action.
  *
  * Layout:
- *   - Greeting at top (centered)
- *   - Pulsing camera button centered in the remaining vertical space
- *   - Active-requests pill at bottom (conditional)
- *
- * All three camera layers (two pulse rings + solid core) live inside a
- * fixed-size CORE_SIZE×CORE_SIZE box with `position: 'absolute'` +
- * `inset: 0`. The rings pulse via `transform: scale` beyond the core's
- * visual bounds — so the halo grows outward while the core stays put
- * and centered.
+ *   HERO_SIZE × HERO_SIZE Pressable captures taps anywhere in the area
+ *   (so the expanded pulse rings are part of the hit target, not just
+ *   the core circle). Inside:
+ *     - Pulse rings: position: absolute, sized to CORE_SIZE, offset to
+ *       center via calculated top/left (rings scale via transform so
+ *       they extend OUTWARD past the core's bounds).
+ *     - Core: a regular flex child that alignItems/justifyContent
+ *       centers within the Pressable. The camera icon is its child,
+ *       centered the same way.
  */
 
+const HERO_SIZE = 260;
 const CORE_SIZE = 156;
+const RING_OFFSET = (HERO_SIZE - CORE_SIZE) / 2;
 
 export default function HomeScreen() {
   const user = useAuthStore((s) => s.user);
@@ -115,23 +117,29 @@ export default function HomeScreen() {
           <Text style={styles.prompt}>יש לך בעיה? נפתור תוך דקות.</Text>
         </FadeInView>
 
-        {/* Hero — single fixed-size box, all layers absolute-inset. */}
+        {/* Hero — the Pressable IS the 260×260 frame so taps anywhere
+            (including on the pulsing rings) navigate to capture. */}
         <View style={styles.heroSection}>
-          <View style={styles.ringBox}>
-            <Animated.View style={[styles.ring, ring1Style]} pointerEvents="none" />
-            <Animated.View style={[styles.ring, ring2Style]} pointerEvents="none" />
-            <Pressable
-              onPress={() => router.push('/capture')}
-              style={({ pressed }) => [
-                styles.core,
-                pressed && { transform: [{ scale: 0.96 }] },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="דווח על בעיה"
-            >
+          <Pressable
+            onPress={() => router.push('/capture')}
+            style={({ pressed }) => [
+              styles.heroPressable,
+              pressed && { transform: [{ scale: 0.97 }] },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="דווח על בעיה"
+          >
+            {/* Pulse rings: absolute, CORE_SIZE, offset to center in the
+                HERO_SIZE frame. scale transform takes them outward. */}
+            <Animated.View style={[styles.pulseRing, ring1Style]} pointerEvents="none" />
+            <Animated.View style={[styles.pulseRing, ring2Style]} pointerEvents="none" />
+            {/* Core: regular flex child centered by the Pressable's
+                alignItems/justifyContent. Camera icon inside centered
+                by the core's same props. */}
+            <View style={styles.core}>
               <Ionicons name="camera" size={58} color="#FFFFFF" />
-            </Pressable>
-          </View>
+            </View>
+          </Pressable>
 
           {/* Title + subtitle below, centered. */}
           <FadeInView delay={100} style={styles.heroTextWrap}>
@@ -140,7 +148,6 @@ export default function HomeScreen() {
           </FadeInView>
         </View>
 
-        {/* Active pill — only when relevant. */}
         {activeCount > 0 && (
           <FadeInView delay={200}>
             <Pressable
@@ -195,29 +202,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 20,
   },
-  // Fixed-size frame; all three layers inside are absolute-inset so they
-  // share the exact same centerpoint. `alignSelf: 'center'` places the
-  // whole box horizontally centered by the parent.
-  ringBox: {
-    width: CORE_SIZE,
-    height: CORE_SIZE,
+  heroPressable: {
+    width: HERO_SIZE,
+    height: HERO_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
     alignSelf: 'center',
   },
-  ring: {
+  pulseRing: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: RING_OFFSET,
+    left: RING_OFFSET,
+    width: CORE_SIZE,
+    height: CORE_SIZE,
     borderRadius: CORE_SIZE / 2,
     backgroundColor: COLORS.primary,
   },
   core: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    width: CORE_SIZE,
+    height: CORE_SIZE,
     borderRadius: CORE_SIZE / 2,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
