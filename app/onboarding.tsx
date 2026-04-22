@@ -92,17 +92,14 @@ export default function OnboardingScreen() {
     },
   ];
 
-  // Force initial position to slide 0 — defends against platforms that
-  // start RTL ScrollView at "content end" (ie. slide N) by default.
+  // Force initial position to slide 0 — a small belt-and-suspenders
+  // because RN's RTL ScrollView occasionally starts at the content end.
   useEffect(() => {
     const timer = setTimeout(() => {
-      scrollRef.current?.scrollTo({
-        x: isRTL ? -(SCREEN_WIDTH * 0) : 0,
-        animated: false,
-      });
+      scrollRef.current?.scrollTo({ x: 0, animated: false });
     }, 50);
     return () => clearTimeout(timer);
-  }, [SCREEN_WIDTH, isRTL]);
+  }, [SCREEN_WIDTH]);
 
   const scrollToIndex = (index: number) => {
     if (index < 0 || index >= slides.length) return;
@@ -151,7 +148,11 @@ export default function OnboardingScreen() {
           </Pressable>
         </View>
 
-        {/* ScrollView pager */}
+        {/* ScrollView pager — no row-reverse. React Native's I18nManager
+            already flips horizontal scroll direction on RTL devices, and
+            adding row-reverse on top of that double-flips (the bug the
+            user reported: 'tapping next advances but the animation moves
+            backwards'). Letting RN handle direction natively is reliable. */}
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -159,9 +160,6 @@ export default function OnboardingScreen() {
           showsHorizontalScrollIndicator={false}
           onScroll={onScroll}
           scrollEventThrottle={16}
-          contentContainerStyle={{
-            flexDirection: isRTL ? 'row-reverse' : 'row',
-          }}
         >
           {slides.map((s, i) => (
             <SlideView key={i} slide={s} width={SCREEN_WIDTH} />

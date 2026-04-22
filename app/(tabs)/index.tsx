@@ -19,13 +19,21 @@ import { COLORS, SPACING } from '../../src/constants';
 import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports';
 
 /**
- * Home — minimal, action-first.
+ * Home — zero header, single action.
  *
- * The hero is a three-ring animated pulse: the outer two rings expand and
- * fade in a staggered loop, giving the screen a live 'heartbeat' without
- * overwhelming motion. The core (solid circle with camera) stays static
- * so the tap target is predictable.
+ * Layout:
+ *   - Greeting at top (centered)
+ *   - Pulsing camera button centered in the remaining vertical space
+ *   - Active-requests pill at bottom (conditional)
+ *
+ * All three camera layers (two pulse rings + solid core) live inside a
+ * fixed-size CORE_SIZE×CORE_SIZE box with `position: 'absolute'` +
+ * `inset: 0`. The rings pulse via `transform: scale` beyond the core's
+ * visual bounds — so the halo grows outward while the core stays put
+ * and centered.
  */
+
+const CORE_SIZE = 156;
 
 export default function HomeScreen() {
   const user = useAuthStore((s) => s.user);
@@ -50,18 +58,16 @@ export default function HomeScreen() {
   );
 
   const firstName = (displayName || '').split(' ')[0] || '';
-  const initial = firstName ? firstName.charAt(0).toUpperCase() : '?';
 
-  // Two ring animations — outer pulses expand and fade on a slow loop,
-  // offset from each other so the effect is continuous.
+  // Pulse animation — two rings offset by 1.1s for a continuous heartbeat.
   const ring1Scale = useSharedValue(1);
-  const ring1Opacity = useSharedValue(0.5);
+  const ring1Opacity = useSharedValue(0.45);
   const ring2Scale = useSharedValue(1);
   const ring2Opacity = useSharedValue(0.3);
 
   useEffect(() => {
     ring1Scale.value = withRepeat(
-      withTiming(1.18, { duration: 2200, easing: Easing.out(Easing.ease) }),
+      withTiming(1.6, { duration: 2200, easing: Easing.out(Easing.ease) }),
       -1,
       false,
     );
@@ -73,7 +79,7 @@ export default function HomeScreen() {
     ring2Scale.value = withDelay(
       1100,
       withRepeat(
-        withTiming(1.25, { duration: 2200, easing: Easing.out(Easing.ease) }),
+        withTiming(1.6, { duration: 2200, easing: Easing.out(Easing.ease) }),
         -1,
         false,
       ),
@@ -99,20 +105,6 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer>
-      {/* Top bar — avatar + bell only, no brand text */}
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={() => router.push('/(tabs)/profile')}
-          style={styles.avatarBtn}
-          accessibilityLabel="פרופיל"
-        >
-          <Text style={styles.avatarText}>{initial}</Text>
-        </Pressable>
-        <View style={styles.iconBtn}>
-          <Ionicons name="notifications-outline" size={22} color={COLORS.text} />
-        </View>
-      </View>
-
       <View style={styles.container}>
         {/* Greeting */}
         <FadeInView>
@@ -123,36 +115,32 @@ export default function HomeScreen() {
           <Text style={styles.prompt}>יש לך בעיה? נפתור תוך דקות.</Text>
         </FadeInView>
 
-        {/* Hero — pulsing animated rings BEHIND a solid core.
-            All three layers are absolute-positioned at the same x/y
-            anchor so they stack concentrically instead of drifting. */}
-        <View style={styles.heroWrap}>
-          <Pressable
-            onPress={() => router.push('/capture')}
-            style={({ pressed }) => [
-              styles.heroContent,
-              pressed && { transform: [{ scale: 0.97 }] },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="דווח על בעיה"
-          >
-            <Animated.View style={[styles.pulseRing, ring1Style]} pointerEvents="none" />
-            <Animated.View style={[styles.pulseRing, ring2Style]} pointerEvents="none" />
-            <View style={styles.coreCircle}>
-              <Ionicons name="camera" size={52} color="#FFFFFF" />
-            </View>
-          </Pressable>
+        {/* Hero — single fixed-size box, all layers absolute-inset. */}
+        <View style={styles.heroSection}>
+          <View style={styles.ringBox}>
+            <Animated.View style={[styles.ring, ring1Style]} pointerEvents="none" />
+            <Animated.View style={[styles.ring, ring2Style]} pointerEvents="none" />
+            <Pressable
+              onPress={() => router.push('/capture')}
+              style={({ pressed }) => [
+                styles.core,
+                pressed && { transform: [{ scale: 0.96 }] },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="דווח על בעיה"
+            >
+              <Ionicons name="camera" size={58} color="#FFFFFF" />
+            </Pressable>
+          </View>
 
-          {/* Title + subtitle under the ring, centered */}
+          {/* Title + subtitle below, centered. */}
           <FadeInView delay={100} style={styles.heroTextWrap}>
             <Text style={styles.heroTitle}>דווח על בעיה</Text>
-            <Text style={styles.heroSubtitle}>
-              צלם, תאר — והצעות מגיעות מיד
-            </Text>
+            <Text style={styles.heroSubtitle}>צלם, תאר — והצעות מגיעות מיד</Text>
           </FadeInView>
         </View>
 
-        {/* Active pill */}
+        {/* Active pill — only when relevant. */}
         {activeCount > 0 && (
           <FadeInView delay={200}>
             <Pressable
@@ -179,45 +167,10 @@ export default function HomeScreen() {
   );
 }
 
-const CORE_SIZE = 140;
-const RING_SIZE = 220;
-
 const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.sm,
-  },
-  avatarBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary + '25',
-    borderWidth: 1,
-    borderColor: COLORS.primary + '60',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: COLORS.primary,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   container: {
     flex: 1,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.lg,
   },
 
   greeting: {
@@ -236,38 +189,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  heroWrap: {
+  heroSection: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 20,
   },
-  heroContent: {
-    width: RING_SIZE,
-    height: RING_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Rings anchor to the CENTER of heroContent via explicit top/left.
-  // alignItems: 'center' alone doesn't center absolute-positioned
-  // siblings in React Native — the anchor defaults to (0,0). Using a
-  // computed offset guarantees all three stacked layers share the same
-  // center point regardless of platform.
-  pulseRing: {
-    position: 'absolute',
-    top: (RING_SIZE - CORE_SIZE) / 2,
-    left: (RING_SIZE - CORE_SIZE) / 2,
+  // Fixed-size frame; all three layers inside are absolute-inset so they
+  // share the exact same centerpoint. `alignSelf: 'center'` places the
+  // whole box horizontally centered by the parent.
+  ringBox: {
     width: CORE_SIZE,
     height: CORE_SIZE,
+    alignSelf: 'center',
+  },
+  ring: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderRadius: CORE_SIZE / 2,
     backgroundColor: COLORS.primary,
   },
-  coreCircle: {
+  core: {
     position: 'absolute',
-    top: (RING_SIZE - CORE_SIZE) / 2,
-    left: (RING_SIZE - CORE_SIZE) / 2,
-    width: CORE_SIZE,
-    height: CORE_SIZE,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderRadius: CORE_SIZE / 2,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
