@@ -24,7 +24,7 @@ import type { ServiceRequest } from '../../src/services/requests';
  */
 
 type DateRange = 'today' | '7d' | '30d' | 'all';
-type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed';
+type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'has_offers';
 
 const DATE_OPTIONS: Array<{ k: DateRange; l: string }> = [
   { k: 'today', l: 'היום' },
@@ -35,6 +35,7 @@ const DATE_OPTIONS: Array<{ k: DateRange; l: string }> = [
 
 const STATUS_OPTIONS: Array<{ k: StatusFilter; l: string }> = [
   { k: 'all', l: 'הכל' },
+  { k: 'has_offers', l: '✨ יש הצעות' },
   { k: 'open', l: 'פתוחה' },
   { k: 'in_progress', l: 'בתהליך' },
   { k: 'closed', l: 'נסגרה' },
@@ -53,14 +54,22 @@ export default function RequestsScreen() {
   const filtered = useMemo(() => {
     const cutoff = rangeCutoffMs(dateRange);
     return requests.filter((r) => {
-      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      // 'has_offers' is a virtual status — requests that have at least
+      // one bid AND aren't closed, so the user can surface active work
+      // that deserves attention.
+      if (statusFilter === 'has_offers') {
+        if ((bidCounts[r.id] || 0) === 0) return false;
+        if (r.status === REQUEST_STATUS.CLOSED) return false;
+      } else if (statusFilter !== 'all' && r.status !== statusFilter) {
+        return false;
+      }
       if (cutoff != null) {
         const t = new Date(r.createdAt).getTime();
         if (Date.now() - t > cutoff) return false;
       }
       return true;
     });
-  }, [requests, dateRange, statusFilter]);
+  }, [requests, dateRange, statusFilter, bidCounts]);
 
   const openRequest = (id: string) => {
     router.push({ pathname: '/request/[id]', params: { id } });
@@ -247,18 +256,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingVertical: 4,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   chipLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textTertiary,
     fontWeight: '700',
-    marginLeft: 2,
-    marginRight: 8,
+    marginRight: 4,
   },
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -268,7 +276,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary + '20',
     borderColor: COLORS.primary,
   },
-  chipText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
+  chipText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
   chipTextActive: { color: COLORS.primary, fontWeight: '700' },
   emptyState: {
     flex: 1,

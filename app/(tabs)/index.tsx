@@ -1,10 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import {
-  View, Text, Pressable, StyleSheet,
-} from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withDelay,
+  Easing,
+} from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useTranslation } from 'react-i18next';
 import { ScreenContainer } from '../../src/components/layout';
 import { FadeInView } from '../../src/components/ui';
 import { useAuthStore } from '../../src/stores/useAuthStore';
@@ -16,18 +21,13 @@ import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports'
 /**
  * Home — minimal, action-first.
  *
- * Top bar: avatar (→ profile), centred app name, bell (→ notifications,
- * future-ready). Middle: a concentric-ring gradient hero button that
- * dominates the screen — camera inside the ring, title + subtitle below.
- * Bottom: a bright-green pill appearing only when active requests exist,
- * routing to the requests tab.
- *
- * Inspired by a reference design supplied by the product owner; adapted
- * to the existing color palette + i18n conventions.
+ * The hero is a three-ring animated pulse: the outer two rings expand and
+ * fade in a staggered loop, giving the screen a live 'heartbeat' without
+ * overwhelming motion. The core (solid circle with camera) stays static
+ * so the tap target is predictable.
  */
 
 export default function HomeScreen() {
-  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const requests = useRequestsStore((s) => s.requests);
   const [displayName, setDisplayName] = useState('');
@@ -51,6 +51,51 @@ export default function HomeScreen() {
 
   const firstName = (displayName || '').split(' ')[0] || '';
   const initial = firstName ? firstName.charAt(0).toUpperCase() : '?';
+
+  // Two ring animations — outer pulses expand and fade on a slow loop,
+  // offset from each other so the effect is continuous.
+  const ring1Scale = useSharedValue(1);
+  const ring1Opacity = useSharedValue(0.5);
+  const ring2Scale = useSharedValue(1);
+  const ring2Opacity = useSharedValue(0.3);
+
+  useEffect(() => {
+    ring1Scale.value = withRepeat(
+      withTiming(1.18, { duration: 2200, easing: Easing.out(Easing.ease) }),
+      -1,
+      false,
+    );
+    ring1Opacity.value = withRepeat(
+      withTiming(0, { duration: 2200, easing: Easing.out(Easing.ease) }),
+      -1,
+      false,
+    );
+    ring2Scale.value = withDelay(
+      1100,
+      withRepeat(
+        withTiming(1.25, { duration: 2200, easing: Easing.out(Easing.ease) }),
+        -1,
+        false,
+      ),
+    );
+    ring2Opacity.value = withDelay(
+      1100,
+      withRepeat(
+        withTiming(0, { duration: 2200, easing: Easing.out(Easing.ease) }),
+        -1,
+        false,
+      ),
+    );
+  }, []);
+
+  const ring1Style = useAnimatedStyle(() => ({
+    transform: [{ scale: ring1Scale.value }],
+    opacity: ring1Opacity.value,
+  }));
+  const ring2Style = useAnimatedStyle(() => ({
+    transform: [{ scale: ring2Scale.value }],
+    opacity: ring2Opacity.value,
+  }));
 
   return (
     <ScreenContainer>
@@ -79,31 +124,38 @@ export default function HomeScreen() {
           <Text style={styles.prompt}>יש לך בעיה? נפתור תוך דקות.</Text>
         </FadeInView>
 
-        {/* Hero ring — the one action. */}
-        <FadeInView delay={100} style={styles.centerSpace}>
+        {/* Hero — pulsing animated rings around a solid core */}
+        <View style={styles.heroWrap}>
           <Pressable
             onPress={() => router.push('/capture')}
-            style={({ pressed }) => [styles.heroWrap, pressed && { transform: [{ scale: 0.97 }] }]}
+            style={({ pressed }) => [
+              styles.heroContent,
+              pressed && { transform: [{ scale: 0.97 }] },
+            ]}
             accessibilityRole="button"
             accessibilityLabel="דווח על בעיה"
           >
-            {/* Outer glow ring */}
-            <View style={styles.ringOuter}>
-              {/* Inner gradient ring */}
-              <View style={styles.ringInner}>
-                <View style={styles.coreCircle}>
-                  <Ionicons name="camera" size={48} color="#FFFFFF" />
-                </View>
-              </View>
+            {/* Pulsing outer rings */}
+            <View style={styles.ringContainer} pointerEvents="none">
+              <Animated.View style={[styles.pulseRing, ring1Style]} />
+              <Animated.View style={[styles.pulseRing, ring2Style]} />
             </View>
-            <Text style={styles.heroTitle}>דווח על בעיה</Text>
-            <View style={styles.heroSubPill}>
-              <Text style={styles.heroSubText}>צלם + תאר · הצעות מגיעות מיד</Text>
+            {/* Static core */}
+            <View style={styles.coreCircle}>
+              <Ionicons name="camera" size={52} color="#FFFFFF" />
             </View>
           </Pressable>
-        </FadeInView>
 
-        {/* Active pill (green) — only when there's work in progress */}
+          {/* Title + subtitle under the ring, centered */}
+          <FadeInView delay={100} style={styles.heroTextWrap}>
+            <Text style={styles.heroTitle}>דווח על בעיה</Text>
+            <Text style={styles.heroSubtitle}>
+              צלם, תאר — והצעות מגיעות מיד
+            </Text>
+          </FadeInView>
+        </View>
+
+        {/* Active pill */}
         {activeCount > 0 && (
           <FadeInView delay={200}>
             <Pressable
@@ -129,6 +181,9 @@ export default function HomeScreen() {
     </ScreenContainer>
   );
 }
+
+const CORE_SIZE = 140;
+const RING_SIZE = 220;
 
 const styles = StyleSheet.create({
   topBar: {
@@ -179,6 +234,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.text,
     lineHeight: 32,
+    textAlign: 'center',
   },
   wave: { fontSize: 24 },
   prompt: {
@@ -186,66 +242,63 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 6,
     lineHeight: 22,
+    textAlign: 'center',
   },
 
-  centerSpace: {
+  heroWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 20,
   },
-
-  // Three concentric circles create a glow/ring effect similar to the
-  // reference design, without a gradient library dependency.
-  heroWrap: {
-    alignItems: 'center',
-    gap: 14,
-  },
-  ringOuter: {
-    width: 248,
-    height: 248,
-    borderRadius: 124,
-    backgroundColor: COLORS.primary + '1A',
+  heroContent: {
+    width: RING_SIZE,
+    height: RING_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ringInner: {
-    width: 204,
-    height: 204,
-    borderRadius: 102,
-    backgroundColor: COLORS.primary + '33',
+  // Holds the two pulsing rings; same size as heroContent.
+  ringContainer: {
+    position: 'absolute',
+    width: RING_SIZE,
+    height: RING_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 10,
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: CORE_SIZE,
+    height: CORE_SIZE,
+    borderRadius: CORE_SIZE / 2,
+    backgroundColor: COLORS.primary,
   },
   coreCircle: {
-    width: 136,
-    height: 136,
-    borderRadius: 68,
+    width: CORE_SIZE,
+    height: CORE_SIZE,
+    borderRadius: CORE_SIZE / 2,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  heroTextWrap: {
+    alignItems: 'center',
+    gap: 8,
   },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: COLORS.text,
-    marginTop: 6,
+    textAlign: 'center',
   },
-  heroSubPill: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  heroSubText: {
+  heroSubtitle: {
+    fontSize: 14,
     color: COLORS.textSecondary,
-    fontSize: 13,
+    textAlign: 'center',
     fontWeight: '600',
   },
 
