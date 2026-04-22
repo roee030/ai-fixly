@@ -114,19 +114,25 @@ export default function ConfirmScreen() {
   const handleConfirmAndSend = async () => {
     if (!analysis || !user) return;
     setIsSending(true);
+
+    // Location is captured at onboarding and required — never fall back.
+    // If somehow the profile has no location (edge case from older builds),
+    // tell the user to fix their permissions instead of broadcasting to
+    // the wrong city.
+    const db = getFirestore();
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    const userData = userDoc.data?.() || {};
+    if (!userData.location?.lat || !userData.location?.lng) {
+      setIsSending(false);
+      Alert.alert(
+        t('auth.locationMissingTitle'),
+        t('auth.locationMissingBody'),
+      );
+      return;
+    }
+    const location = userData.location;
+
     try {
-      // Use the user's saved profile location instead of re-requesting GPS.
-      let location = { lat: 32.0853, lng: 34.7818, address: 'Tel Aviv, Israel' };
-      try {
-        const db = getFirestore();
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const userData = userDoc.data?.() || {};
-        if (userData.location?.lat && userData.location?.lng) {
-          location = userData.location;
-        }
-      } catch {
-        // Fall back to default location
-      }
 
       const tempId = `req_${Date.now()}`;
       // Upload everything in parallel — images and videos. Videos carry their

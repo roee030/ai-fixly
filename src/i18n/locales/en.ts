@@ -121,7 +121,11 @@ export default {
     sendCodeFailed: 'Failed to send verification code. Try again.',
     myLocation: 'My location',
     nameTooShort: 'Name must be at least 2 characters',
-    locationRequired: 'Please allow location access',
+    locationRequired: 'We need your location to find the closest professional fast',
+    locationMissingTitle: 'We could not find your location',
+    locationMissingBody: 'Refresh your location permissions in Settings and try again',
+    openSettings: 'Open Settings',
+    tryAgain: 'Try again',
     saveProfileFailed: 'Failed to save profile. Try again.',
   },
 
