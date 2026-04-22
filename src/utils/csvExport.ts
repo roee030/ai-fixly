@@ -9,7 +9,7 @@ import { Platform } from 'react-native';
  * without extra configuration.
  */
 
-export function toCsv<T extends Record<string, unknown>>(
+export function toCsv<T>(
   rows: T[],
   columns: Array<{ key: keyof T; header: string }>,
 ): string {

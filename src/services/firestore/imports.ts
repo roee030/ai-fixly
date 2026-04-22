@@ -7,9 +7,11 @@ export {
   setDoc,
   updateDoc,
   deleteDoc,
+  addDoc,
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   serverTimestamp,
 } from '@react-native-firebase/firestore';

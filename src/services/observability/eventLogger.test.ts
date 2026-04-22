@@ -1,11 +1,11 @@
 const mockAddDoc = jest.fn();
-const mockCollection = jest.fn((..._args: unknown[]) => ({ __col: true }));
+const mockCollection = jest.fn();
 const mockGetFirestore = jest.fn(() => ({ __db: true }));
 
 jest.mock('../firestore/imports', () => ({
-  getFirestore: (...args: unknown[]) => mockGetFirestore(...args),
-  collection: (...args: unknown[]) => mockCollection(...args),
-  addDoc: (...args: unknown[]) => mockAddDoc(...args),
+  getFirestore: () => mockGetFirestore(),
+  collection: (a: unknown, b: unknown, c: unknown, d: unknown) => mockCollection(a, b, c, d),
+  addDoc: (a: unknown, b: unknown) => mockAddDoc(a, b),
   serverTimestamp: () => 'SERVER_TIMESTAMP_SENTINEL',
 }));
 

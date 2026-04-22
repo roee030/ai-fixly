@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, Image, ActivityIndicator, Pressable, Modal, FlatList, StyleSheet, Dimensions, TextInput } from 'react-native';
+import { View, Text, ScrollView, Image, ActivityIndicator, Pressable, Modal, FlatList, StyleSheet, Dimensions, TextInput, Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
