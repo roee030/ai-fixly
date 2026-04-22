@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRequestsStore } from '../../src/stores/useRequestsStore';
 import { REQUEST_STATUS } from '../../src/constants/status';
 import { useProviderProfile } from '../../src/hooks/useProviderProfile';
+import { useLocationGuard } from '../../src/hooks/useLocationGuard';
 
 const CAPTURE_SIZE = 62;
 const NOTCH_SIZE = CAPTURE_SIZE + 36;
@@ -21,6 +22,10 @@ const DESKTOP_MAX_WIDTH = 480;
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+
+  // Bounces the user back to the permissions screen if they revoke
+  // location access in system Settings while the app is running.
+  useLocationGuard();
 
   return (
     <ErrorBoundary>

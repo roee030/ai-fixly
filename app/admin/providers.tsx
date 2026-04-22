@@ -1,6 +1,14 @@
-import { View, Text, ScrollView, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { useCallback } from 'react';
+import {
+  View, Text, ScrollView, Pressable, StyleSheet, Platform,
+  useWindowDimensions, ActivityIndicator,
+} from 'react-native';
+import { router } from 'expo-router';
 import { COLORS, SPACING, RADII } from '../../src/constants';
-import { MOCK_PROVIDERS } from '../../src/services/admin/mockData';
+import { CITY_LABELS_HE } from '../../src/constants/cities';
+import { useAdminQuery } from '../../src/hooks/useAdminQuery';
+import { queryProvidersList } from '../../src/services/admin/providersListQuery';
+import type { AdminProviderRow } from '../../src/services/admin/providersListQuery';
 
 function ratingColor(rating: number | null): string {
   if (rating == null) return COLORS.textTertiary;
@@ -9,39 +17,55 @@ function ratingColor(rating: number | null): string {
   return '#EF4444';
 }
 
-function formatTime(minutes: number | null | undefined): string {
-  if (minutes == null) return '-';
-  if (minutes < 60) return `${minutes} דק'`;
+function formatTime(minutes: number | null): string {
+  if (minutes == null) return '—';
+  if (minutes < 60) return `${minutes}'`;
   const hours = Math.floor(minutes / 60);
-  return `${hours} שע'`;
+  return `${hours}h`;
 }
 
 export default function ProvidersPage() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
 
+  const fetcher = useCallback(() => queryProvidersList(200), []);
+  const { data, isLoading, refresh } = useAdminQuery('admin:providers:all', fetcher);
+
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, isDesktop && styles.contentDesktop]}
     >
-      <SummaryCards />
-      <SectionTitle text="דירוג לפי קטגוריה" />
-      <CategoryRatingTable />
-      <SectionTitle text="יחס הצעה-זכייה" />
-      <BidWinTable />
+      <SummaryCards providers={data ?? []} />
+
+      {isLoading && !data && (
+        <View style={styles.centered}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        </View>
+      )}
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>יחס הצעה-זכייה</Text>
+        <Pressable onPress={refresh} style={styles.refreshBtn}>
+          <Text style={styles.refreshText}>רענן</Text>
+        </Pressable>
+      </View>
+
+      {(!data || data.length === 0) && !isLoading ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyText}>
+            אין עדיין aggregate-ים של בעלי מקצוע. הם נוצרים אוטומטית אחרי עבודה ראשונה עם ביקורת.
+          </Text>
+        </View>
+      ) : (
+        <BidWinTable rows={data ?? []} />
+      )}
     </ScrollView>
   );
 }
 
-function SectionTitle({ text }: { text: string }) {
-  return <Text style={styles.sectionTitle}>{text}</Text>;
-}
-
-function SummaryCards() {
-  const providers = MOCK_PROVIDERS;
+function SummaryCards({ providers }: { providers: AdminProviderRow[] }) {
   const active = providers.filter((p) => p.accepted > 0).length;
-
   const totalOffers = providers.reduce((s, p) => s + p.offersSent, 0);
   const totalReplied = providers.reduce((s, p) => s + p.accepted, 0);
   const avgReply = totalOffers > 0 ? Math.round((totalReplied / totalOffers) * 100) : 0;
@@ -51,16 +75,10 @@ function SummaryCards() {
     ? Math.round((rated.reduce((s, p) => s + (p.avgRating ?? 0), 0) / rated.length) * 10) / 10
     : null;
 
-  const priced = providers.filter((p) => p.avgPrice != null);
-  const avgPrice = priced.length > 0
-    ? Math.round(priced.reduce((s, p) => s + (p.avgPrice ?? 0), 0) / priced.length)
-    : null;
-
   const cards = [
     { label: 'ספקים פעילים', value: String(active) },
     { label: 'אחוז מענה', value: `${avgReply}%` },
-    { label: 'דירוג ממוצע', value: avgRating != null ? String(avgRating) : '-' },
-    { label: 'מחיר ממוצע', value: avgPrice != null ? `${avgPrice.toLocaleString('he-IL')}₪` : '-' },
+    { label: 'דירוג ממוצע', value: avgRating != null ? String(avgRating) : '—' },
   ];
 
   return (
@@ -75,81 +93,51 @@ function SummaryCards() {
   );
 }
 
-function CategoryRatingTable() {
-  const catMap: Record<string, { ratings: number[]; count: number; offers: number }> = {};
-
-  for (const p of MOCK_PROVIDERS) {
-    const prof = p.profession ?? 'אחר';
-    if (!catMap[prof]) catMap[prof] = { ratings: [], count: 0, offers: 0 };
-    catMap[prof].count++;
-    catMap[prof].offers += p.offersSent;
-    if (p.avgRating != null) catMap[prof].ratings.push(p.avgRating);
-  }
-
-  const categories = Object.entries(catMap).map(([name, data]) => {
-    const avgRating = data.ratings.length > 0
-      ? Math.round((data.ratings.reduce((a, b) => a + b, 0) / data.ratings.length) * 10) / 10
-      : null;
-    return { name, avgRating, count: data.count, offers: data.offers };
-  }).sort((a, b) => (b.avgRating ?? 0) - (a.avgRating ?? 0));
-
-  return (
-    <View style={styles.table}>
-      <View style={styles.tableHeader}>
-        <Text style={[styles.th, styles.thCat]}>קטגוריה</Text>
-        <Text style={[styles.th, styles.thSmall]}>דירוג</Text>
-        <Text style={[styles.th, styles.thSmall]}>ספקים</Text>
-        <Text style={[styles.th, styles.thSmall]}>הצעות</Text>
-      </View>
-      {categories.map((cat) => (
-        <View key={cat.name} style={styles.tableRow}>
-          <Text style={[styles.td, styles.thCat]}>{cat.name}</Text>
-          <Text style={[styles.td, styles.thSmall, { color: ratingColor(cat.avgRating), fontWeight: '700' }]}>
-            {cat.avgRating != null ? cat.avgRating : '-'}
-          </Text>
-          <Text style={[styles.td, styles.thSmall]}>{cat.count}</Text>
-          <Text style={[styles.td, styles.thSmall]}>{cat.offers}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function BidWinTable() {
-  const sorted = [...MOCK_PROVIDERS].sort((a, b) => {
-    const ratioA = a.offersSent > 0 ? a.completed / a.offersSent : 0;
-    const ratioB = b.offersSent > 0 ? b.completed / b.offersSent : 0;
-    return ratioB - ratioA;
+function BidWinTable({ rows }: { rows: AdminProviderRow[] }) {
+  const sorted = [...rows].sort((a, b) => {
+    const rA = a.offersSent > 0 ? a.completed / a.offersSent : 0;
+    const rB = b.offersSent > 0 ? b.completed / b.offersSent : 0;
+    return rB - rA;
   });
 
   return (
     <View style={styles.table}>
       <View style={styles.tableHeader}>
         <Text style={[styles.th, styles.thName]}>ספק</Text>
-        <Text style={[styles.th, styles.thSmall]}>הצעות</Text>
-        <Text style={[styles.th, styles.thSmall]}>נבחר</Text>
-        <Text style={[styles.th, styles.thSmall]}>יחס זכייה</Text>
+        <Text style={[styles.th, styles.thCity]}>עיר</Text>
+        <Text style={[styles.th, styles.thSmall]}>הושלמו</Text>
+        <Text style={[styles.th, styles.thSmall]}>זכייה</Text>
         <Text style={[styles.th, styles.thSmall]}>דירוג</Text>
-        <Text style={[styles.th, styles.thSmall]}>זמן תגובה</Text>
+        <Text style={[styles.th, styles.thSmall]}>תגובה</Text>
       </View>
+
       {sorted.map((p) => {
         const winRate = p.offersSent > 0 ? Math.round((p.completed / p.offersSent) * 100) : 0;
         const isLow = (p.avgResponseMinutes ?? 0) > 120 || winRate === 0;
         return (
-          <View key={p.phone} style={[styles.tableRow, isLow && styles.tableRowBad]}>
+          <Pressable
+            key={p.phone}
+            onPress={() => router.push({
+              pathname: '/admin/providers/[phone]',
+              params: { phone: p.phone },
+            } as never)}
+            style={[styles.tableRow, isLow && styles.tableRowBad]}
+          >
             <Text style={[styles.td, styles.thName]} numberOfLines={1}>{p.displayName}</Text>
-            <Text style={[styles.td, styles.thSmall]}>{p.accepted}</Text>
+            <Text style={[styles.td, styles.thCity]} numberOfLines={1}>
+              {CITY_LABELS_HE[p.city] || p.city}
+            </Text>
             <Text style={[styles.td, styles.thSmall]}>{p.completed}</Text>
             <Text style={[styles.td, styles.thSmall, { fontWeight: '700' }]}>{winRate}%</Text>
             <Text style={[styles.td, styles.thSmall, { color: ratingColor(p.avgRating) }]}>
-              {p.avgRating != null ? p.avgRating : '\u2014'}
+              {p.avgRating != null ? p.avgRating.toFixed(1) : '—'}
             </Text>
             <Text style={[styles.td, styles.thSmall, {
               color: (p.avgResponseMinutes ?? 0) > 120 ? '#EF4444' : COLORS.text,
             }]}>
               {formatTime(p.avgResponseMinutes)}
             </Text>
-          </View>
+          </Pressable>
         );
       })}
     </View>
@@ -161,10 +149,28 @@ const styles = StyleSheet.create({
   content: { padding: SPACING.md, paddingBottom: 40 },
   contentDesktop: { maxWidth: 900, alignSelf: 'center', width: '100%' },
 
-  sectionTitle: {
-    fontSize: 16, fontWeight: '700', color: COLORS.text,
-    marginTop: SPACING.lg, marginBottom: SPACING.sm,
+  centered: { padding: SPACING.lg, alignItems: 'center' },
+  empty: {
+    padding: SPACING.lg,
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADII.md,
   },
+  emptyText: {
+    color: COLORS.textTertiary, fontSize: 13, textAlign: 'center', lineHeight: 20,
+  },
+
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: SPACING.md, marginBottom: SPACING.sm,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  refreshBtn: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: COLORS.surface, borderRadius: RADII.sm,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  refreshText: { fontSize: 11, color: COLORS.text, fontWeight: '600' },
 
   cardsRow: { flexDirection: 'row', gap: 10, marginBottom: SPACING.lg, flexWrap: 'wrap' },
   card: {
@@ -184,10 +190,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10, paddingHorizontal: 10,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
   },
-  tableRowBad: { backgroundColor: 'rgba(239, 68, 68, 0.08)' },
-  th: { fontSize: 11, fontWeight: '700', color: COLORS.textTertiary, textAlign: 'center' },
-  td: { fontSize: 12, color: COLORS.text, textAlign: 'center' },
-  thCat: { flex: 2, textAlign: 'right' },
-  thName: { flex: 2, textAlign: 'right' },
+  tableRowBad: { backgroundColor: 'rgba(239, 68, 68, 0.06)' },
+  th: { fontSize: 11, fontWeight: '700', color: COLORS.textTertiary },
+  td: { fontSize: 13, color: COLORS.text },
+  thName: { flex: 2 },
+  thCity: { flex: 1.2 },
   thSmall: { flex: 1, textAlign: 'center' },
 });

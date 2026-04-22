@@ -1,27 +1,34 @@
-import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Slot, router, usePathname } from 'expo-router';
 import Head from 'expo-router/head';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
+import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports';
 
 /**
- * Admin UIDs — only these users can access the admin dashboard.
- * Everyone else sees "access denied" (no redirect, no jumping).
+ * Admin access — driven by a Firestore `adminUids/{uid}` document.
+ * Add your UID there via Firebase Console (manual seed) after signup.
  *
- * Add your Firebase Auth UID here after signing in.
- * Find it in Firebase Console → Authentication → Users → copy UID.
+ * In __DEV__ mode we allow any authenticated user so you can test
+ * without the extra Firestore round-trip.
  */
-const ADMIN_UIDS = new Set([
-  '6sLBVwm1vyWSDjkrK0DffMIJ2i03',
-]);
-
-// In dev mode, allow any authenticated user (so you can test without
-// knowing your UID). In production, only ADMIN_UIDS are allowed.
 const ALLOW_DEV_ACCESS = __DEV__;
+
+async function checkIsAdminFromFirestore(uid: string): Promise<boolean> {
+  try {
+    const db = getFirestore();
+    const snap = await getDoc(doc(db, 'adminUids', uid));
+    return (snap as any).exists?.() === true;
+  } catch {
+    return false;
+  }
+}
 
 const TABS = [
   { name: 'index', label: 'סקירה', icon: 'pulse-outline' as const },
+  { name: 'requests', label: 'בקשות', icon: 'list-outline' as const },
   { name: 'funnel', label: 'משפך', icon: 'analytics-outline' as const },
   { name: 'providers', label: 'ספקים', icon: 'people-outline' as const },
   { name: 'geo', label: 'גיאוגרפיה', icon: 'map-outline' as const },
@@ -31,9 +38,16 @@ const TABS = [
 export default function AdminLayout() {
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(ALLOW_DEV_ACCESS ? true : null);
+
+  useEffect(() => {
+    if (ALLOW_DEV_ACCESS) { setIsAdmin(true); return; }
+    if (!user) { setIsAdmin(false); return; }
+    void checkIsAdminFromFirestore(user.uid).then(setIsAdmin);
+  }, [user]);
 
   // Still loading auth — show nothing (no flash)
-  if (isLoading) {
+  if (isLoading || isAdmin === null) {
     return (
       <View style={styles.container}>
         <View style={styles.centered}>
@@ -59,8 +73,7 @@ export default function AdminLayout() {
     );
   }
 
-  // Logged in but not admin — show "access denied" (NOT a redirect)
-  const isAdmin = ALLOW_DEV_ACCESS || ADMIN_UIDS.has(user.uid);
+  // Logged in but not admin — show "access denied" + instructions
   if (!isAdmin) {
     return (
       <View style={styles.container}>
@@ -68,7 +81,13 @@ export default function AdminLayout() {
           <Ionicons name="shield-outline" size={48} color={COLORS.error} />
           <Text style={styles.deniedTitle}>אין גישה</Text>
           <Text style={styles.deniedSubtitle}>
-            לוח הבקרה זמין למנהלי המערכת בלבד
+            לוח הבקרה זמין למנהלי המערכת בלבד.{'\n\n'}
+            ה-UID שלך:{'\n'}
+            <Text style={{ fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }}>
+              {user.uid}
+            </Text>
+            {'\n\n'}
+            כדי לקבל גישה: הוסף מסמך ל-Firestore באוסף <Text style={{ fontWeight: '700' }}>adminUids</Text> עם ה-ID הזה.
           </Text>
           <Pressable style={styles.backBtn} onPress={() => router.replace('/(tabs)')}>
             <Text style={styles.backBtnText}>חזרה לאפליקציה</Text>
@@ -107,7 +126,13 @@ function AdminTopNav() {
         </Pressable>
         <Text style={styles.navTitle}>📊 לוח בקרה</Text>
       </View>
-      <View style={styles.tabRow}>
+      {/* Horizontal scroll — 6 tabs don't fit on a phone width.
+          Keeps each tab at its natural width, lets the user swipe. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabRow}
+      >
         {TABS.map((tab) => {
           const isActive = tab.name === 'index'
             ? pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/index'
@@ -129,7 +154,7 @@ function AdminTopNav() {
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }

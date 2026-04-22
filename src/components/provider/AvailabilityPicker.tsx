@@ -57,13 +57,27 @@ export function AvailabilityPicker({ onChange }: Props) {
 
   const days: DayOption[] = useMemo(() => ['today', 'tomorrow', 'dayAfter'], []);
 
+  // Windows that START after "now" for today. If today has no slots left
+  // (e.g. it's already 22:00), we hide the "today" chip entirely so the
+  // provider can't pick a day with nothing to book.
+  const todayRemainingWindows = useMemo(() => {
+    const israelHour = getIsraelHour(new Date());
+    return TIME_WINDOWS.filter((w) => w.startHour > israelHour);
+  }, [day]);
+  const hasTodaySlots = todayRemainingWindows.length > 0;
+
+  // Filter the day chip list based on whether today has slots left.
+  const visibleDays = hasTodaySlots ? days : days.filter((d) => d !== 'today');
+
+  const windowsForDay = day === 'today' ? todayRemainingWindows : TIME_WINDOWS;
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>{t('providerForm.whenLabel')}</Text>
 
       {/* Step 1: day */}
       <View style={styles.row}>
-        {days.map((d) => {
+        {visibleDays.map((d) => {
           const active = day === d;
           return (
             <Pressable key={d} onPress={() => apply(d, windowKey)} style={[styles.chip, active && styles.chipActive]}>
@@ -75,10 +89,12 @@ export function AvailabilityPicker({ onChange }: Props) {
         })}
       </View>
 
-      {/* Step 2: 2-hour windows, revealed once a day is picked */}
+      {/* Step 2: 2-hour windows, revealed once a day is picked.
+          For today, past windows are filtered out — a provider can't
+          promise "9-11" if it's already 10am. */}
       {day && (
         <View style={[styles.row, { marginTop: 10 }]}>
-          {TIME_WINDOWS.map((w) => {
+          {windowsForDay.map((w) => {
             const active = windowKey === w.key;
             return (
               <Pressable
@@ -96,6 +112,14 @@ export function AvailabilityPicker({ onChange }: Props) {
       )}
     </View>
   );
+}
+
+/** Current hour in Israel local time (0-23). */
+function getIsraelHour(d: Date): number {
+  const offsetH = israelOffsetHours(d);
+  // Subtract the (negative) UTC offset: Israel is ahead of UTC, so
+  // Israel hour = UTC hour + offset.
+  return (d.getUTCHours() + offsetH + 24) % 24;
 }
 
 /**

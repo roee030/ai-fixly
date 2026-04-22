@@ -117,6 +117,14 @@ class GeminiAnalysisService implements AIAnalysisService {
           // localizeProfession() so the contents here are essentially unused.
           professionLabelsHe: professions,
           shortSummary: '',
+          // Perf telemetry for the admin service-timeline. Confirm screen
+          // re-emits this as a `gemini` event once the real requestId exists.
+          __perf: {
+            model: modelName,
+            ms,
+            imageCount: (input.images || []).length,
+            payloadKB,
+          },
         };
       } catch (err: any) {
         // Never retry a moderation block — it's deterministic.

@@ -29,6 +29,7 @@ import { Env } from './env';
 import { findNearbyProvidersCached } from './placesCache';
 import type { PlacesProvider } from './googlePlaces';
 import { sendWhatsAppMessage, sendWhatsAppTemplate } from './twilio';
+import { EventBatcher } from './eventLogger';
 import { normaliseCityName } from './cityNames';
 import { parseProviderReply } from './geminiParser';
 import { FirestoreClient } from './firestore';
@@ -59,6 +60,12 @@ export default {
     // Task 3: Check for manager alerts (stale requests, unresponsive providers)
     await handleAlertChecks(firestore, env).catch(err =>
       console.error('[cron] alert checks failed:', err)
+    );
+
+    // Task 4: Write today's admin daily rollup. Cheap (one query + one write)
+    // so we run it every cron firing — the file is idempotent.
+    await handleDailyRollup(firestore).catch(err =>
+      console.error('[cron] daily rollup failed:', err)
     );
 
     console.log('[cron] scheduled tasks complete');
@@ -144,6 +151,11 @@ export default {
         const rlOk = await checkRateLimit(env.PLACES_CACHE, `feedback:${clientIp}`, 5, 3600);
         if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
         return await handleCriticalFeedback(request, env);
+      }
+      if (url.pathname === '/review' && request.method === 'POST') {
+        const rlOk = await checkRateLimit(env.PLACES_CACHE, `review:${clientIp}`, 10, 3600);
+        if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        return await handleReview(request, env, ctx);
       }
       if (url.pathname === '/webhook/twilio' && request.method === 'POST') {
         return await handleTwilioWebhook(request, env);
@@ -254,6 +266,9 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
   );
 
   const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  const events = new EventBatcher();
+  const broadcastStart = Date.now();
+  const broadcastStartIso = new Date(broadcastStart).toISOString();
 
   // Fetch the set of provider phones that are already busy with another
   // in-progress job so we can exclude them from this broadcast.
@@ -265,6 +280,7 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
   const seenPlaceIds = new Set<string>();
 
   for (const profession of body.professions) {
+    const t0 = Date.now();
     try {
       const found = await findNearbyProvidersCached({
         kv: env.PLACES_CACHE,
@@ -278,6 +294,12 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       });
 
       console.log(`[places] ${profession}: found ${found.length} providers`);
+      events.push({
+        type: 'places_search',
+        ok: true,
+        durationMs: Date.now() - t0,
+        metadata: { profession, foundCount: found.length },
+      });
       for (const p of found) {
         if (seenPlaceIds.has(p.placeId)) continue;
         if (p.phone && busyPhones.has(p.phone)) {
@@ -289,6 +311,13 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
       }
     } catch (err) {
       console.error(`Places search failed for ${profession}:`, err);
+      events.push({
+        type: 'places_search',
+        ok: false,
+        durationMs: Date.now() - t0,
+        error: String(err).slice(0, 200),
+        metadata: { profession },
+      });
     }
   }
 
@@ -464,6 +493,7 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
 
     // Real mode: send WhatsApp with personalized form URLs for THIS provider.
     const message = messagePrefix + buildProviderMessage(body, env, provider.phone);
+    const sendStart = Date.now();
     const result = await sendProviderIntro({
       env,
       to: provider.phone,
@@ -478,9 +508,22 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
     if (result.success) {
       sentCount++;
       results.push({ name: provider.name, phone: provider.phone, sent: true });
+      events.push({
+        type: 'twilio_send',
+        ok: true,
+        durationMs: Date.now() - sendStart,
+        metadata: { providerPhone: provider.phone, providerName: provider.name },
+      });
     } else {
       console.warn(`Failed to WhatsApp ${provider.name}:`, result.error);
       results.push({ name: provider.name, phone: provider.phone, sent: false, reason: result.error });
+      events.push({
+        type: 'twilio_send',
+        ok: false,
+        durationMs: Date.now() - sendStart,
+        error: String(result.error).slice(0, 200),
+        metadata: { providerPhone: provider.phone, providerName: provider.name },
+      });
     }
   }
 
@@ -493,6 +536,17 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
   } catch (err) {
     console.error('Save broadcast result failed:', err);
   }
+
+  // ── Admin observability: broadcastSummary + event batch ─────────────────
+  const failedCount = results.filter((r) => !r.sent).length;
+  ctx.waitUntil(firestore.updateBroadcastSummary(body.requestId, {
+    sentCount,
+    failedCount,
+    providersFound: allProviders.length,
+    startedAt: broadcastStartIso,
+    finishedAt: new Date().toISOString(),
+  }));
+  ctx.waitUntil(events.flush(firestore, body.requestId));
 
   // Schedule next wave if there are more providers to contact
   if (!isTestMode && allProviders.length > waveProviders.length) {
@@ -1108,6 +1162,35 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
       },
     });
 
+    // First-response detection — idempotent. Only the very first incoming
+    // bid for a request writes timeToFirstResponse. We race here because
+    // two bids could arrive ~simultaneously; if both clear the check, the
+    // writes clobber to the same value, which is fine.
+    try {
+      const alreadySet = await firestore.hasTimeToFirstResponse(entry.requestId);
+      if (!alreadySet) {
+        const startedAt = await firestore.getBroadcastStartedAt(entry.requestId);
+        if (startedAt) {
+          const minutes = Math.max(0, Math.round(
+            (Date.now() - new Date(startedAt).getTime()) / 60000,
+          ));
+          await firestore.setTimeToFirstResponse(entry.requestId, minutes);
+          await firestore.batchWriteEvents(entry.requestId, [{
+            type: 'first_response',
+            ok: true,
+            durationMs: 0,
+            metadata: {
+              providerPhone,
+              providerName: entry.providerName,
+              minutesAfterBroadcast: minutes,
+            },
+          }]);
+        }
+      }
+    } catch (err) {
+      console.warn('[webhook] first-response capture failed:', err);
+    }
+
     await pushToCustomer({
       env,
       requestId: entry.requestId,
@@ -1125,6 +1208,93 @@ async function handleTwilioWebhook(request: Request, env: Env): Promise<Response
 // =========================================================================
 // /feedback/critical
 // =========================================================================
+
+// =========================================================================
+// /review — customer review submission, atomic transaction
+// =========================================================================
+
+interface ReviewBody {
+  requestId: string;
+  rating: number;
+  comment: string;
+  pricePaid: number;
+  selectedCategories?: string[];
+  classificationCorrect?: boolean | null;
+}
+
+async function handleReview(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  // Auth: require Firebase ID token.
+  const authHeader = request.headers.get('Authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!token) return jsonResponse({ error: 'unauthorized' }, 401, request);
+
+  let uid: string;
+  try {
+    const decoded = await verifyFirebaseIdToken(
+      token,
+      env.FIREBASE_PROJECT_ID,
+      env.PLACES_CACHE,
+    );
+    uid = decoded.sub;
+  } catch (err) {
+    console.warn('[review] token verification failed:', err);
+    return jsonResponse({ error: 'unauthorized' }, 401, request);
+  }
+
+  // Validate body.
+  let body: ReviewBody;
+  try {
+    body = (await request.json()) as ReviewBody;
+  } catch {
+    return jsonResponse({ error: 'invalid_body' }, 400, request);
+  }
+  if (!body.requestId || typeof body.requestId !== 'string' || body.requestId.length > 100) {
+    return jsonResponse({ error: 'invalid_request_id' }, 400, request);
+  }
+  if (typeof body.rating !== 'number' || body.rating < 1 || body.rating > 5) {
+    return jsonResponse({ error: 'invalid_rating' }, 400, request);
+  }
+  if (typeof body.pricePaid !== 'number' || body.pricePaid < 0 || body.pricePaid > 1_000_000) {
+    return jsonResponse({ error: 'invalid_price' }, 400, request);
+  }
+  const comment = String(body.comment || '').slice(0, 1000);
+
+  const firestore = new FirestoreClient(
+    env.FIREBASE_PROJECT_ID,
+    env.FIREBASE_SERVICE_ACCOUNT_JSON,
+  );
+
+  const result = await firestore.runReviewTransaction({
+    uid,
+    requestId: body.requestId,
+    rating: body.rating,
+    comment,
+    pricePaid: body.pricePaid,
+    selectedCategories: body.selectedCategories,
+    classificationCorrect: body.classificationCorrect,
+  });
+
+  if (!result.ok) {
+    return jsonResponse({ error: result.reason }, result.status, request);
+  }
+
+  // Fire-and-forget event log so the admin timeline shows the submission.
+  ctx.waitUntil(firestore.batchWriteEvents(body.requestId, [{
+    type: 'review_submitted',
+    ok: true,
+    durationMs: 0,
+    metadata: {
+      rating: body.rating,
+      pricePaid: body.pricePaid,
+    },
+  }]));
+
+  return jsonResponse({ ok: true, reviewId: result.reviewId }, 200, request);
+}
 
 async function handleCriticalFeedback(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as { text: string; screen: string; error: string };
@@ -1166,6 +1336,105 @@ async function handleCriticalFeedback(request: Request, env: Env): Promise<Respo
 // =========================================================================
 // Cron handlers
 // =========================================================================
+
+/**
+ * Compute + write the daily admin stats rollup. One doc per calendar day
+ * (Israel local). Reads the current day's requests, aggregates counts,
+ * averages, and a per-city breakdown, then writes
+ * `adminStats/daily-{YYYYMMDD}`. The admin overview graphs read these
+ * pre-rolled docs instead of aggregating on every page load.
+ */
+async function handleDailyRollup(firestore: FirestoreClient): Promise<void> {
+  // "Today" in Israel local time (UTC+2/+3). We're not DST-correct here —
+  // off by an hour around the switchover is acceptable for a daily bucket.
+  const now = new Date();
+  // Shift to UTC+3 (generous, handles DST without extra logic).
+  const israelNow = new Date(now.getTime() + 3 * 3600 * 1000);
+  const y = israelNow.getUTCFullYear();
+  const m = String(israelNow.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(israelNow.getUTCDate()).padStart(2, '0');
+  const ymd = `${y}-${m}-${d}`;
+
+  const startOfDayIso = `${ymd}T00:00:00.000Z`;
+  const endOfDay = new Date(new Date(startOfDayIso).getTime() + 24 * 3600 * 1000);
+  const endOfDayIso = endOfDay.toISOString();
+
+  const requests = await firestore.getRequestsInRange(startOfDayIso, endOfDayIso);
+
+  let reviewsSubmitted = 0;
+  let totalRating = 0;
+  let totalPrice = 0;
+  let respSum = 0;
+  let respCount = 0;
+  const byCity: Record<string, {
+    requestsCreated: number;
+    reviewsSubmitted: number;
+    avgTimeToFirstResponseMin: number;
+    avgRating: number;
+    grossValue: number;
+    _respSum: number;
+    _respCount: number;
+    _ratingSum: number;
+  }> = {};
+
+  const getBucket = (city: string) => {
+    if (!byCity[city]) {
+      byCity[city] = {
+        requestsCreated: 0, reviewsSubmitted: 0,
+        avgTimeToFirstResponseMin: 0, avgRating: 0, grossValue: 0,
+        _respSum: 0, _respCount: 0, _ratingSum: 0,
+      };
+    }
+    return byCity[city];
+  };
+
+  for (const req of requests) {
+    const bucket = getBucket(req.city || 'unknown');
+    bucket.requestsCreated++;
+
+    if (req.reviewRating !== undefined) {
+      reviewsSubmitted++;
+      totalRating += req.reviewRating;
+      bucket.reviewsSubmitted++;
+      bucket._ratingSum += req.reviewRating;
+    }
+    if (req.reviewPricePaid !== undefined) {
+      totalPrice += req.reviewPricePaid;
+      bucket.grossValue += req.reviewPricePaid;
+    }
+    if (req.timeToFirstResponse !== undefined) {
+      respSum += req.timeToFirstResponse;
+      respCount++;
+      bucket._respSum += req.timeToFirstResponse;
+      bucket._respCount++;
+    }
+  }
+
+  // Final averages (strip the underscore-prefixed scratchpad fields).
+  const cleanByCity: Record<string, unknown> = {};
+  for (const [city, b] of Object.entries(byCity)) {
+    cleanByCity[city] = {
+      requestsCreated: b.requestsCreated,
+      reviewsSubmitted: b.reviewsSubmitted,
+      avgTimeToFirstResponseMin: b._respCount > 0 ? Math.round((b._respSum / b._respCount) * 10) / 10 : 0,
+      avgRating: b.reviewsSubmitted > 0 ? Math.round((b._ratingSum / b.reviewsSubmitted) * 10) / 10 : 0,
+      grossValue: Math.round(b.grossValue),
+    };
+  }
+
+  const payload = {
+    date: ymd,
+    requestsCreated: requests.length,
+    reviewsSubmitted,
+    avgTimeToFirstResponseMin: respCount > 0 ? Math.round((respSum / respCount) * 10) / 10 : 0,
+    avgRating: reviewsSubmitted > 0 ? Math.round((totalRating / reviewsSubmitted) * 10) / 10 : 0,
+    grossValue: Math.round(totalPrice),
+    byCity: cleanByCity,
+  };
+
+  await firestore.writeAdminDailyStats(ymd, payload);
+  console.log(`[rollup] daily-${ymd} written — requests=${requests.length} reviews=${reviewsSubmitted}`);
+}
 
 async function handleReviewReminders(firestore: FirestoreClient, env: Env): Promise<void> {
   const requests = await firestore.getRequestsForReviewReminder();

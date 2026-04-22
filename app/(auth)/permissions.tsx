@@ -8,7 +8,13 @@ import { ScreenContainer } from '../../src/components/layout';
 import { Button } from '../../src/components/ui';
 import { notificationService } from '../../src/services/notifications';
 import { useAppStore } from '../../src/stores/useAppStore';
+import { useAuthStore } from '../../src/stores/useAuthStore';
 import { COLORS } from '../../src/constants';
+import { resolveCity } from '../../src/utils/resolveCity';
+import {
+  getFirestore, doc, setDoc,
+} from '../../src/services/firestore/imports';
+import { logger } from '../../src/services/logger';
 
 /**
  * Hard permission gate. The user cannot leave this screen until they've
@@ -46,15 +52,55 @@ export default function PermissionsScreen() {
     return () => sub.remove();
   }, [refreshPermissions]);
 
+  const user = useAuthStore((s) => s.user);
+
   const handleRequestLocation = async () => {
     setIsCheckingLocation(true);
     try {
       const result = await Location.requestForegroundPermissionsAsync();
-      setLocationGranted(result.status === 'granted');
+      const granted = result.status === 'granted';
+      setLocationGranted(granted);
+      if (granted) {
+        // Fetch a real coordinate right now + persist to Firestore so the
+        // capture flow never has to re-request GPS or fall back silently.
+        await persistUserLocation();
+      }
     } finally {
       setIsCheckingLocation(false);
     }
   };
+
+  const persistUserLocation = useCallback(async () => {
+    if (!user) return;
+    try {
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const { latitude: lat, longitude: lng } = pos.coords;
+      let address = '';
+      try {
+        const reverse = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+        const first = reverse[0];
+        if (first) {
+          address = [first.city, first.region, first.country].filter(Boolean).join(', ');
+        }
+      } catch {
+        // reverse geocode is best-effort; empty address is acceptable.
+      }
+
+      const db = getFirestore();
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          location: { lat, lng, address },
+          locationSummary: resolveCity(lat, lng),
+        },
+        { merge: true },
+      );
+    } catch (err) {
+      logger.warn('[permissions] persistUserLocation failed', { err: String(err) });
+    }
+  }, [user]);
 
   const handleRequestNotifications = async () => {
     setIsCheckingNotif(true);

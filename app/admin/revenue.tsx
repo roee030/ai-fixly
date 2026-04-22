@@ -1,186 +1,151 @@
-import { View, Text, ScrollView, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  View, Text, ScrollView, StyleSheet, Platform, Pressable,
+  useWindowDimensions, ActivityIndicator,
+} from 'react-native';
 import { COLORS, SPACING, RADII } from '../../src/constants';
-import { MOCK_REVENUE, MOCK_ERRORS } from '../../src/services/admin/mockData';
+import { CITY_LABELS_HE } from '../../src/constants/cities';
+import { useAdminQuery } from '../../src/hooks/useAdminQuery';
+import { queryDailyStats } from '../../src/services/admin/dailyStatsQuery';
+import { SimpleBarChart } from '../../src/components/admin/charts/SimpleBarChart';
 
-function formatCurrency(value: number): string {
-  return `${value.toLocaleString('he-IL')}₪`;
-}
-
-function severityColor(severity: string): string {
-  if (severity === 'critical') return '#EF4444';
-  if (severity === 'bug') return '#F59E0B';
-  return '#6366F1';
-}
-
-function severityIcon(severity: string): string {
-  if (severity === 'critical') return '\u{1F534}';
-  if (severity === 'bug') return '\u{1F7E1}';
-  return '\u{1F4A1}';
-}
-
+/**
+ * Revenue screen. Pulls from the adminStats daily rollup — one fetch
+ * powers everything: period totals, bar chart, and per-city breakdown.
+ */
 export default function RevenuePage() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 768;
+  const [days, setDays] = useState<30 | 90>(30);
+
+  const fetcher = useCallback(() => queryDailyStats(days), [days]);
+  const { data, isLoading } = useAdminQuery(`admin:revenue:${days}`, fetcher);
+
+  const summary = useMemo(() => {
+    if (!data) return null;
+    const total = data.reduce((s, r) => s + r.grossValue, 0);
+    const reviews = data.reduce((s, r) => s + r.reviewsSubmitted, 0);
+    const avgTicket = reviews > 0 ? Math.round(total / reviews) : 0;
+    const byCity: Record<string, number> = {};
+    for (const r of data) {
+      for (const [city, bucket] of Object.entries(r.byCity || {})) {
+        byCity[city] = (byCity[city] || 0) + ((bucket as any).grossValue ?? 0);
+      }
+    }
+    const cityRows = Object.entries(byCity)
+      .map(([city, v]) => ({ city, value: v }))
+      .sort((a, b) => b.value - a.value);
+    return { total, reviews, avgTicket, cityRows };
+  }, [data]);
 
   return (
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, isDesktop && styles.contentDesktop]}
     >
-      <FinancialSummary />
-      <SectionTitle text="מחיר ממוצע לפי קטגוריה" />
-      <PriceByCategoryTable />
-      <SectionTitle text="דיווחים ומשוב" />
-      <ErrorSummary />
-      <RecentFeedback />
+      <View style={styles.toggleRow}>
+        <Pressable
+          onPress={() => setDays(30)}
+          style={[styles.toggleBtn, days === 30 && styles.toggleBtnActive]}
+        >
+          <Text style={[styles.toggleText, days === 30 && styles.toggleTextActive]}>30 ימים</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setDays(90)}
+          style={[styles.toggleBtn, days === 90 && styles.toggleBtnActive]}
+        >
+          <Text style={[styles.toggleText, days === 90 && styles.toggleTextActive]}>90 ימים</Text>
+        </Pressable>
+      </View>
+
+      {isLoading && !summary && (
+        <View style={styles.centered}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        </View>
+      )}
+
+      {summary && (
+        <>
+          <View style={styles.cardsRow}>
+            <Card label='סה"כ ברוטו' value={`₪${summary.total.toLocaleString('he-IL')}`} color="#22C55E" />
+            <Card label='ביקורות שהוגשו' value={String(summary.reviews)} />
+            <Card label='מחיר ממוצע' value={summary.avgTicket > 0 ? `₪${summary.avgTicket.toLocaleString('he-IL')}` : '—'} />
+          </View>
+
+          <Text style={styles.sectionTitle}>התפתחות הכנסות</Text>
+          <SimpleBarChart
+            title={`₪ ברוטו ליום (${days} ימים)`}
+            data={data!.map((r) => ({ x: r.date.slice(5), y: r.grossValue }))}
+            color="#22C55E"
+            formatValue={(v) => `₪${v.toLocaleString('he-IL')}`}
+          />
+
+          <Text style={styles.sectionTitle}>פילוח לפי עיר</Text>
+          {summary.cityRows.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>אין נתוני הכנסות לפי עיר עדיין</Text>
+            </View>
+          ) : (
+            <View style={styles.table}>
+              {summary.cityRows.map((row) => (
+                <View key={row.city} style={styles.cityRow}>
+                  <Text style={styles.cityName}>{CITY_LABELS_HE[row.city] || row.city}</Text>
+                  <Text style={styles.cityValue}>₪{row.value.toLocaleString('he-IL')}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </>
+      )}
     </ScrollView>
   );
 }
 
-function SectionTitle({ text }: { text: string }) {
-  return <Text style={styles.sectionTitle}>{text}</Text>;
-}
-
-function FinancialSummary() {
-  const r = MOCK_REVENUE;
-  const cards = [
-    { label: 'שווי עבודה ממוצע', value: formatCurrency(r.avgJobValue) },
-    { label: 'סה"כ עבודות שנסגרו', value: formatCurrency(r.totalJobValue) },
-    { label: 'עמלה פוטנציאלית (10%)', value: formatCurrency(r.potentialCommission10) },
-  ];
-
+function Card({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <View style={styles.cardsRow}>
-      {cards.map((c) => (
-        <View key={c.label} style={styles.card}>
-          <Text style={styles.cardValue}>{c.value}</Text>
-          <Text style={styles.cardLabel}>{c.label}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function PriceByCategoryTable() {
-  return (
-    <View style={styles.table}>
-      <View style={styles.tableHeader}>
-        <Text style={[styles.th, styles.thCat]}>קטגוריה</Text>
-        <Text style={[styles.th, styles.thSmall]}>מחיר ממוצע</Text>
-        <Text style={[styles.th, styles.thSmall]}>עבודות</Text>
-      </View>
-      {MOCK_REVENUE.categoryAvgPrices.map((cat) => (
-        <View key={cat.category} style={styles.tableRow}>
-          <Text style={[styles.td, styles.thCat]}>{cat.category}</Text>
-          <Text style={[styles.td, styles.thSmall]}>{formatCurrency(cat.avgPrice)}</Text>
-          <Text style={[styles.td, styles.thSmall]}>{cat.count}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function ErrorSummary() {
-  const e = MOCK_ERRORS;
-
-  return (
-    <View style={styles.errorSummary}>
-      <Text style={styles.errorSummaryTitle}>
-        דיווחים: {e.totalFeedback} סה"כ
-      </Text>
-      <View style={styles.errorCountsRow}>
-        <ErrorCount label="קריטי" count={e.criticalCount} color="#EF4444" />
-        <ErrorCount label="באג" count={e.bugCount} color="#F59E0B" />
-        <ErrorCount label="הצעות" count={e.suggestionCount} color="#6366F1" />
-        <ErrorCount label="כישלונות AI" count={e.aiFailures} color="#EF4444" />
-      </View>
-    </View>
-  );
-}
-
-function ErrorCount({ label, count, color }: { label: string; count: number; color: string }) {
-  return (
-    <View style={styles.errorCountBadge}>
-      <View style={[styles.errorDot, { backgroundColor: color }]} />
-      <Text style={styles.errorCountText}>{count} {label}</Text>
-    </View>
-  );
-}
-
-function RecentFeedback() {
-  return (
-    <View style={styles.feedbackList}>
-      <Text style={styles.feedbackTitle}>דיווחים אחרונים:</Text>
-      {MOCK_ERRORS.recentFeedback.map((fb, i) => (
-        <View key={i} style={styles.feedbackRow}>
-          <Text style={styles.feedbackIcon}>{severityIcon(fb.severity)}</Text>
-          <View style={styles.feedbackBody}>
-            <Text style={styles.feedbackText}>
-              {fb.text} <Text style={styles.feedbackScreen}>({fb.screen})</Text>
-            </Text>
-            <Text style={styles.feedbackTime}>{fb.time}</Text>
-          </View>
-        </View>
-      ))}
+    <View style={styles.card}>
+      <Text style={[styles.cardValue, color ? { color } : undefined]}>{value}</Text>
+      <Text style={styles.cardLabel}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { padding: SPACING.md, paddingBottom: 40 },
+  content: { padding: SPACING.md, paddingBottom: 40, gap: SPACING.sm },
   contentDesktop: { maxWidth: 900, alignSelf: 'center', width: '100%' },
+  centered: { padding: SPACING.lg, alignItems: 'center' },
+  toggleRow: {
+    flexDirection: 'row', gap: 2, padding: 2,
+    backgroundColor: COLORS.surface, borderRadius: RADII.sm,
+    alignSelf: 'flex-start',
+  },
+  toggleBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADII.sm - 2 },
+  toggleBtnActive: { backgroundColor: COLORS.primary },
+  toggleText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
+  toggleTextActive: { color: '#FFFFFF' },
 
   sectionTitle: {
-    fontSize: 16, fontWeight: '700', color: COLORS.text,
-    marginTop: SPACING.lg, marginBottom: SPACING.sm,
+    fontSize: 15, fontWeight: '700', color: COLORS.text,
+    marginTop: SPACING.md,
   },
 
-  cardsRow: { flexDirection: 'row', gap: 10, marginBottom: SPACING.lg, flexWrap: 'wrap' },
+  cardsRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   card: {
-    flex: 1, minWidth: 140, backgroundColor: COLORS.surface,
+    flex: 1, minWidth: 120, backgroundColor: COLORS.surface,
     borderRadius: RADII.md, padding: SPACING.md, alignItems: 'center',
   },
   cardValue: { fontSize: 22, fontWeight: 'bold', color: COLORS.text, marginBottom: 4 },
-  cardLabel: { fontSize: 12, color: COLORS.textSecondary },
+  cardLabel: { fontSize: 12, color: COLORS.textSecondary, textAlign: 'center' },
 
   table: { backgroundColor: COLORS.surface, borderRadius: RADII.md, overflow: 'hidden' },
-  tableHeader: {
-    flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 12,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  tableRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, paddingHorizontal: 12,
+  cityRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    padding: 12,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
   },
-  th: { fontSize: 11, fontWeight: '700', color: COLORS.textTertiary },
-  td: { fontSize: 13, color: COLORS.text },
-  thCat: { flex: 2, textAlign: 'right' },
-  thSmall: { flex: 1, textAlign: 'center' },
-
-  errorSummary: {
-    backgroundColor: COLORS.surface, borderRadius: RADII.md,
-    padding: SPACING.md, marginBottom: SPACING.sm,
-  },
-  errorSummaryTitle: { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.sm },
-  errorCountsRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
-  errorCountBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  errorDot: { width: 8, height: 8, borderRadius: 4 },
-  errorCountText: { fontSize: 12, color: COLORS.text },
-
-  feedbackList: {
-    backgroundColor: COLORS.surface, borderRadius: RADII.md,
-    padding: SPACING.md, marginTop: SPACING.sm,
-  },
-  feedbackTitle: { fontSize: 13, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.sm },
-  feedbackRow: {
-    flexDirection: 'row', gap: 8, paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
-  },
-  feedbackIcon: { fontSize: 14, marginTop: 1 },
-  feedbackBody: { flex: 1 },
-  feedbackText: { fontSize: 13, color: COLORS.text, lineHeight: 18 },
-  feedbackScreen: { color: COLORS.textTertiary },
-  feedbackTime: { fontSize: 11, color: COLORS.textTertiary, marginTop: 2 },
+  cityName: { fontSize: 13, color: COLORS.text },
+  cityValue: { fontSize: 13, color: COLORS.primary, fontWeight: '700' },
+  empty: { padding: SPACING.md, alignItems: 'center', backgroundColor: COLORS.surface, borderRadius: RADII.md },
+  emptyText: { color: COLORS.textTertiary, fontSize: 12 },
 });

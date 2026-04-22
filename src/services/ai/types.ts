@@ -11,6 +11,18 @@ export interface AIAnalysisResult {
   professions: string[];
   professionLabelsHe: string[];
   shortSummary: string;
+  /**
+   * Performance telemetry for admin observability — model name, total
+   * duration, image count. Populated on the successful path only.
+   * Confirm screen emits a `gemini` event based on these fields once
+   * the request doc has a real id.
+   */
+  __perf?: {
+    model: string;
+    ms: number;
+    imageCount: number;
+    payloadKB: number;
+  };
 }
 
 export interface AIAnalysisInput {

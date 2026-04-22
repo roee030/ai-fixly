@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
-import { Button } from '../../src/components/ui';
+import { Button, ResumeDraftModal } from '../../src/components/ui';
 import { VideoPreview } from '../../src/components/ui/VideoPreview';
 import { RateLimitBanner } from '../../src/components/ui/RateLimitBanner';
 import { useImagePicker } from '../../src/hooks/useImagePicker';
@@ -17,13 +17,20 @@ import { startAnalysis } from '../../src/services/ai/analysisStore';
 import { COLORS, LIMITS } from '../../src/constants';
 import { analyticsService } from '../../src/services/analytics';
 import { logAction } from '../../src/services/analytics/sessionLogger';
+import { draftService } from '../../src/services/drafts';
+import { useAuthStore } from '../../src/stores/useAuthStore';
 
 const THUMB_SIZE = 84;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function CaptureScreen() {
   const { t } = useTranslation();
-  const params = useLocalSearchParams<{ prefillDescription?: string }>();
+  const params = useLocalSearchParams<{ prefillDescription?: string; resumed?: string }>();
+  const user = useAuthStore((s) => s.user);
+  // Draft prompt — if the user left mid-flow within the last 24h, offer
+  // to resume. Set lazily so we don't flicker the modal on every render.
+  const [resumeDraft, setResumeDraft] = useState<Awaited<ReturnType<typeof draftService.load>>>(null);
+  const [showResumeModal, setShowResumeModal] = useState(false);
   const {
     images,
     videos,
@@ -63,6 +70,46 @@ export default function CaptureScreen() {
     analyticsService.trackEvent('capture_started');
     logAction('capture_started', 'capture');
   }, []);
+
+  // Check for an in-progress draft once on mount. Skip when the user
+  // arrived here via "Start new" (resumed=0) so the modal doesn't
+  // bounce back immediately.
+  useEffect(() => {
+    if (!user || params.resumed === '0') return;
+    let cancelled = false;
+    void draftService.load(user.uid).then((draft) => {
+      if (cancelled) return;
+      if (draft) {
+        setResumeDraft(draft);
+        setShowResumeModal(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [user, params.resumed]);
+
+  const handleResumeContinue = () => {
+    if (!resumeDraft) return;
+    setShowResumeModal(false);
+    // Hand the saved data to the confirm screen. analysisKey is preserved
+    // so if the analysis promise is still in the store, we reuse it.
+    router.push({
+      pathname: '/capture/confirm',
+      params: {
+        images: JSON.stringify(resumeDraft.imageUris),
+        base64Images: JSON.stringify([]),
+        description: resumeDraft.description,
+        videoAssets: JSON.stringify(resumeDraft.videoAssets),
+        analysisKey: resumeDraft.analysisKey,
+        resumed: '1',
+      },
+    });
+  };
+
+  const handleResumeStartNew = async () => {
+    if (user) await draftService.remove(user.uid);
+    setResumeDraft(null);
+    setShowResumeModal(false);
+  };
 
   useEffect(() => {
     if (images.length > 0) {
@@ -273,7 +320,11 @@ export default function CaptureScreen() {
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 240 }}
+          // Small paddingBottom — enough for the bottom bar clearance only.
+          // KeyboardAvoidingView + automaticallyAdjustKeyboardInsets handles
+          // the keyboard dynamically; a static 240 left a blank strip below
+          // the textarea after dismiss.
+          contentContainerStyle={{ paddingBottom: 100 }}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
           // Track the live scroll offset so we can remember where the user
@@ -497,6 +548,14 @@ export default function CaptureScreen() {
           </Pressable>
         </View>
       </Modal>
+
+      {/* Resume-draft prompt surfaces only when AsyncStorage has a fresh
+          in-progress capture from this user. Hard modal — deliberate choice. */}
+      <ResumeDraftModal
+        visible={showResumeModal}
+        onContinue={handleResumeContinue}
+        onStartNew={handleResumeStartNew}
+      />
     </ScreenContainer>
   );
 }

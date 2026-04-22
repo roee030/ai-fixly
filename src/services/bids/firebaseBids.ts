@@ -71,11 +71,14 @@ class FirebaseBidService implements BidService {
     // Denormalize the selected provider's details onto the request doc so:
     // 1. The chat screen can forward messages without another lookup
     // 2. The worker webhook can check 'is this the selected provider?'
+    // 3. Admin table can show the initial quote vs pricePaid in one query
+    //    (selectedBidPrice — copied from bid.price at selection time)
     await updateDoc(requestRef, {
       status: REQUEST_STATUS.IN_PROGRESS,
       selectedBidId: bid.id,
       selectedProviderPhone: bid.providerPhone,
       selectedProviderName: bid.providerName,
+      selectedBidPrice: typeof bid.price === 'number' ? bid.price : null,
     });
   }
 

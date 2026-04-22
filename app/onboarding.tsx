@@ -97,14 +97,25 @@ export default function OnboardingScreen() {
 
   const applyIndex = (index: number) => {
     setCurrentSlide(index);
+    // Instant reset is fine: opacity is 0 so the user never sees the jump.
     translateX.value = 0;
-    opacity.value = withTiming(1, { duration: ANIM_DURATION / 2 });
+    opacity.value = withTiming(1, {
+      duration: ANIM_DURATION / 2,
+      easing: Easing.out(Easing.ease),
+    });
   };
 
   const goToIndex = (index: number) => {
     if (index === currentSlide) return;
     pendingIndex.current = index;
-    opacity.value = withTiming(0, { duration: ANIM_DURATION / 2 }, () => {
+    // Animate translateX back to 0 alongside the opacity fade — without
+    // this, a mid-swipe transition produces a hard snap the user
+    // perceives as "the screen jumped" rather than "the screen slid".
+    translateX.value = withTiming(0, { duration: ANIM_DURATION / 2 });
+    opacity.value = withTiming(0, {
+      duration: ANIM_DURATION / 2,
+      easing: Easing.in(Easing.ease),
+    }, () => {
       if (pendingIndex.current !== null) {
         runOnJS(applyIndex)(pendingIndex.current);
         pendingIndex.current = null;
