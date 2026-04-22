@@ -17,10 +17,11 @@ const CITIES = ['hadera', 'netanya', 'tlv', 'ramat_gan', 'haifa', 'kfar_saba'];
 const PROFESSIONS = ['plumber', 'electrician', 'locksmith', 'painter', 'handyman'];
 
 export async function seedAdminMocks(): Promise<{
-  requests: number; providers: number; days: number; events: number; jobs: number; alerts: number;
+  requests: number; providers: number; days: number;
+  events: number; jobs: number; alerts: number; bids: number;
 }> {
   const db = getFirestore();
-  const counts = { requests: 0, providers: 0, days: 0, events: 0, jobs: 0, alerts: 0 };
+  const counts = { requests: 0, providers: 0, days: 0, events: 0, jobs: 0, alerts: 0, bids: 0 };
 
   // ── 14 days of adminStats/daily-* ─────────────────────────────────────
   const today = new Date();
@@ -143,6 +144,26 @@ export async function seedAdminMocks(): Promise<{
 
     const requestRef = await addDoc(collection(db, 'serviceRequests'), req);
     counts.requests++;
+
+    // Bids — 1-3 per request. Admin request-detail page shows them under
+    // "הצעות שהתקבלו". Without these, the page looks empty even though
+    // the request itself is there.
+    const bidCount = 1 + Math.floor(Math.random() * 3);
+    for (let bi = 0; bi < bidCount; bi++) {
+      const bidder = mockProviders[(i + bi) % mockProviders.length];
+      await addDoc(collection(db, 'bids'), {
+        requestId: requestRef.id,
+        providerName: bidder.displayName,
+        providerPhone: bidder.phone,
+        price: 250 + Math.floor(Math.random() * 500),
+        availability: 'היום 14:00-16:00',
+        rawReply: '[MOCK] הצעה לדוגמה',
+        receivedAt: new Date(createdAt.getTime() + (bi + 1) * 15 * 60_000),
+        isReal: false,
+        source: 'mock',
+      });
+      counts.bids++;
+    }
 
     // Events subcollection — powers the service timeline on
     // /admin/requests/[id]. 6 events per request gives a realistic mix.
