@@ -1,36 +1,33 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   Platform,
-  FlatList,
+  ScrollView,
   useWindowDimensions,
   I18nManager,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  ListRenderItemInfo,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { COLORS, SPACING } from '../src/constants';
+import { COLORS } from '../src/constants';
 import { useAppStore } from '../src/stores/useAppStore';
 
 /**
- * Onboarding — native-swipe carousel.
+ * Onboarding — ScrollView pager (not FlatList).
  *
- * Rebuilt from scratch with FlatList + pagingEnabled instead of a
- * hand-rolled Gesture.Pan + opacity fade. Two reasons:
- *   1. Native swipe feel — same as every stock iOS/Android pager.
- *   2. Rock-solid transitions. The previous opacity+translateX combo
- *      was racing with React state updates, producing the "slide 2 → 3
- *      doesn't work" bug.
+ * Why ScrollView: FlatList + horizontal + pagingEnabled fights RTL in
+ * subtle ways (iOS doesn't auto-reverse the way Android does, and the
+ * `inverted` prop double-flips on some Android+RTL combinations). We
+ * had the 'slide 2 shows first' bug on multiple attempts with FlatList.
  *
- * Slide 1: only a big primary "Next" button.
- * Slides 2+: "Back" (ghost) next to "Next" (primary).
- * The last slide's Next becomes "Start" and routes to the phone-auth flow.
+ * A bare ScrollView with exactly 3 children lets RN's native RTL handling
+ * work the way it does for every other horizontal scroll view in the app:
+ * index 0 lands visible first, swipe advances to the next.
  */
 
 const DESKTOP_MAX_WIDTH = 480;
@@ -56,7 +53,7 @@ export default function OnboardingScreen() {
   const SCREEN_WIDTH = isDesktop ? Math.min(windowWidth, DESKTOP_MAX_WIDTH) : windowWidth;
   const isRTL = I18nManager.isRTL;
 
-  const listRef = useRef<FlatList<Slide>>(null);
+  const scrollRef = useRef<ScrollView>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
 
   const slides: Slide[] = [
@@ -95,10 +92,25 @@ export default function OnboardingScreen() {
     },
   ];
 
+  // Force initial position to slide 0 — defends against platforms that
+  // start RTL ScrollView at "content end" (ie. slide N) by default.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        x: isRTL ? -(SCREEN_WIDTH * 0) : 0,
+        animated: false,
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [SCREEN_WIDTH, isRTL]);
+
   const scrollToIndex = (index: number) => {
     if (index < 0 || index >= slides.length) return;
-    listRef.current?.scrollToIndex({ index, animated: true });
-    setCurrentSlide(index);
+    scrollRef.current?.scrollTo({
+      x: SCREEN_WIDTH * index,
+      animated: true,
+    });
+    // Don't setState here — onScroll will do it based on actual scroll position.
   };
 
   const finish = async () => {
@@ -113,24 +125,15 @@ export default function OnboardingScreen() {
 
   const goPrev = () => scrollToIndex(currentSlide - 1);
 
-  // Track the active slide by scroll offset — this is what makes the
-  // dots + buttons stay in sync with native swipe gestures.
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const x = e.nativeEvent.contentOffset.x;
+      const x = Math.abs(e.nativeEvent.contentOffset.x);
       const index = Math.round(x / SCREEN_WIDTH);
       if (index !== currentSlide && index >= 0 && index < slides.length) {
         setCurrentSlide(index);
       }
     },
     [SCREEN_WIDTH, currentSlide, slides.length],
-  );
-
-  const renderSlide = useCallback(
-    ({ item }: ListRenderItemInfo<Slide>) => (
-      <SlideView slide={item} width={SCREEN_WIDTH} />
-    ),
-    [SCREEN_WIDTH],
   );
 
   const slide = slides[currentSlide];
@@ -148,29 +151,22 @@ export default function OnboardingScreen() {
           </Pressable>
         </View>
 
-        {/* Native-paging carousel */}
-        <FlatList
-          ref={listRef}
-          data={slides}
-          renderItem={renderSlide}
-          keyExtractor={(_, i) => String(i)}
+        {/* ScrollView pager */}
+        <ScrollView
+          ref={scrollRef}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           onScroll={onScroll}
           scrollEventThrottle={16}
-          // Required so scrollToIndex lands right even on wide devices.
-          getItemLayout={(_, index) => ({
-            length: SCREEN_WIDTH,
-            offset: SCREEN_WIDTH * index,
-            index,
-          })}
-          // NOT inverting the list, regardless of RTL. React Native's
-          // I18nManager already flips horizontal scroll direction on
-          // RTL devices, so slide 0 is always displayed first and swipe
-          // advances to slide 1, 2. Adding `inverted` caused slide 2
-          // to show first with reverse swipe, which is what the user hit.
-        />
+          contentContainerStyle={{
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+          }}
+        >
+          {slides.map((s, i) => (
+            <SlideView key={i} slide={s} width={SCREEN_WIDTH} />
+          ))}
+        </ScrollView>
 
         {/* Dots */}
         <View style={styles.dots}>
@@ -192,7 +188,7 @@ export default function OnboardingScreen() {
           {currentSlide + 1}/{slides.length}
         </Text>
 
-        {/* Button row — first slide has ONE big button; rest have Next + Back. */}
+        {/* Button row — first slide has one big button; rest have Next + Back. */}
         {isFirst ? (
           <View style={styles.btnRowSingle}>
             <Pressable

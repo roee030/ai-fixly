@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, Platform, Clipboard } from 'react-native';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
+import { useAuthStore } from '../../stores/useAuthStore';
 import { COLORS, SPACING, RADII } from '../../constants';
 
 /**
@@ -15,13 +16,23 @@ import { COLORS, SPACING, RADII } from '../../constants';
  */
 export function VersionBadge() {
   const [busy, setBusy] = useState(false);
+  const user = useAuthStore((s) => s.user);
 
   const appVersion = Constants.expoConfig?.version ?? '?';
-  const runtimeVersion = (Constants.expoConfig as any)?.runtimeVersion ?? '?';
   const updateId = Updates.updateId ?? 'embedded';
   const shortUpdateId = updateId.slice(0, 8);
   const createdAt = Updates.createdAt ? new Date(Updates.createdAt).toLocaleString('he-IL') : 'embedded build';
-  const channel = (Updates as any).channel ?? 'n/a';
+
+  const copyUid = () => {
+    if (!user?.uid) return;
+    try {
+      // Clipboard from react-native is the widest-compatible surface.
+      (Clipboard as any).setString?.(user.uid);
+      Alert.alert('הועתק', 'ה-UID הועתק ללוח.');
+    } catch {
+      Alert.alert('UID', user.uid);
+    }
+  };
 
   const handleCheck = async () => {
     if (__DEV__) {
@@ -57,6 +68,17 @@ export function VersionBadge() {
         </Text>
       </View>
       <Text style={styles.meta}>{createdAt}</Text>
+
+      {user?.uid && (
+        <Pressable onPress={copyUid} style={styles.uidRow} accessibilityRole="button">
+          <Text style={styles.label}>UID:</Text>
+          <Text style={styles.uidValue} numberOfLines={1}>
+            {user.uid}
+          </Text>
+          <Text style={styles.copyHint}>לחץ להעתקה</Text>
+        </Pressable>
+      )}
+
       <Pressable
         onPress={handleCheck}
         disabled={busy}
@@ -103,4 +125,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
+  uidRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: COLORS.background,
+    borderRadius: RADII.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  uidValue: {
+    flex: 1,
+    fontSize: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: COLORS.text,
+  },
+  copyHint: {
+    fontSize: 10,
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
 });
