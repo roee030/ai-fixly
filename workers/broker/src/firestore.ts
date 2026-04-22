@@ -1063,10 +1063,576 @@ export class FirestoreClient {
     }
   }
 
+  // ════════════════════════════════════════════════════════════════════════
+  // Admin observability: events, broadcast summary, time-to-first-response
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Write a batch of events under `serviceRequests/{requestId}/events/*`.
+   * Uses Firestore's batchWrite endpoint — one round-trip regardless of
+   * event count. Fire-and-forget; errors are logged but swallowed so a
+   * failed observability write never rolls back a successful broadcast.
+   */
+  async batchWriteEvents(
+    requestId: string,
+    events: Array<{
+      type: string;
+      ok: boolean;
+      durationMs: number;
+      error?: string;
+      metadata?: Record<string, unknown>;
+    }>,
+  ): Promise<void> {
+    if (!requestId || events.length === 0) return;
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents:batchWrite`;
+      const nowIso = new Date().toISOString();
+
+      const writes = events.map((ev) => {
+        const eventId = crypto.randomUUID();
+        return {
+          update: {
+            name: `projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}/events/${eventId}`,
+            fields: encodeEventFields(ev, nowIso),
+          },
+        };
+      });
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ writes }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        console.warn(`[events] batch write returned ${response.status}: ${text}`);
+      }
+    } catch (err) {
+      console.warn('[events] batchWriteEvents failed:', err);
+    }
+  }
+
+  /**
+   * Patch the broadcastSummary field on a request doc. Called at the end
+   * of handleBroadcast with aggregate counts + duration so the admin
+   * requests table + detail page can read it in one query.
+   */
+  async updateBroadcastSummary(requestId: string, summary: {
+    sentCount: number;
+    failedCount: number;
+    providersFound: number;
+    startedAt: string;
+    finishedAt: string;
+  }): Promise<void> {
+    try {
+      const accessToken = await this.getToken();
+      const mask = [
+        'broadcastSummary',
+      ].map((p) => `updateMask.fieldPaths=${encodeURIComponent(p)}`).join('&');
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}?${mask}`;
+      const body = {
+        fields: {
+          broadcastSummary: {
+            mapValue: {
+              fields: {
+                sentCount:      { integerValue: summary.sentCount.toString() },
+                failedCount:    { integerValue: summary.failedCount.toString() },
+                providersFound: { integerValue: summary.providersFound.toString() },
+                startedAt:      { timestampValue: summary.startedAt },
+                finishedAt:     { timestampValue: summary.finishedAt },
+              },
+            },
+          },
+        },
+      };
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        console.warn(`[broadcast] updateBroadcastSummary ${response.status}: ${text}`);
+      }
+    } catch (err) {
+      console.warn('[broadcast] updateBroadcastSummary failed:', err);
+    }
+  }
+
+  /**
+   * Read broadcastSummary.startedAt for a request so the Twilio webhook
+   * can compute timeToFirstResponse. Returns null if the field is missing.
+   */
+  async getBroadcastStartedAt(requestId: string): Promise<string | null> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) return null;
+      const data = (await response.json()) as any;
+      const started = data.fields?.broadcastSummary?.mapValue?.fields?.startedAt?.timestampValue;
+      return typeof started === 'string' ? started : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Check whether timeToFirstResponse has already been set on a request.
+   * Twilio webhook uses this to guarantee idempotent first-response capture —
+   * only the very first incoming bid writes the field.
+   */
+  async hasTimeToFirstResponse(requestId: string): Promise<boolean> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}?mask.fieldPaths=timeToFirstResponse`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) return false;
+      const data = (await response.json()) as any;
+      return data.fields?.timeToFirstResponse !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  async setTimeToFirstResponse(requestId: string, minutes: number): Promise<void> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}?updateMask.fieldPaths=timeToFirstResponse`;
+      await fetch(url, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: { timeToFirstResponse: { integerValue: Math.max(0, Math.round(minutes)).toString() } },
+        }),
+      });
+    } catch (err) {
+      console.warn('[events] setTimeToFirstResponse failed:', err);
+    }
+  }
+
+  /**
+   * Denormalize the selected bid's price onto the request doc when the
+   * customer picks a provider. Keeps admin list queries one-doc.
+   */
+  async setSelectedBidPrice(requestId: string, price: number): Promise<void> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}?updateMask.fieldPaths=selectedBidPrice`;
+      await fetch(url, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: { selectedBidPrice: { integerValue: Math.round(price).toString() } },
+        }),
+      });
+    } catch (err) {
+      console.warn('[bids] setSelectedBidPrice failed:', err);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Review submission: atomic transaction across 4 docs
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Submit a customer review. Runs as a Firestore transaction — either all
+   * four writes land or none do. O(1) running-average aggregates; we do not
+   * re-read the provider's entire review history.
+   *
+   *   1. reviews/{reviewId}                     (source of truth)
+   *   2. serviceRequests/{requestId}.reviewSummary
+   *   3. providers_agg/{phone}/jobs/{requestId}
+   *   4. providers_agg/{phone}.stats            (running averages)
+   *
+   * Returns { ok: false, reason } with a matching HTTP status on any
+   * validation failure so the worker handler can translate cleanly.
+   */
+  async runReviewTransaction(input: {
+    uid: string;
+    requestId: string;
+    rating: number;
+    comment: string;
+    pricePaid: number;
+    selectedCategories?: string[];
+    classificationCorrect?: boolean | null;
+  }): Promise<
+    | { ok: true; reviewId: string }
+    | { ok: false; reason: string; status: number }
+  > {
+    const token = await this.getToken();
+    const db = `projects/${this.projectId}/databases/(default)`;
+
+    // 1. Begin transaction.
+    const beginRes = await fetch(
+      `https://firestore.googleapis.com/v1/${db}/documents:beginTransaction`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    );
+    if (!beginRes.ok) {
+      return { ok: false, reason: 'transaction_begin_failed', status: 500 };
+    }
+    const { transaction } = (await beginRes.json()) as { transaction: string };
+
+    // 2. Read request + provider aggregate inside the transaction.
+    const batchGetRes = await fetch(
+      `https://firestore.googleapis.com/v1/${db}/documents:batchGet`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          documents: [
+            `${db}/documents/serviceRequests/${input.requestId}`,
+          ],
+          transaction,
+        }),
+      },
+    );
+    if (!batchGetRes.ok) {
+      return { ok: false, reason: 'batch_get_failed', status: 500 };
+    }
+    const reads = (await batchGetRes.json()) as any[];
+    const requestDoc = reads.find((r) => r.found)?.found;
+    if (!requestDoc) {
+      return { ok: false, reason: 'request_not_found', status: 404 };
+    }
+    const fields = requestDoc.fields || {};
+    if (fields.userId?.stringValue !== input.uid) {
+      return { ok: false, reason: 'not_owner', status: 403 };
+    }
+    const status = fields.status?.stringValue || '';
+    if (status !== 'closed' && status !== 'in_progress') {
+      return { ok: false, reason: 'request_not_closed', status: 409 };
+    }
+    if (fields.reviewSummary) {
+      return { ok: false, reason: 'already_reviewed', status: 409 };
+    }
+    const providerPhone = fields.selectedProviderPhone?.stringValue || '';
+    const providerName = fields.selectedProviderName?.stringValue || '';
+    const bidPrice = Number(fields.selectedBidPrice?.integerValue ?? 0);
+
+    // 3. Read provider aggregate (separate call — cheaper than a batchGet
+    // with a second doc that might not exist yet).
+    let existingStats = {
+      offersSent: 0,
+      accepted: 0,
+      completed: 0,
+      avgRating: 0,
+      avgPricePaid: 0,
+      totalGrossValue: 0,
+      replyRate: 0,
+      avgResponseMinutes: 0,
+    };
+    if (providerPhone) {
+      try {
+        const aggUrl = `https://firestore.googleapis.com/v1/${db}/documents/providers_agg/${encodeURIComponent(providerPhone)}`;
+        const aggRes = await fetch(aggUrl, { headers: { Authorization: `Bearer ${token}` } });
+        if (aggRes.ok) {
+          const agg = (await aggRes.json()) as any;
+          const s = agg.fields?.stats?.mapValue?.fields || {};
+          existingStats = {
+            offersSent:        Number(s.offersSent?.integerValue ?? 0),
+            accepted:          Number(s.accepted?.integerValue ?? 0),
+            completed:         Number(s.completed?.integerValue ?? 0),
+            avgRating:         Number(s.avgRating?.doubleValue ?? 0),
+            avgPricePaid:      Number(s.avgPricePaid?.doubleValue ?? 0),
+            totalGrossValue:   Number(s.totalGrossValue?.integerValue ?? 0),
+            replyRate:         Number(s.replyRate?.integerValue ?? 0),
+            avgResponseMinutes: Number(s.avgResponseMinutes?.integerValue ?? 0),
+          };
+        }
+      } catch { /* treat as new provider */ }
+    }
+
+    // 4. Compute O(1) running averages for the new review.
+    const n = existingStats.completed;
+    const newAvgRating = (existingStats.avgRating * n + input.rating) / (n + 1);
+    const newAvgPrice  = (existingStats.avgPricePaid * n + input.pricePaid) / (n + 1);
+    const newCompleted = n + 1;
+    const newGrossValue = existingStats.totalGrossValue + Math.round(input.pricePaid);
+
+    // 5. Build the 4-write commit.
+    const reviewId = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+    const writes: any[] = [
+      // reviews/{reviewId}
+      {
+        update: {
+          name: `${db}/documents/reviews/${reviewId}`,
+          fields: {
+            userId:           { stringValue: input.uid },
+            requestId:        { stringValue: input.requestId },
+            providerPhone:    { stringValue: providerPhone },
+            providerName:     { stringValue: providerName },
+            rating:           { integerValue: input.rating.toString() },
+            comment:          { stringValue: input.comment },
+            pricePaid:        { integerValue: Math.round(input.pricePaid).toString() },
+            selectedCategories: {
+              arrayValue: {
+                values: (input.selectedCategories || []).map((c) => ({ stringValue: c })),
+              },
+            },
+            classificationCorrect:
+              input.classificationCorrect === null || input.classificationCorrect === undefined
+                ? { nullValue: null }
+                : { booleanValue: input.classificationCorrect },
+            submittedAt:      { timestampValue: nowIso },
+          },
+        },
+      },
+
+      // serviceRequests/{requestId}.reviewSummary
+      {
+        updateMask: { fieldPaths: ['reviewSummary'] },
+        update: {
+          name: `${db}/documents/serviceRequests/${input.requestId}`,
+          fields: {
+            reviewSummary: {
+              mapValue: {
+                fields: {
+                  rating:      { integerValue: input.rating.toString() },
+                  comment:     { stringValue: input.comment },
+                  pricePaid:   { integerValue: Math.round(input.pricePaid).toString() },
+                  submittedAt: { timestampValue: nowIso },
+                },
+              },
+            },
+          },
+        },
+      },
+    ];
+
+    if (providerPhone) {
+      writes.push(
+        // providers_agg/{phone}/jobs/{requestId}
+        {
+          update: {
+            name: `${db}/documents/providers_agg/${encodeURIComponent(providerPhone)}/jobs/${input.requestId}`,
+            fields: {
+              requestId:         { stringValue: input.requestId },
+              bidPrice:          { integerValue: Math.round(bidPrice).toString() },
+              pricePaid:         { integerValue: Math.round(input.pricePaid).toString() },
+              rating:            { integerValue: input.rating.toString() },
+              comment:           { stringValue: input.comment },
+              customerReviewedAt: { timestampValue: nowIso },
+              status:            { stringValue: 'completed' },
+              completedAt:       { timestampValue: nowIso },
+            },
+          },
+        },
+
+        // providers_agg/{phone}.stats (running averages)
+        {
+          updateMask: { fieldPaths: ['stats', 'updatedAt'] },
+          update: {
+            name: `${db}/documents/providers_agg/${encodeURIComponent(providerPhone)}`,
+            fields: {
+              stats: {
+                mapValue: {
+                  fields: {
+                    offersSent:        { integerValue: existingStats.offersSent.toString() },
+                    accepted:          { integerValue: existingStats.accepted.toString() },
+                    completed:         { integerValue: newCompleted.toString() },
+                    avgRating:         { doubleValue: Number(newAvgRating.toFixed(3)) },
+                    avgPricePaid:      { doubleValue: Number(newAvgPrice.toFixed(2)) },
+                    totalGrossValue:   { integerValue: newGrossValue.toString() },
+                    replyRate:         { integerValue: existingStats.replyRate.toString() },
+                    avgResponseMinutes: { integerValue: existingStats.avgResponseMinutes.toString() },
+                    lastJobAt:         { timestampValue: nowIso },
+                  },
+                },
+              },
+              updatedAt: { timestampValue: nowIso },
+            },
+          },
+        },
+      );
+    }
+
+    // 6. Commit.
+    const commitRes = await fetch(
+      `https://firestore.googleapis.com/v1/${db}/documents:commit`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ writes, transaction }),
+      },
+    );
+    if (!commitRes.ok) {
+      const text = await commitRes.text();
+      console.error(`[review] commit failed: ${commitRes.status} ${text}`);
+      return { ok: false, reason: 'commit_failed', status: 500 };
+    }
+
+    return { ok: true, reviewId };
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Admin rollup: query requests in a time range (used by daily rollup cron)
+  // ════════════════════════════════════════════════════════════════════════
+
+  async getRequestsInRange(fromIso: string, toIso: string): Promise<Array<{
+    id: string;
+    city: string;
+    timeToFirstResponse?: number;
+    reviewRating?: number;
+    reviewPricePaid?: number;
+  }>> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents:runQuery`;
+
+      const body = {
+        structuredQuery: {
+          from: [{ collectionId: 'serviceRequests' }],
+          where: {
+            compositeFilter: {
+              op: 'AND',
+              filters: [
+                { fieldFilter: { field: { fieldPath: 'createdAt' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: fromIso } } },
+                { fieldFilter: { field: { fieldPath: 'createdAt' }, op: 'LESS_THAN', value: { timestampValue: toIso } } },
+              ],
+            },
+          },
+        },
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) return [];
+      const data = (await response.json()) as any[];
+      const rows: Array<{
+        id: string; city: string; timeToFirstResponse?: number;
+        reviewRating?: number; reviewPricePaid?: number;
+      }> = [];
+      for (const row of data) {
+        const doc = row.document;
+        if (!doc) continue;
+        const path = String(doc.name || '').split('/');
+        const id = path[path.length - 1];
+        const f = doc.fields || {};
+        const city = f.locationSummary?.mapValue?.fields?.city?.stringValue || 'unknown';
+        const tfr = f.timeToFirstResponse?.integerValue;
+        const review = f.reviewSummary?.mapValue?.fields;
+        rows.push({
+          id,
+          city,
+          timeToFirstResponse: tfr !== undefined ? Number(tfr) : undefined,
+          reviewRating: review?.rating?.integerValue !== undefined ? Number(review.rating.integerValue) : undefined,
+          reviewPricePaid: review?.pricePaid?.integerValue !== undefined ? Number(review.pricePaid.integerValue) : undefined,
+        });
+      }
+      return rows;
+    } catch (err) {
+      console.error('getRequestsInRange failed:', err);
+      return [];
+    }
+  }
+
+  async writeAdminDailyStats(
+    dateYmd: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const accessToken = await this.getToken();
+      const docId = `daily-${dateYmd.replace(/-/g, '')}`;
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/adminStats?documentId=${docId}`;
+      // Best-effort: create then patch. If the doc exists, use PATCH on the
+      // full set of fields.
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: encodeJsonToFields(payload) }),
+      });
+      if (res.status === 409) {
+        const patchUrl = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/adminStats/${docId}`;
+        await fetch(patchUrl, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: encodeJsonToFields(payload) }),
+        });
+      } else if (!res.ok) {
+        const text = await res.text();
+        console.warn(`[rollup] write ${dateYmd} returned ${res.status}: ${text}`);
+      }
+    } catch (err) {
+      console.warn('[rollup] writeAdminDailyStats failed:', err);
+    }
+  }
+
   private getToken(): Promise<string> {
     return getAccessToken({
       serviceAccountJson: this.serviceAccountJson,
       scope: SCOPES.FIRESTORE,
     });
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Encoding helpers — convert JS values into Firestore REST field shapes
+// ══════════════════════════════════════════════════════════════════════════
+
+function encodeEventFields(
+  ev: { type: string; ok: boolean; durationMs: number; error?: string; metadata?: Record<string, unknown> },
+  nowIso: string,
+): Record<string, unknown> {
+  const fields: Record<string, unknown> = {
+    type:        { stringValue: ev.type },
+    ok:          { booleanValue: ev.ok },
+    durationMs:  { integerValue: Math.round(ev.durationMs).toString() },
+    startedAt:   { timestampValue: nowIso },
+  };
+  if (ev.error) fields.error = { stringValue: ev.error.slice(0, 500) };
+  if (ev.metadata) {
+    fields.metadata = { mapValue: { fields: encodeJsonToFields(ev.metadata) } };
+  }
+  return fields;
+}
+
+function encodeJsonToFields(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined) {
+      out[k] = { nullValue: null };
+    } else if (typeof v === 'boolean') {
+      out[k] = { booleanValue: v };
+    } else if (typeof v === 'number') {
+      out[k] = Number.isInteger(v) ? { integerValue: v.toString() } : { doubleValue: v };
+    } else if (typeof v === 'string') {
+      out[k] = { stringValue: v };
+    } else if (Array.isArray(v)) {
+      out[k] = {
+        arrayValue: {
+          values: v.map((item) => {
+            if (typeof item === 'string') return { stringValue: item };
+            if (typeof item === 'number') {
+              return Number.isInteger(item) ? { integerValue: item.toString() } : { doubleValue: item };
+            }
+            if (typeof item === 'boolean') return { booleanValue: item };
+            if (item && typeof item === 'object') {
+              return { mapValue: { fields: encodeJsonToFields(item as Record<string, unknown>) } };
+            }
+            return { nullValue: null };
+          }),
+        },
+      };
+    } else if (typeof v === 'object') {
+      out[k] = { mapValue: { fields: encodeJsonToFields(v as Record<string, unknown>) } };
+    }
+  }
+  return out;
 }
