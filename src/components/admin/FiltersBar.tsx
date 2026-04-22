@@ -7,6 +7,7 @@ export interface FilterState {
   status: 'all' | 'open' | 'in_progress' | 'closed';
   city: string | 'all';
   hasReview: 'all' | 'yes' | 'no';
+  dateRange: 'today' | '7d' | '30d' | '90d' | 'all';
 }
 
 interface Props {
@@ -25,6 +26,19 @@ export function FiltersBar({ value, onChange }: Props) {
 
   return (
     <View style={styles.wrap}>
+      <ChipRow
+        label="טווח"
+        options={[
+          { k: 'today', l: 'היום' },
+          { k: '7d', l: '7 ימים' },
+          { k: '30d', l: '30 ימים' },
+          { k: '90d', l: '90 ימים' },
+          { k: 'all', l: 'הכל' },
+        ]}
+        selected={value.dateRange}
+        onSelect={(k) => onChange({ ...value, dateRange: k as FilterState['dateRange'] })}
+      />
+
       <ChipRow
         label="סטטוס"
         options={[

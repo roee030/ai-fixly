@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../src/i18n';
 import { ScreenContainer } from '../../src/components/layout';
-import { Button } from '../../src/components/ui';
+import { Button, VersionBadge } from '../../src/components/ui';
 import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { useAppStore } from '../../src/stores/useAppStore';
@@ -269,6 +269,10 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
         )}
+
+        {/* Version + OTA check — helps the owner know when an update
+            reached the device, especially for non-visual changes. */}
+        <VersionBadge />
 
         <Button
           title={t('profile.signOut')}
