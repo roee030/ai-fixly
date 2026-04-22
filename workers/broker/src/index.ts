@@ -62,6 +62,12 @@ export default {
       console.error('[cron] alert checks failed:', err)
     );
 
+    // Task 4: Write today's admin daily rollup. Cheap (one query + one write)
+    // so we run it every cron firing — the file is idempotent.
+    await handleDailyRollup(firestore).catch(err =>
+      console.error('[cron] daily rollup failed:', err)
+    );
+
     console.log('[cron] scheduled tasks complete');
   },
 
@@ -1330,6 +1336,105 @@ async function handleCriticalFeedback(request: Request, env: Env): Promise<Respo
 // =========================================================================
 // Cron handlers
 // =========================================================================
+
+/**
+ * Compute + write the daily admin stats rollup. One doc per calendar day
+ * (Israel local). Reads the current day's requests, aggregates counts,
+ * averages, and a per-city breakdown, then writes
+ * `adminStats/daily-{YYYYMMDD}`. The admin overview graphs read these
+ * pre-rolled docs instead of aggregating on every page load.
+ */
+async function handleDailyRollup(firestore: FirestoreClient): Promise<void> {
+  // "Today" in Israel local time (UTC+2/+3). We're not DST-correct here —
+  // off by an hour around the switchover is acceptable for a daily bucket.
+  const now = new Date();
+  // Shift to UTC+3 (generous, handles DST without extra logic).
+  const israelNow = new Date(now.getTime() + 3 * 3600 * 1000);
+  const y = israelNow.getUTCFullYear();
+  const m = String(israelNow.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(israelNow.getUTCDate()).padStart(2, '0');
+  const ymd = `${y}-${m}-${d}`;
+
+  const startOfDayIso = `${ymd}T00:00:00.000Z`;
+  const endOfDay = new Date(new Date(startOfDayIso).getTime() + 24 * 3600 * 1000);
+  const endOfDayIso = endOfDay.toISOString();
+
+  const requests = await firestore.getRequestsInRange(startOfDayIso, endOfDayIso);
+
+  let reviewsSubmitted = 0;
+  let totalRating = 0;
+  let totalPrice = 0;
+  let respSum = 0;
+  let respCount = 0;
+  const byCity: Record<string, {
+    requestsCreated: number;
+    reviewsSubmitted: number;
+    avgTimeToFirstResponseMin: number;
+    avgRating: number;
+    grossValue: number;
+    _respSum: number;
+    _respCount: number;
+    _ratingSum: number;
+  }> = {};
+
+  const getBucket = (city: string) => {
+    if (!byCity[city]) {
+      byCity[city] = {
+        requestsCreated: 0, reviewsSubmitted: 0,
+        avgTimeToFirstResponseMin: 0, avgRating: 0, grossValue: 0,
+        _respSum: 0, _respCount: 0, _ratingSum: 0,
+      };
+    }
+    return byCity[city];
+  };
+
+  for (const req of requests) {
+    const bucket = getBucket(req.city || 'unknown');
+    bucket.requestsCreated++;
+
+    if (req.reviewRating !== undefined) {
+      reviewsSubmitted++;
+      totalRating += req.reviewRating;
+      bucket.reviewsSubmitted++;
+      bucket._ratingSum += req.reviewRating;
+    }
+    if (req.reviewPricePaid !== undefined) {
+      totalPrice += req.reviewPricePaid;
+      bucket.grossValue += req.reviewPricePaid;
+    }
+    if (req.timeToFirstResponse !== undefined) {
+      respSum += req.timeToFirstResponse;
+      respCount++;
+      bucket._respSum += req.timeToFirstResponse;
+      bucket._respCount++;
+    }
+  }
+
+  // Final averages (strip the underscore-prefixed scratchpad fields).
+  const cleanByCity: Record<string, unknown> = {};
+  for (const [city, b] of Object.entries(byCity)) {
+    cleanByCity[city] = {
+      requestsCreated: b.requestsCreated,
+      reviewsSubmitted: b.reviewsSubmitted,
+      avgTimeToFirstResponseMin: b._respCount > 0 ? Math.round((b._respSum / b._respCount) * 10) / 10 : 0,
+      avgRating: b.reviewsSubmitted > 0 ? Math.round((b._ratingSum / b.reviewsSubmitted) * 10) / 10 : 0,
+      grossValue: Math.round(b.grossValue),
+    };
+  }
+
+  const payload = {
+    date: ymd,
+    requestsCreated: requests.length,
+    reviewsSubmitted,
+    avgTimeToFirstResponseMin: respCount > 0 ? Math.round((respSum / respCount) * 10) / 10 : 0,
+    avgRating: reviewsSubmitted > 0 ? Math.round((totalRating / reviewsSubmitted) * 10) / 10 : 0,
+    grossValue: Math.round(totalPrice),
+    byCity: cleanByCity,
+  };
+
+  await firestore.writeAdminDailyStats(ymd, payload);
+  console.log(`[rollup] daily-${ymd} written — requests=${requests.length} reviews=${reviewsSubmitted}`);
+}
 
 async function handleReviewReminders(firestore: FirestoreClient, env: Env): Promise<void> {
   const requests = await firestore.getRequestsForReviewReminder();
