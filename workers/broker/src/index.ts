@@ -1642,11 +1642,17 @@ async function handlePublicRequestSummary(
     return jsonResponse({ error: 'Missing requestId' }, 400, request);
   }
   const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
-  const view = await firestore.getPublicRequestView(requestId);
-  if (!view) {
-    return jsonResponse({ error: 'Not found or closed' }, 404, request);
+  const result = await firestore.getPublicRequestView(requestId);
+  // Discriminated status codes so the provider form can show distinct UIs:
+  //   404 = "we have no record of this request"   -> offer report CTA
+  //   410 = "this request has been closed"         -> informational only
+  if (result.kind === 'not_found') {
+    return jsonResponse({ error: 'not_found', reason: 'not_found' }, 404, request);
   }
-  return jsonResponse(view, 200, request);
+  if (result.kind === 'closed') {
+    return jsonResponse({ error: 'closed', reason: 'closed' }, 410, request);
+  }
+  return jsonResponse(result.view, 200, request);
 }
 
 interface ProviderQuoteBody {
@@ -1678,12 +1684,17 @@ async function handleProviderQuoteSubmission(request: Request, env: Env): Promis
   }
 
   const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
-  // Reject quotes for closed requests so providers can't keep bidding
+  // Reject quotes for closed/missing requests so providers can't keep bidding
   // after the customer abandoned the request.
-  const view = await firestore.getPublicRequestView(body.requestId);
-  if (!view) {
-    return jsonResponse({ error: 'Request not available' }, 410, request);
+  const viewResult = await firestore.getPublicRequestView(body.requestId);
+  if (viewResult.kind !== 'ok') {
+    return jsonResponse(
+      { error: viewResult.kind === 'closed' ? 'closed' : 'not_found' },
+      410,
+      request,
+    );
   }
+  const view = viewResult.view;
 
   const priceInt = parseInt(body.price.replace(/[^0-9]/g, ''), 10);
   const price = isNaN(priceInt) ? null : priceInt;

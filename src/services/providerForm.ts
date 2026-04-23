@@ -67,11 +67,33 @@ export interface ReportSubmission {
   reason: string;
 }
 
+export class RequestNotFoundError extends Error {
+  constructor() {
+    super('not_found');
+    this.name = 'RequestNotFoundError';
+  }
+}
+
+export class RequestClosedError extends Error {
+  constructor() {
+    super('closed');
+    this.name = 'RequestClosedError';
+  }
+}
+
 /** Fetch a stripped-down view of a request for the provider form. */
 export async function fetchPublicRequestSummary(requestId: string): Promise<PublicRequestSummary> {
   const res = await fetch(`${BROKER_URL}/provider/request/${encodeURIComponent(requestId)}`, {
     method: 'GET',
   });
+  // Broker distinguishes 404 (unknown id) from 410 (known but closed). The
+  // form needs to render different UI for each, so surface structured errors.
+  if (res.status === 404) {
+    throw new RequestNotFoundError();
+  }
+  if (res.status === 410) {
+    throw new RequestClosedError();
+  }
   if (!res.ok) {
     throw new Error(`Request not found (HTTP ${res.status})`);
   }

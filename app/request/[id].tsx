@@ -215,10 +215,14 @@ export default function RequestDetailsScreen() {
     <ScreenContainer>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        // 160 leaves clearance for the 60px tab bar + the floating Home
-        // button that overlaps the bottom by ~36px. The previous 100 let
-        // the last bid card / 'close request' button slip under the FAB.
-        contentContainerStyle={{ paddingBottom: 160 }}
+        // Without flex:1 the ScrollView sizes to its content, which in a
+        // column-flex parent lets the sibling bottomBar grow unbounded
+        // and the ScrollView itself stops scrolling (content height ==
+        // scroll area). flex:1 pins it to the remaining vertical space.
+        style={{ flex: 1 }}
+        // Tall enough to clear the bottomBar's cancel/close button —
+        // anything less hides the last bid card.
+        contentContainerStyle={{ paddingBottom: 40 }}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
@@ -364,19 +368,38 @@ export default function RequestDetailsScreen() {
               />
             )}
 
-            {/* Primary CTA — call directly. Chat between customer and
-                provider was removed: contact happens by phone. */}
-            <Pressable
-              style={styles.chatCta}
-              onPress={() => {
-                const phone = selectedBid.providerPhone;
-                if (phone) Linking.openURL(`tel:${phone}`);
-              }}
-            >
-              <Ionicons name="call" size={22} color="#FFFFFF" />
-              <Text style={styles.chatCtaText}>{t('requestDetails.callProvider', { name: selectedBid.providerName })}</Text>
-              <Ionicons name="chevron-back" size={18} color="#FFFFFF" />
-            </Pressable>
+            {/* Contact actions — the customer gets three ways to reach the
+                selected provider. Call opens the dialer. WhatsApp opens the
+                native app with a pre-filled, context-aware opener so the
+                provider sees immediately who's calling and what it's about.
+                SMS falls back to whichever messaging client the OS prefers. */}
+            {selectedBid.providerPhone && (
+              <View style={styles.contactRow}>
+                <ContactActionButton
+                  icon="call"
+                  label={t('requestDetails.contactCall')}
+                  color={COLORS.primary}
+                  onPress={() => Linking.openURL(`tel:${selectedBid.providerPhone}`)}
+                />
+                <ContactActionButton
+                  icon="logo-whatsapp"
+                  label={t('requestDetails.contactWhatsapp')}
+                  color="#25D366"
+                  onPress={() => openWhatsappWith(
+                    selectedBid.providerPhone!,
+                    selectedBid.providerName,
+                    shortSummary,
+                    t,
+                  )}
+                />
+                <ContactActionButton
+                  icon="chatbubble"
+                  label={t('requestDetails.contactSms')}
+                  color={COLORS.success}
+                  onPress={() => Linking.openURL(`sms:${selectedBid.providerPhone}`)}
+                />
+              </View>
+            )}
 
             <Pressable style={styles.cancelSelectionBtn} onPress={handleCancelSelection}>
               <Text style={styles.cancelSelectionText}>{t('requestDetails.cancelSelection')}</Text>
@@ -581,6 +604,66 @@ function PhoneRevealCard({
       )}
     </Pressable>
   );
+}
+
+/**
+ * One of three square tiles in the post-selection contact row. Pure
+ * presentation — the parent decides what each tap does (tel: / whatsapp /
+ * sms). Kept local so we don't ship a generic "IconButton" abstraction we
+ * don't need elsewhere.
+ */
+function ContactActionButton({
+  icon,
+  label,
+  color,
+  onPress,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  color: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.contactBtn,
+        { borderColor: color + '55', backgroundColor: color + '14' },
+        pressed && { opacity: 0.7 },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={22} color={color} />
+      <Text style={[styles.contactBtnLabel, { color }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Build the pre-filled WhatsApp opener and hand it to the OS. The
+ * `whatsapp://send?phone=...&text=...` scheme is the cross-platform way
+ * to jump straight into a chat with the message already typed — the
+ * customer just hits send. We always strip the leading "+" from the phone
+ * because the scheme expects E.164 digits only.
+ */
+function openWhatsappWith(
+  rawPhone: string,
+  providerName: string,
+  summary: string,
+  t: (k: string, o?: any) => string,
+) {
+  const digits = (rawPhone || '').replace(/[^\d]/g, '');
+  const trimmedSummary = (summary || '').trim();
+  const text = trimmedSummary
+    ? t('requestDetails.whatsappHello', { name: providerName, summary: trimmedSummary })
+    : t('requestDetails.whatsappHelloFallback');
+  const url = `whatsapp://send?phone=${digits}&text=${encodeURIComponent(text)}`;
+  Linking.openURL(url).catch(() => {
+    // If WhatsApp isn't installed, fall back to the web handler which
+    // offers "open in app / continue on web" and still prefills the text.
+    Linking.openURL(`https://wa.me/${digits}?text=${encodeURIComponent(text)}`).catch(() => {});
+  });
 }
 
 /**
@@ -906,6 +989,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 10,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  contactBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  contactBtnLabel: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   chatCtaText: {
     color: '#FFFFFF',
