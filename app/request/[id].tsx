@@ -213,7 +213,14 @@ export default function RequestDetailsScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        // 160 leaves clearance for the 60px tab bar + the floating Home
+        // button that overlaps the bottom by ~36px. The previous 100 let
+        // the last bid card / 'close request' button slip under the FAB.
+        contentContainerStyle={{ paddingBottom: 160 }}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Header */}
         <View style={styles.headerRow}>
           <Pressable onPress={() => {

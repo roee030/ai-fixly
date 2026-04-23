@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, FlatList, StyleSheet } from 'react-native';
+import { View, Text, Pressable, FlatList, Image, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -7,7 +7,7 @@ import { ScreenContainer } from '../../src/components/layout';
 import { RequestListSkeleton } from '../../src/components/ui';
 import { useRequestsStore } from '../../src/stores/useRequestsStore';
 import { REQUEST_STATUS } from '../../src/constants/status';
-import { primaryProfessionLabel } from '../../src/utils/professionLabel';
+import { localizeProfession } from '../../src/utils/professionLabel';
 import { COLORS } from '../../src/constants';
 
 import type { ServiceRequest } from '../../src/services/requests';
@@ -77,7 +77,14 @@ export default function RequestsScreen() {
 
   const renderRequest = ({ item }: { item: ServiceRequest }) => {
     const ai = item.aiAnalysis as any;
-    const professionLabel = primaryProfessionLabel(ai, t);
+    // Show ALL professions, not just the first one. AI returns 1-3.
+    const professionKeys: string[] =
+      (Array.isArray(ai?.professions) ? ai.professions : ai?.professionLabelsHe) ?? [];
+    const professionLabels = professionKeys
+      .map((k) => localizeProfession(k, t))
+      .filter(Boolean);
+    const professionDisplay = professionLabels.join(' · ');
+
     const shortSummary = ai?.shortSummary || ai?.summary || '';
     const bidCount = bidCounts[item.id] || 0;
     const lastSeen = unreadBaseline[item.id]?.lastSeenBidCount || 0;
@@ -86,14 +93,26 @@ export default function RequestsScreen() {
       unread > 0 &&
       (item.status === REQUEST_STATUS.OPEN || item.status === REQUEST_STATUS.PAUSED);
 
+    // First image from the request's media, used as the thumbnail.
+    const firstMedia = Array.isArray((item as any).media) ? (item as any).media[0] : null;
+    const thumbUri =
+      firstMedia?.thumbnailUrl ||
+      (firstMedia?.type !== 'video' ? firstMedia?.downloadUrl || firstMedia?.url : null);
+
     return (
       <Pressable onPress={() => openRequest(item.id)} style={styles.requestCard}>
-        <View style={styles.requestIcon}>
-          <Ionicons name="build" size={22} color={COLORS.primary} />
-        </View>
+        {thumbUri ? (
+          <Image source={{ uri: thumbUri }} style={styles.requestThumb} />
+        ) : (
+          <View style={styles.requestIcon}>
+            <Ionicons name="build" size={22} color={COLORS.primary} />
+          </View>
+        )}
 
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.requestTitle}>{professionLabel || t('requests.serviceRequest')}</Text>
+          <Text style={styles.requestTitle}>
+            {professionDisplay || t('requests.serviceRequest')}
+          </Text>
           <Text style={styles.requestSummary} numberOfLines={1}>
             {showBadge
               ? t('requests.newOffers', { count: unread })
@@ -305,12 +324,18 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   requestIcon: {
-    width: 44,
-    height: 44,
+    width: 56,
+    height: 56,
     borderRadius: 12,
     backgroundColor: COLORS.primary + '15',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  requestThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
   },
   requestTitle: {
     color: COLORS.text,
