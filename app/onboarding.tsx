@@ -1,15 +1,14 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   Platform,
-  ScrollView,
   useWindowDimensions,
   I18nManager,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,19 +17,30 @@ import { COLORS } from '../src/constants';
 import { useAppStore } from '../src/stores/useAppStore';
 
 /**
- * Onboarding — ScrollView pager (not FlatList).
+ * Onboarding — manual pager with RN-core Animated + PanResponder.
  *
- * Why ScrollView: FlatList + horizontal + pagingEnabled fights RTL in
- * subtle ways (iOS doesn't auto-reverse the way Android does, and the
- * `inverted` prop double-flips on some Android+RTL combinations). We
- * had the 'slide 2 shows first' bug on multiple attempts with FlatList.
+ * Why not ScrollView / FlatList: RN's horizontal scroll components
+ * auto-flip their content offset when `I18nManager.isRTL === true`, and
+ * the auto-flip is inconsistent across platforms and RN versions. We
+ * burned several iterations on the bug where the finger swipe felt
+ * reversed on Hebrew devices — tapping Next worked, but the swipe went
+ * the opposite way. By driving the transform ourselves we bypass the
+ * auto-flip entirely, so behavior is identical on iOS / Android / LTR / RTL:
  *
- * A bare ScrollView with exactly 3 children lets RN's native RTL handling
- * work the way it does for every other horizontal scroll view in the app:
- * index 0 lands visible first, swipe advances to the next.
+ *   - Slides are laid out left-to-right (index 0 on the left).
+ *   - Swipe finger right → left → translateX goes more negative → the
+ *     next slide scrolls in. Same mental model Hebrew users see in every
+ *     other native app (WhatsApp, iOS home screen, etc).
+ *   - Prev / Next buttons call the same setIndex() path so button
+ *     navigation and finger navigation animate identically.
+ *
+ * Using RN-core (not react-native-gesture-handler) means no
+ * GestureHandlerRootView plumbing and no extra Reanimated worklet tricks —
+ * this component is self-contained.
  */
 
 const DESKTOP_MAX_WIDTH = 480;
+const SWIPE_THRESHOLD = 50;
 
 interface Example {
   icon: keyof typeof Ionicons.glyphMap;
@@ -53,8 +63,12 @@ export default function OnboardingScreen() {
   const SCREEN_WIDTH = isDesktop ? Math.min(windowWidth, DESKTOP_MAX_WIDTH) : windowWidth;
   const isRTL = I18nManager.isRTL;
 
-  const scrollRef = useRef<ScrollView>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const translateX = useRef(new Animated.Value(0)).current;
+  // Mirror the committed index inside a ref so the PanResponder handlers
+  // always see the latest value (closures in PanResponder created at mount
+  // capture the initial state).
+  const indexRef = useRef(0);
 
   const slides: Slide[] = [
     {
@@ -92,23 +106,26 @@ export default function OnboardingScreen() {
     },
   ];
 
-  // Force initial position to slide 0 — a small belt-and-suspenders
-  // because RN's RTL ScrollView occasionally starts at the content end.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollTo({ x: 0, animated: false });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [SCREEN_WIDTH]);
-
-  const scrollToIndex = (index: number) => {
-    if (index < 0 || index >= slides.length) return;
-    scrollRef.current?.scrollTo({
-      x: SCREEN_WIDTH * index,
-      animated: true,
-    });
-    // Don't setState here — onScroll will do it based on actual scroll position.
+  const snapTo = (i: number, animated: boolean = true) => {
+    const clamped = Math.max(0, Math.min(slides.length - 1, i));
+    indexRef.current = clamped;
+    setCurrentSlide(clamped);
+    if (animated) {
+      Animated.timing(translateX, {
+        toValue: -clamped * SCREEN_WIDTH,
+        duration: 280,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      translateX.setValue(-clamped * SCREEN_WIDTH);
+    }
   };
+
+  // Keep the transform in sync when the viewport width changes (e.g.
+  // rotating a tablet or resizing the browser window on web).
+  useEffect(() => {
+    translateX.setValue(-indexRef.current * SCREEN_WIDTH);
+  }, [SCREEN_WIDTH]);
 
   const finish = async () => {
     await setHasSeenOnboarding(true);
@@ -116,21 +133,33 @@ export default function OnboardingScreen() {
   };
 
   const goNext = () => {
-    if (currentSlide === slides.length - 1) void finish();
-    else scrollToIndex(currentSlide + 1);
+    if (indexRef.current === slides.length - 1) void finish();
+    else snapTo(indexRef.current + 1);
   };
 
-  const goPrev = () => scrollToIndex(currentSlide - 1);
+  const goPrev = () => snapTo(indexRef.current - 1);
 
-  const onScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const x = Math.abs(e.nativeEvent.contentOffset.x);
-      const index = Math.round(x / SCREEN_WIDTH);
-      if (index !== currentSlide && index >= 0 && index < slides.length) {
-        setCurrentSlide(index);
-      }
-    },
-    [SCREEN_WIDTH, currentSlide, slides.length],
+  // PanResponder — claim horizontal drags only. Right-to-left (negative dx)
+  // advances; left-to-right (positive dx) goes back. This matches what
+  // Hebrew users asked for and is also how every other native app behaves.
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, g) =>
+          Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy),
+        onPanResponderMove: (_, g) => {
+          translateX.setValue(-indexRef.current * SCREEN_WIDTH + g.dx);
+        },
+        onPanResponderRelease: (_, g) => {
+          let next = indexRef.current;
+          if (g.dx < -SWIPE_THRESHOLD) next = indexRef.current + 1;
+          else if (g.dx > SWIPE_THRESHOLD) next = indexRef.current - 1;
+          snapTo(next);
+        },
+        onPanResponderTerminate: () => snapTo(indexRef.current),
+      }),
+    [SCREEN_WIDTH],
   );
 
   const slide = slides[currentSlide];
@@ -140,7 +169,6 @@ export default function OnboardingScreen() {
   return (
     <View style={[styles.container, isDesktop && { alignItems: 'center' }]}>
       <View style={isDesktop ? { width: DESKTOP_MAX_WIDTH, flex: 1 } : { flex: 1 }}>
-        {/* Top bar — skip only */}
         <View style={styles.topBar}>
           <View style={{ flex: 1 }} />
           <Pressable onPress={() => void finish()} hitSlop={20}>
@@ -148,28 +176,27 @@ export default function OnboardingScreen() {
           </Pressable>
         </View>
 
-        {/* ScrollView pager — no row-reverse. React Native's I18nManager
-            already flips horizontal scroll direction on RTL devices, and
-            adding row-reverse on top of that double-flips (the bug the
-            user reported: 'tapping next advances but the animation moves
-            backwards'). Letting RN handle direction natively is reliable. */}
-        <ScrollView
-          ref={scrollRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-        >
-          {slides.map((s, i) => (
-            <SlideView key={i} slide={s} width={SCREEN_WIDTH} />
-          ))}
-        </ScrollView>
+        {/* Clip container hides the off-screen slides. Inner Animated.View
+            is 3× screen width and translates left/right via the transform. */}
+        <View style={[styles.pagerClip, { width: SCREEN_WIDTH }]} {...panResponder.panHandlers}>
+          <Animated.View
+            style={[
+              styles.pagerRow,
+              {
+                width: SCREEN_WIDTH * slides.length,
+                transform: [{ translateX }],
+              },
+            ]}
+          >
+            {slides.map((s, i) => (
+              <SlideView key={i} slide={s} width={SCREEN_WIDTH} />
+            ))}
+          </Animated.View>
+        </View>
 
-        {/* Dots */}
         <View style={styles.dots}>
           {slides.map((_, i) => (
-            <Pressable key={i} onPress={() => scrollToIndex(i)} hitSlop={8}>
+            <Pressable key={i} onPress={() => snapTo(i)} hitSlop={8}>
               <View
                 style={[
                   styles.dot,
@@ -186,7 +213,6 @@ export default function OnboardingScreen() {
           {currentSlide + 1}/{slides.length}
         </Text>
 
-        {/* Button row — first slide has one big button; rest have Next + Back. */}
         {isFirst ? (
           <View style={styles.btnRowSingle}>
             <Pressable
@@ -269,6 +295,14 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 15,
     fontWeight: '600',
+  },
+  pagerClip: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  pagerRow: {
+    flex: 1,
+    flexDirection: 'row',
   },
   slide: {
     flex: 1,

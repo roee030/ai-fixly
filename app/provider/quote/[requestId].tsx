@@ -13,7 +13,10 @@ import { AvailabilityPicker, type AvailabilitySelection } from '../../../src/com
 import {
   fetchPublicRequestSummary,
   submitProviderQuote,
+  submitProviderReport,
   QuoteAlreadySubmittedError,
+  RequestNotFoundError,
+  RequestClosedError,
   parseRequestToken,
 } from '../../../src/services/providerForm';
 import type { PublicRequestSummary } from '../../../src/services/providerForm';
@@ -46,7 +49,14 @@ export default function ProviderQuoteScreen() {
   const providerName = (params.n || '').trim();
 
   const [summary, setSummary] = useState<PublicRequestSummary | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Discriminated load state so the screen can render distinct UIs:
+  //   'not_found' -> broken/removed link, offer a "report" CTA
+  //   'closed'    -> request ended normally, informational only
+  //   string      -> unexpected error, show the raw message (debug aid)
+  const [loadError, setLoadError] = useState<'not_found' | 'closed' | string | null>(null);
+  const [reportSent, setReportSent] = useState(false);
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [price, setPrice] = useState('');
   const [isVisitFee, setIsVisitFee] = useState(false);
   const [availability, setAvailability] = useState<AvailabilitySelection | null>(null);
@@ -65,8 +75,30 @@ export default function ProviderQuoteScreen() {
     if (!requestId) return;
     fetchPublicRequestSummary(requestId)
       .then(setSummary)
-      .catch((err) => setLoadError(err?.message || 'load_failed'));
+      .catch((err) => {
+        if (err instanceof RequestNotFoundError) setLoadError('not_found');
+        else if (err instanceof RequestClosedError) setLoadError('closed');
+        else setLoadError(err?.message || 'load_failed');
+      });
   }, [requestId]);
+
+  const handleReportBrokenLink = async () => {
+    if (isReporting || !requestId) return;
+    setIsReporting(true);
+    setReportError(null);
+    try {
+      await submitProviderReport({
+        requestId,
+        providerPhone: providerPhone || 'unknown',
+        reason: 'broken_link',
+      });
+      setReportSent(true);
+    } catch (err: any) {
+      setReportError(err?.message || 'report_failed');
+    } finally {
+      setIsReporting(false);
+    }
+  };
 
   const canSubmit =
     !isSubmitting &&
@@ -105,27 +137,73 @@ export default function ProviderQuoteScreen() {
     }
   };
 
+  if (loadError === 'closed') {
+    // Request ran its course (customer picked someone or abandoned).
+    // Informational only — no action for the provider to take.
+    return (
+      <ScreenContainer>
+        <View style={styles.center}>
+          <Ionicons name="information-circle" size={64} color={COLORS.info} />
+          <Text style={styles.thankTitle}>{t('providerForm.closedTitle')}</Text>
+          <Text style={styles.thankSubtitle}>{t('providerForm.closedSubtitle')}</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (loadError === 'not_found') {
+    // Link points at an id we have no record of. Could be a broken/copy-paste
+    // error, an expired test link, or a bug. Offer a one-tap report CTA.
+    return (
+      <ScreenContainer>
+        <View style={styles.center}>
+          <Ionicons name="help-circle" size={64} color={COLORS.warning} />
+          <Text style={styles.thankTitle}>{t('providerForm.notFoundTitle')}</Text>
+          <Text style={styles.thankSubtitle}>{t('providerForm.notFoundSubtitle')}</Text>
+          {reportSent ? (
+            <Text style={[styles.availabilityPreview, { textAlign: 'center' }]}>
+              {t('providerForm.notFoundReported')}
+            </Text>
+          ) : (
+            <Pressable
+              onPress={handleReportBrokenLink}
+              disabled={isReporting}
+              style={[styles.retryBtn, isReporting && { opacity: 0.6 }]}
+            >
+              <Text style={styles.retryText}>
+                {isReporting ? '...' : t('providerForm.notFoundReport')}
+              </Text>
+            </Pressable>
+          )}
+          {reportError && (
+            <Text style={styles.debugText}>{t('providerForm.notFoundReportError')}</Text>
+          )}
+        </View>
+      </ScreenContainer>
+    );
+  }
+
   if (loadError) {
+    // Unexpected failure (network, 500, etc). Keep debug info + retry.
     return (
       <ScreenContainer>
         <View style={styles.center}>
           <Ionicons name="alert-circle" size={48} color={COLORS.error} />
           <Text style={styles.errorText}>{t('providerForm.requestNotFound')}</Text>
-          {/* Debug info so the owner can tell what's going wrong rather
-              than staring at a generic error. Shows the requestId that
-              failed to load and the underlying HTTP error. */}
           <Text style={styles.debugText}>
             ID: {requestId || '(empty)'}
           </Text>
-          <Text style={styles.debugText}>
-            {loadError}
-          </Text>
+          <Text style={styles.debugText}>{loadError}</Text>
           <Pressable
             onPress={() => {
               setLoadError(null);
               fetchPublicRequestSummary(requestId)
                 .then(setSummary)
-                .catch((err) => setLoadError(err?.message || 'load_failed'));
+                .catch((err) => {
+                  if (err instanceof RequestNotFoundError) setLoadError('not_found');
+                  else if (err instanceof RequestClosedError) setLoadError('closed');
+                  else setLoadError(err?.message || 'load_failed');
+                });
             }}
             style={styles.retryBtn}
           >

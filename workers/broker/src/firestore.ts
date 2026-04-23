@@ -401,14 +401,22 @@ export class FirestoreClient {
   /**
    * Public view of a request — privacy-stripped and safe to expose to
    * unauthenticated providers via the /provider/quote/[id] form.
-   * Returns null if the request is missing or already CLOSED (no point
-   * letting a provider quote on something the customer abandoned).
+   *
+   * Returns a discriminated result so callers can show different UIs for
+   * "doesn't exist" (possibly a broken link — offer a report CTA) versus
+   * "already closed" (customer picked someone or walked away — informational).
    */
-  async getPublicRequestView(requestId: string): Promise<PublicRequestView | null> {
+  async getPublicRequestView(
+    requestId: string,
+  ): Promise<
+    | { kind: 'ok'; view: PublicRequestView }
+    | { kind: 'not_found' }
+    | { kind: 'closed' }
+  > {
     try {
       if (!requestId || requestId.trim().length === 0) {
         console.warn('[publicView] empty requestId');
-        return null;
+        return { kind: 'not_found' };
       }
       const accessToken = await this.getToken();
       const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}`;
@@ -417,7 +425,7 @@ export class FirestoreClient {
       });
       if (!response.ok) {
         console.warn(`[publicView] Firestore ${response.status} for requestId=${requestId}`);
-        return null;
+        return { kind: 'not_found' };
       }
 
       const data = (await response.json()) as any;
@@ -428,7 +436,7 @@ export class FirestoreClient {
       // on a draft that's about to open than show a confusing 404.
       if (status === 'closed') {
         console.warn(`[publicView] rejecting closed request ${requestId}`);
-        return null;
+        return { kind: 'closed' };
       }
 
       // Pull the array of media items. We expose two shapes for backward
@@ -468,17 +476,20 @@ export class FirestoreClient {
       })();
 
       return {
-        requestId,
-        status,
-        city,
-        textDescription: fields.textDescription?.stringValue || '',
-        mediaUrls,
-        mediaItems,
-        createdAt: fields.createdAt?.timestampValue || null,
+        kind: 'ok',
+        view: {
+          requestId,
+          status,
+          city,
+          textDescription: fields.textDescription?.stringValue || '',
+          mediaUrls,
+          mediaItems,
+          createdAt: fields.createdAt?.timestampValue || null,
+        },
       };
     } catch (err) {
       console.error('getPublicRequestView failed:', err);
-      return null;
+      return { kind: 'not_found' };
     }
   }
 
