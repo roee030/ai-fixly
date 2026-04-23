@@ -1,8 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIAnalysisService, AIAnalysisInput, AIAnalysisResult } from './types';
 import { ANALYSIS_PROMPT } from './prompts';
+import { PROFESSIONS } from '../../constants/problemMatrix';
 import { logger } from '../logger';
 import { reportAiFullFailure } from './alertAiFailure';
+
+const VALID_PROFESSION_KEYS = new Set(PROFESSIONS.map((p) => p.key));
 
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'];
 
@@ -95,9 +98,21 @@ class GeminiAnalysisService implements AIAnalysisService {
         const jsonStr = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const parsed = JSON.parse(jsonStr);
 
-        const professions: string[] = Array.isArray(parsed.professions) && parsed.professions.length > 0
+        // Validate: every key the AI returns must be one we understand
+        // (i.e. in PROFESSIONS). Unknown keys like 'drywaller' get
+        // silently mapped to 'handyman' so the UI never shows English
+        // words — the user reported 'handyman drywaller' displaying
+        // untranslated because 'drywaller' isn't a valid key.
+        const rawProfessions: string[] = Array.isArray(parsed.professions) && parsed.professions.length > 0
           ? parsed.professions
           : ['handyman'];
+        const professions = Array.from(
+          new Set(
+            rawProfessions.map((p) =>
+              typeof p === 'string' && VALID_PROFESSION_KEYS.has(p) ? p : 'handyman',
+            ),
+          ),
+        );
 
         const ms = Date.now() - t0;
         modelTimings.push({ model: modelName, ms, ok: true });

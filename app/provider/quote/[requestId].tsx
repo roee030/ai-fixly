@@ -111,6 +111,26 @@ export default function ProviderQuoteScreen() {
         <View style={styles.center}>
           <Ionicons name="alert-circle" size={48} color={COLORS.error} />
           <Text style={styles.errorText}>{t('providerForm.requestNotFound')}</Text>
+          {/* Debug info so the owner can tell what's going wrong rather
+              than staring at a generic error. Shows the requestId that
+              failed to load and the underlying HTTP error. */}
+          <Text style={styles.debugText}>
+            ID: {requestId || '(empty)'}
+          </Text>
+          <Text style={styles.debugText}>
+            {loadError}
+          </Text>
+          <Pressable
+            onPress={() => {
+              setLoadError(null);
+              fetchPublicRequestSummary(requestId)
+                .then(setSummary)
+                .catch((err) => setLoadError(err?.message || 'load_failed'));
+            }}
+            style={styles.retryBtn}
+          >
+            <Text style={styles.retryText}>נסה שוב</Text>
+          </Pressable>
         </View>
       </ScreenContainer>
     );
@@ -368,7 +388,10 @@ const styles = StyleSheet.create({
   switchHint: { color: COLORS.textTertiary, fontSize: 12, marginTop: 2 },
   availabilityPreview: { color: COLORS.success, fontSize: 13, fontWeight: '600' as any, marginTop: 8 },
 
-  errorText: { color: COLORS.error, fontSize: 13, textAlign: 'center' as any },
+  errorText: { color: COLORS.error, fontSize: 15, textAlign: 'center' as any, fontWeight: '700' as any },
+  debugText: { color: COLORS.textTertiary, fontSize: 11, textAlign: 'center' as any, fontFamily: 'monospace' as any },
+  retryBtn: { marginTop: 12, backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
+  retryText: { color: '#FFFFFF', fontWeight: '700' as any },
   thankTitle: { color: COLORS.text, fontSize: 22, fontWeight: 'bold' as any, marginTop: 12 },
   thankSubtitle: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center' as any, marginTop: 4 },
   footer: { color: COLORS.textTertiary, fontSize: 11, textAlign: 'center' as any, marginTop: 8 },

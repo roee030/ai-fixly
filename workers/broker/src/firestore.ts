@@ -406,17 +406,30 @@ export class FirestoreClient {
    */
   async getPublicRequestView(requestId: string): Promise<PublicRequestView | null> {
     try {
+      if (!requestId || requestId.trim().length === 0) {
+        console.warn('[publicView] empty requestId');
+        return null;
+      }
       const accessToken = await this.getToken();
       const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/serviceRequests/${requestId}`;
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        console.warn(`[publicView] Firestore ${response.status} for requestId=${requestId}`);
+        return null;
+      }
 
       const data = (await response.json()) as any;
       const fields = data.fields || {};
       const status = fields.status?.stringValue || 'unknown';
-      if (status === 'closed') return null;
+      // Only hard-reject CLOSED. DRAFT / OPEN / IN_PROGRESS / PAUSED
+      // all surface the quote form — we'd rather let a provider submit
+      // on a draft that's about to open than show a confusing 404.
+      if (status === 'closed') {
+        console.warn(`[publicView] rejecting closed request ${requestId}`);
+        return null;
+      }
 
       // Pull the array of media items. We expose two shapes for backward
       // compatibility: `mediaUrls` is the legacy flat list of download URLs;
