@@ -15,6 +15,17 @@
     --primary: #6366F1; --primary-l: #818CF8; --primary-d: #4F46E5;
     --success: #22C55E; --warning: #F59E0B; --error: #EF4444; --info: #3B82F6;
     --whatsapp: #25D366;
+
+    /* Inline SVG "problem photos" — used anywhere the user-captured image
+       would appear in the real app. Stylised but photo-ish: a kitchen
+       leaking tap scene, so every thumb in the deck tells the same
+       narrative (water leak). Additional variants cover the My-Requests
+       grid where we show different problem categories. */
+    --leak-photo: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200' preserveAspectRatio='xMidYMid slice'><defs><linearGradient id='w' x1='0' x2='0' y1='0' y2='1'><stop offset='0' stop-color='%23475569'/><stop offset='1' stop-color='%23334155'/></linearGradient><linearGradient id='c' x1='0' x2='1' y1='0' y2='0'><stop offset='0' stop-color='%23CBD5E1'/><stop offset='0.5' stop-color='%23F1F5F9'/><stop offset='1' stop-color='%2394A3B8'/></linearGradient></defs><rect width='200' height='130' fill='url(%23w)'/><g stroke='%23233142' stroke-width='0.7' opacity='0.5'><line x1='0' y1='45' x2='200' y2='45'/><line x1='0' y1='90' x2='200' y2='90'/><line x1='70' y1='0' x2='70' y2='130'/><line x1='130' y1='0' x2='130' y2='130'/></g><rect y='130' width='200' height='70' fill='%23E2E8F0'/><ellipse cx='100' cy='168' rx='72' ry='26' fill='%23CBD5E1'/><ellipse cx='100' cy='165' rx='66' ry='22' fill='%23F1F5F9'/><rect x='86' y='48' width='28' height='20' fill='url(%23c)' rx='3'/><rect x='92' y='62' width='16' height='4' fill='%2364748B'/><path d='M95 68 Q95 105 100 112 L102 112 Q107 105 107 68 Z' fill='url(%23c)'/><ellipse cx='98' cy='52' rx='10' ry='5' fill='%2364748B'/><ellipse cx='101' cy='120' rx='3' ry='5' fill='%2338BDF8'/><ellipse cx='101' cy='138' rx='3.5' ry='5.5' fill='%2338BDF8' opacity='0.9'/><ellipse cx='101' cy='155' rx='4' ry='6' fill='%230EA5E9'/><ellipse cx='100' cy='170' rx='55' ry='9' fill='%2338BDF8' opacity='0.5'/><ellipse cx='100' cy='170' rx='40' ry='6' fill='%230EA5E9' opacity='0.6'/><ellipse cx='100' cy='168' rx='22' ry='3' fill='%230284C7' opacity='0.7'/></svg>");
+
+    --electric-photo: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200' preserveAspectRatio='xMidYMid slice'><defs><linearGradient id='w2' x1='0' x2='0' y1='0' y2='1'><stop offset='0' stop-color='%23FEF3C7'/><stop offset='1' stop-color='%23FDE68A'/></linearGradient></defs><rect width='200' height='200' fill='url(%23w2)'/><rect x='70' y='60' width='60' height='90' fill='%23F8FAFC' rx='6' stroke='%23CBD5E1' stroke-width='2'/><circle cx='85' cy='95' r='5' fill='%2364748B'/><circle cx='115' cy='95' r='5' fill='%2364748B'/><circle cx='85' cy='120' r='5' fill='%2364748B'/><circle cx='115' cy='120' r='5' fill='%2364748B'/><path d='M70 60 L60 40 L80 50 Z' fill='%23F59E0B' opacity='0.85'/><path d='M130 60 L145 45 L140 65 Z' fill='%23F59E0B' opacity='0.85'/><path d='M100 30 L95 50 L105 45 L100 70' stroke='%23F59E0B' stroke-width='3' fill='none' stroke-linecap='round'/><path d='M60 85 L50 75 L65 80 L55 70' stroke='%23F59E0B' stroke-width='2.5' fill='none' stroke-linecap='round'/></svg>");
+
+    --paint-photo: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200' preserveAspectRatio='xMidYMid slice'><defs><linearGradient id='w3' x1='0' x2='0' y1='0' y2='1'><stop offset='0' stop-color='%23FECACA'/><stop offset='0.6' stop-color='%23F87171'/><stop offset='1' stop-color='%23DC2626'/></linearGradient></defs><rect width='200' height='200' fill='url(%23w3)'/><path d='M 0 40 Q 30 60 55 50 T 100 45 T 140 55 T 200 50 L 200 0 L 0 0 Z' fill='%23FEF2F2' opacity='0.85'/><path d='M 20 80 Q 25 120 45 140 Q 50 145 55 150 Q 40 145 25 155 Q 35 130 30 100 Z' fill='%23991B1B' opacity='0.6'/><path d='M 120 70 Q 130 110 150 130 Q 145 120 160 145 Q 135 140 125 150 Q 130 115 120 85 Z' fill='%23991B1B' opacity='0.5'/><circle cx='60' cy='95' r='3' fill='%237F1D1D' opacity='0.8'/><circle cx='100' cy='125' r='2.5' fill='%237F1D1D' opacity='0.7'/><circle cx='150' cy='105' r='3.5' fill='%237F1D1D' opacity='0.6'/></svg>");
   }
   * { box-sizing: border-box; }
   html, body {
@@ -134,7 +145,7 @@
   #confirm .prof-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   #confirm .prof-chip { background: rgba(99,102,241,0.2); border: 1px solid var(--primary); color: var(--primary-l); border-radius: 20px; padding: 4px 10px; font-size: 11px; font-weight: 700; }
   #confirm .media-strip { display: flex; gap: 8px; margin-top: 10px; }
-  #confirm .thumb { width: 64px; height: 64px; border-radius: 10px; background: linear-gradient(135deg, #334, #556); }
+  #confirm .thumb { width: 64px; height: 64px; border-radius: 10px; background-image: var(--leak-photo); background-size: cover; background-position: center; background-color: #1F2937; }
   #confirm .cta-row { position: absolute; bottom: 32px; left: 20px; right: 20px; display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
 
   /* ── MY REQUESTS ─────────────────────────────────────────────── */
@@ -143,7 +154,9 @@
     background: var(--surface-solid); border: 1px solid var(--border);
     border-radius: 14px; padding: 12px; display: flex; gap: 12px; margin-bottom: 10px;
   }
-  #my-req .card .thumb { width: 68px; height: 68px; border-radius: 10px; background: linear-gradient(135deg, #556, #779); }
+  #my-req .card .thumb { width: 68px; height: 68px; border-radius: 10px; background-image: var(--leak-photo); background-size: cover; background-position: center; background-color: #1F2937; }
+  #my-req .card .thumb.electric { background-image: var(--electric-photo); }
+  #my-req .card .thumb.paint { background-image: var(--paint-photo); }
   #my-req .card .meta { flex: 1; }
   #my-req .card .prof { font-size: 14px; font-weight: 800; margin-bottom: 2px; }
   #my-req .card .descr { font-size: 11px; color: var(--text-s); margin-bottom: 6px; }
@@ -219,7 +232,7 @@
   #wa .msg .ai-head { color: #25D366; font-weight: 800; margin-bottom: 8px; }
   #wa .msg .label { color: #8696A0; font-size: 11px; margin-top: 8px; }
   #wa .msg .link { color: #53BDEB; font-size: 12px; word-break: break-all; }
-  #wa .msg .media { width: 160px; height: 120px; border-radius: 8px; background: linear-gradient(135deg, #334, #557); margin: 6px 0; }
+  #wa .msg .media { width: 160px; height: 120px; border-radius: 8px; background-image: var(--leak-photo); background-size: cover; background-position: center; background-color: #1F2937; margin: 6px 0; }
   #wa .msg .ref  { color: #8696A0; font-size: 11px; margin-top: 8px; }
   #wa .msg .time { color: #8696A0; font-size: 10px; text-align: left; margin-top: 4px; }
 
@@ -346,7 +359,7 @@
       </div>
     </div>
     <div class="card">
-      <div class="thumb"></div>
+      <div class="thumb electric"></div>
       <div class="meta">
         <div class="prof">חשמלאי</div>
         <div class="descr">המזגן לא עובד, אין חשמל...</div>
@@ -357,7 +370,7 @@
       </div>
     </div>
     <div class="card">
-      <div class="thumb"></div>
+      <div class="thumb paint"></div>
       <div class="meta">
         <div class="prof">צבעי · הנדימן</div>
         <div class="descr">קיר בחדר השינה מתקלף...</div>
@@ -464,7 +477,10 @@
     <div class="cv">חדרה</div>
     <div class="cl" style="margin-top:10px">תיאור הבעיה</div>
     <div class="cv">נזילה מהברז במטבח, התחילה הבוקר ולא מפסיקה.</div>
-    <div style="display:flex;gap:8px;margin-top:10px"><div style="width:64px;height:64px;border-radius:10px;background:linear-gradient(135deg,#334,#557)"></div><div style="width:64px;height:64px;border-radius:10px;background:linear-gradient(135deg,#336,#558)"></div></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <div style="width:64px;height:64px;border-radius:10px;background-image:var(--leak-photo);background-size:cover;background-position:center;background-color:#1F2937"></div>
+      <div style="width:64px;height:64px;border-radius:10px;background-image:var(--leak-photo);background-size:cover;background-position:center left;background-color:#1F2937"></div>
+    </div>
   </div>
   <div class="row"><label style="color:var(--text);font-weight:700">מחיר משוער (₪)</label><input placeholder="למשל: 350" value="320" style="margin-top:6px"/></div>
   <div class="row"><label style="color:var(--text);font-weight:700">מתי תוכל להגיע? בחר חלון של שעתיים</label>
