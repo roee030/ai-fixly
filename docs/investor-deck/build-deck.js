@@ -1,13 +1,16 @@
 /**
- * ai-fixly investor deck generator.
+ * ai-fixly — מצגת משקיעים (עברית).
  *
- * Produces `ai-fixly-investor-deck.pptx` in the same folder.
- * Colour palette is the "Midnight Executive" from the PPTX skill —
- * navy primary / ice-blue secondary / coral accent. It mirrors the app's
- * premium dark aesthetic and reads well on a projector.
+ * מייצר `ai-fixly-investor-deck.pptx` באותה תיקייה.
  *
- * Every content slide carries a visual (phone screenshot, icon grid, chart,
- * or stat callout). No text-only slides.
+ * פלטה: "Deep Indigo & Warm Gold" — כחול אינדיגו עמוק + זהב חם + אלמון רך.
+ * עיצוב פרימיום בדמות אפליקציה עצמה: רקעים כהים בשקפי פתיחה/סיום,
+ * רקעים בהירים בין לבין (מבנה "סנדוויץ'"), מוטיב עקבי של קלף עם פס דק
+ * בצד ימין (כי עברית RTL).
+ *
+ * גופנים:
+ *   - כותרות: Rubik (מודרני, פופולרי בעברית) — נופל ל-Arial אם לא מותקן
+ *   - גוף:    Arial (זמין בכל מחשב)
  */
 
 const path = require('path');
@@ -16,85 +19,118 @@ const pptxgen = require(path.join(
   'pptxgenjs',
 ));
 
-// ── Palette ───────────────────────────────────────────────────────────────
+// ── פלטה ─────────────────────────────────────────────────────────────────
 const C = {
-  navy: '1E2761',
-  navyDeep: '101B44',
-  ice: 'CADCFC',
-  white: 'FFFFFF',
-  accent: 'F96167',    // coral pop for callouts
-  gold: 'F9E795',      // warm highlight
-  muted: '94A3B8',
-  subtext: '64748B',
-  ink: '0F172A',
-  good: '22C55E',
-  warn: 'F59E0B',
-  bad: 'EF4444',
+  // Indigo scale
+  indigoDeep: '0A0B2E',  // כחול-שחור לרקעים כהים
+  indigo:     '1A1B4B',  // אינדיגו ראשי
+  indigoSoft: '2D2F6E',  // אינדיגו רך לקלפים כהים
+  ice:        'E8ECFC',  // כחול-לבן לטקסט על רקע כהה
+  cream:      'F7F3ED',  // קרם חם לרקע בהיר
+  paper:      'FBFAF7',  // לבן חמים לקלפים
+  // Accent
+  gold:       'E5B77A',  // זהב חם — מספרים ומטבעות
+  coral:      'F97066',  // אלמון — אזהרות/סטטיסטיקה
+  sage:       '84A98C',  // ירוק-שקד — מיתון/"טוב"
+  // Neutrals
+  ink:        '0F172A',  // טקסט ראשי
+  subtext:    '4A5568',  // טקסט משני
+  muted:      '94A3B8',  // טקסט עמום
+  hairline:   'E2E8F0',  // קו מפריד
 };
 
-const FONT_HEAD = 'Georgia';
-const FONT_BODY = 'Calibri';
+// כותרת: Rubik (Google Fonts — פופולרי בישראל). אם לא מותקן, נופל ל-Arial.
+// גוף: Arial — זמין אוניברסלית.
+const FONT_HEAD = 'Rubik';
+const FONT_BODY = 'Arial';
 
-// ── Screenshots ───────────────────────────────────────────────────────────
+// ── צילומי מסך ───────────────────────────────────────────────────────────
 const SHOTS = path.resolve(__dirname, '..', 'screenshots');
 const shot = (name) => path.join(SHOTS, name);
 
-// Hebrew mockups are rendered at 430×900 (1:2.09). Keep that ratio so the
-// phone frame never stretches the UI.
+// המוקאפים מרונדרים 430×900. שומרים את היחס כדי שהטלפון לא ימתח.
 const PHONE_RATIO = 430 / 900;
 function phoneSize(h) {
   return { w: +(h * PHONE_RATIO).toFixed(3), h };
 }
 
-// ── Presentation setup ────────────────────────────────────────────────────
+// ── Presentation ─────────────────────────────────────────────────────────
 const pres = new pptxgen();
-pres.layout = 'LAYOUT_16x9'; // 10" × 5.625"
+pres.layout = 'LAYOUT_16x9';
 pres.author = 'ai-fixly';
-pres.title = 'ai-fixly — Investor Deck';
+pres.title = 'ai-fixly — מצגת משקיעים';
 pres.company = 'ai-fixly';
-pres.subject = 'Investor deck: product, market, traction, ask';
+pres.subject = 'מצגת משקיעים: מוצר, שוק, טראקשן, בקשה';
 
 const SLIDE_W = 10;
 const SLIDE_H = 5.625;
+const TOTAL = 14;
 
-// ── Reusable chrome ───────────────────────────────────────────────────────
-function addFooter(slide, pageNum, total) {
+// ── עזרים ────────────────────────────────────────────────────────────────
+
+/**
+ * רקע נקי + קו זהב דק במעלה השקף כמוטיב חוזר.
+ * כל שקף תוכן מתחיל בזה.
+ */
+function lightBg(slide) {
+  slide.background = { color: C.paper };
   slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: SLIDE_H - 0.28, w: SLIDE_W, h: 0.28,
-    fill: { color: C.navyDeep }, line: { color: C.navyDeep },
-  });
-  slide.addText('ai-fixly', {
-    x: 0.4, y: SLIDE_H - 0.28, w: 2, h: 0.28,
-    fontSize: 9, fontFace: FONT_BODY, color: C.ice, valign: 'middle', margin: 0,
-  });
-  slide.addText(`${pageNum} / ${total}`, {
-    x: SLIDE_W - 1, y: SLIDE_H - 0.28, w: 0.6, h: 0.28,
-    fontSize: 9, fontFace: FONT_BODY, color: C.ice, align: 'right', valign: 'middle', margin: 0,
+    x: 0, y: 0, w: SLIDE_W, h: 0.06,
+    fill: { color: C.gold }, line: { color: C.gold },
   });
 }
 
+function darkBg(slide) {
+  slide.background = { color: C.indigoDeep };
+}
+
+/** כותרת + תת-כותרת בפינה הימנית של השקף (RTL). */
 function addTitle(slide, title, subtitle) {
   slide.addText(title, {
-    x: 0.5, y: 0.35, w: 9, h: 0.7,
-    fontSize: 32, fontFace: FONT_HEAD, bold: true, color: C.navy, margin: 0,
+    x: 0.5, y: 0.35, w: 9, h: 0.8,
+    fontSize: 34, fontFace: FONT_HEAD, bold: true, color: C.indigo,
+    align: 'right', rtlMode: true, margin: 0,
   });
   if (subtitle) {
     slide.addText(subtitle, {
-      x: 0.5, y: 1.05, w: 9, h: 0.4,
-      fontSize: 14, fontFace: FONT_BODY, color: C.subtext, margin: 0,
+      x: 0.5, y: 1.1, w: 9, h: 0.4,
+      fontSize: 14, fontFace: FONT_BODY, color: C.subtext,
+      align: 'right', rtlMode: true, margin: 0,
     });
   }
+  // גרש דק מתחת לכותרת — מוטיב עקבי.
+  slide.addShape(pres.shapes.RECTANGLE, {
+    x: 8.8, y: 1.6, w: 0.7, h: 0.04,
+    fill: { color: C.gold }, line: { color: C.gold },
+  });
 }
 
-// Phone frame: rounded dark bezel around the screenshot.
+function addFooter(slide, pageNum) {
+  slide.addShape(pres.shapes.RECTANGLE, {
+    x: 0, y: SLIDE_H - 0.3, w: SLIDE_W, h: 0.3,
+    fill: { color: C.indigo }, line: { color: C.indigo },
+  });
+  slide.addText('ai-fixly', {
+    x: SLIDE_W - 2, y: SLIDE_H - 0.3, w: 1.8, h: 0.3,
+    fontSize: 10, fontFace: FONT_HEAD, bold: true, color: C.gold,
+    align: 'right', valign: 'middle', margin: 0,
+  });
+  slide.addText(`${pageNum} / ${TOTAL}`, {
+    x: 0.4, y: SLIDE_H - 0.3, w: 0.8, h: 0.3,
+    fontSize: 10, fontFace: FONT_BODY, color: C.ice,
+    align: 'left', valign: 'middle', margin: 0,
+  });
+}
+
+/** מסגרת טלפון: בזל שחור עגול סביב הצילום. */
 function addPhone(slide, imgPath, x, y, h) {
   const { w, h: ph } = phoneSize(h);
-  const BEZEL = 0.09;
+  const BEZEL = 0.08;
   slide.addShape(pres.shapes.ROUNDED_RECTANGLE, {
     x: x - BEZEL, y: y - BEZEL, w: w + BEZEL * 2, h: ph + BEZEL * 2,
-    fill: { color: '000000' }, line: { color: '1F2937', width: 1 },
+    fill: { color: '0A0A0F' }, line: { color: '1F2937', width: 1 },
     rectRadius: 0.22,
-    shadow: { type: 'outer', blur: 10, offset: 3, angle: 135, color: '000000', opacity: 0.35 },
+    shadow: { type: 'outer', blur: 14, offset: 4, angle: 135, color: '000000', opacity: 0.28 },
   });
   slide.addImage({
     path: imgPath, x, y, w, h: ph,
@@ -102,472 +138,539 @@ function addPhone(slide, imgPath, x, y, h) {
   });
 }
 
-// ── Slide 1: Cover ────────────────────────────────────────────────────────
-let totalSlides = 14;
-const mkSlide = () => pres.addSlide();
+/** קלף מובנה (רקע לבן + צל רך + פס מבטא בימין כי RTL). */
+function addCard(slide, x, y, w, h, accentColor) {
+  slide.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+    x, y, w, h,
+    fill: { color: C.paper }, line: { color: C.hairline, width: 1 },
+    rectRadius: 0.12,
+    shadow: { type: 'outer', blur: 10, offset: 2, angle: 135, color: '000000', opacity: 0.06 },
+  });
+  // פס מבטא בצד ימין (כי קוראים עברית מימין לשמאל)
+  slide.addShape(pres.shapes.RECTANGLE, {
+    x: x + w - 0.08, y, w: 0.08, h,
+    fill: { color: accentColor || C.gold }, line: { color: accentColor || C.gold },
+  });
+}
 
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 1 — פתיחה
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  s.background = { color: C.navy };
+  const s = pres.addSlide();
+  darkBg(s);
 
-  // Giant muted brand mark behind title — adds depth without noise.
+  // "fixly" ענק ברקע — יוצר עומק ויזואלי בלי להתיש.
   s.addText('fixly', {
-    x: 0, y: 1.5, w: SLIDE_W, h: 3.5,
-    fontSize: 240, fontFace: FONT_HEAD, bold: true, color: C.navyDeep,
-    align: 'center', valign: 'middle', margin: 0,
+    x: 0, y: 1.6, w: SLIDE_W, h: 3.3,
+    fontSize: 260, fontFace: FONT_HEAD, bold: true, color: C.indigoSoft,
+    align: 'center', valign: 'middle', margin: 0, charSpacing: -6,
   });
 
+  // חותמת בפינה העליונה הימנית.
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 8.2, y: 0.5, w: 1.2, h: 0.04,
+    fill: { color: C.gold }, line: { color: C.gold },
+  });
   s.addText('ai-fixly', {
-    x: 0.5, y: 0.5, w: 9, h: 0.6,
-    fontSize: 20, fontFace: FONT_BODY, color: C.ice, margin: 0,
+    x: 7, y: 0.55, w: 2.4, h: 0.4,
+    fontSize: 15, fontFace: FONT_HEAD, bold: true, color: C.gold,
+    align: 'right', letterSpacing: 2, margin: 0,
   });
 
-  s.addText('The Uber for home services.', {
-    x: 0.5, y: 2.0, w: 9, h: 0.9,
-    fontSize: 44, fontFace: FONT_HEAD, bold: true, color: C.white,
-    align: 'center', margin: 0,
+  // כותרת ראשית — באנגלית כי השם שלנו באנגלית, אבל התת-כותרת בעברית.
+  s.addText('האובר של תיקוני הבית.', {
+    x: 0.5, y: 2.1, w: 9, h: 1.0,
+    fontSize: 54, fontFace: FONT_HEAD, bold: true, color: C.paper,
+    align: 'center', rtlMode: true, margin: 0,
   });
 
   s.addText([
-    { text: 'Snap the problem. ', options: { color: C.ice } },
-    { text: 'AI matches the pro. ', options: { color: C.ice } },
-    { text: 'Quotes arrive in minutes.', options: { color: C.gold, bold: true } },
+    { text: 'צלם. ', options: { color: C.ice } },
+    { text: 'ה-AI מוצא את בעל המקצוע. ', options: { color: C.ice } },
+    { text: 'הצעות מחיר תוך דקות.', options: { color: C.gold, bold: true } },
   ], {
-    x: 0.5, y: 3.0, w: 9, h: 0.5,
-    fontSize: 16, fontFace: FONT_BODY, align: 'center', margin: 0,
+    x: 0.5, y: 3.3, w: 9, h: 0.55,
+    fontSize: 17, fontFace: FONT_BODY,
+    align: 'center', rtlMode: true, margin: 0,
   });
 
   s.addShape(pres.shapes.RECTANGLE, {
-    x: 4.5, y: 3.8, w: 1, h: 0.05, fill: { color: C.accent }, line: { color: C.accent },
+    x: 4.7, y: 4.1, w: 0.6, h: 0.04, fill: { color: C.coral }, line: { color: C.coral },
   });
 
-  s.addText('Investor briefing · 2026', {
+  s.addText('מצגת משקיעים · 2026', {
     x: 0.5, y: 5.0, w: 9, h: 0.4,
-    fontSize: 11, fontFace: FONT_BODY, color: C.ice, align: 'center', margin: 0,
+    fontSize: 11, fontFace: FONT_HEAD, color: C.muted,
+    align: 'center', rtlMode: true, margin: 0, charSpacing: 3,
   });
 }
 
-// ── Slide 2: The Problem ──────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 2 — הבעיה
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'Getting a handyman is broken.', 'The experience has not changed in 20 years.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'למצוא בעל מקצוע — עדיין נוראי.', 'לא השתנה כלום ב-20 שנה.');
 
-  // Left column — pain points
+  // ארבע נקודות כאב — טור ימני (עברית)
   const pains = [
-    ['Phone roulette',   'Call 5 pros. 3 ignore you. 2 "call back later".'],
-    ['Opaque pricing',   'No price until the pro is at your door.'],
-    ['Wasted trips',     'The pro shows up, cannot do the job, charges a fee.'],
-    ['No trust signal',  'Ratings? Good luck. You pick whoever picks up.'],
+    ['טלפון-רולטה',     'מתקשרים ל-5, 3 לא עונים, 2 "אחזור אליך" ונעלמו.'],
+    ['מחיר מעורפל',    'אין מחיר עד שבעל המקצוע בדלת, ואז מאוחר מדי.'],
+    ['טיולי סרק',      'בעל המקצוע מגיע, לא יכול לטפל, גובה דמי קריאה.'],
+    ['אין סיגנל אמון', 'דירוג? ביקורות? שום דבר. בוחרים את מי שעונה.'],
   ];
   pains.forEach(([h, b], i) => {
-    const y = 1.55 + i * 0.78;
+    const y = 1.7 + i * 0.78;
+    // עיגול אלמון עם X
     s.addShape(pres.shapes.OVAL, {
-      x: 0.55, y: y + 0.12, w: 0.28, h: 0.28,
-      fill: { color: C.accent }, line: { color: C.accent },
+      x: 9.1, y: y + 0.1, w: 0.3, h: 0.3,
+      fill: { color: C.coral }, line: { color: C.coral },
     });
     s.addText('×', {
-      x: 0.55, y: y + 0.09, w: 0.28, h: 0.3,
-      fontSize: 16, bold: true, color: C.white, align: 'center', valign: 'middle', margin: 0,
+      x: 9.1, y: y + 0.07, w: 0.3, h: 0.33,
+      fontSize: 16, bold: true, color: C.paper,
+      align: 'center', valign: 'middle', margin: 0, fontFace: FONT_HEAD,
     });
     s.addText(h, {
-      x: 1.0, y, w: 4.0, h: 0.3,
-      fontSize: 15, bold: true, fontFace: FONT_HEAD, color: C.navy, margin: 0,
+      x: 5.0, y, w: 4.0, h: 0.32,
+      fontSize: 16, bold: true, fontFace: FONT_HEAD, color: C.indigo,
+      align: 'right', rtlMode: true, margin: 0,
     });
     s.addText(b, {
-      x: 1.0, y: y + 0.3, w: 4.5, h: 0.45,
-      fontSize: 11, fontFace: FONT_BODY, color: C.subtext, margin: 0,
+      x: 4.8, y: y + 0.34, w: 4.2, h: 0.44,
+      fontSize: 11.5, fontFace: FONT_BODY, color: C.subtext,
+      align: 'right', rtlMode: true, margin: 0,
     });
   });
 
-  // Right column — big stat
+  // סטטיסטיקה ענקית בטור שמאל
   s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-    x: 6.0, y: 1.55, w: 3.5, h: 3.2,
-    fill: { color: C.navy }, line: { color: C.navy },
-    rectRadius: 0.15,
+    x: 0.5, y: 1.7, w: 4.0, h: 3.1,
+    fill: { color: C.indigo }, line: { color: C.indigo },
+    rectRadius: 0.18,
   });
   s.addText('73%', {
-    x: 6.0, y: 1.8, w: 3.5, h: 1.3,
-    fontSize: 80, fontFace: FONT_HEAD, bold: true, color: C.gold,
+    x: 0.5, y: 1.85, w: 4.0, h: 1.35,
+    fontSize: 96, fontFace: FONT_HEAD, bold: true, color: C.gold,
     align: 'center', valign: 'middle', margin: 0,
   });
-  s.addText('of Israelis delay home repairs', {
-    x: 6.0, y: 3.1, w: 3.5, h: 0.4,
-    fontSize: 14, fontFace: FONT_BODY, color: C.white, align: 'center', margin: 0,
+  s.addText('מהישראלים דוחים תיקונים בבית', {
+    x: 0.5, y: 3.3, w: 4.0, h: 0.4,
+    fontSize: 14, fontFace: FONT_HEAD, bold: true, color: C.paper,
+    align: 'center', rtlMode: true, margin: 0,
   });
-  s.addText('because finding a reliable pro is too annoying.', {
-    x: 6.0, y: 3.5, w: 3.5, h: 0.8,
-    fontSize: 11, fontFace: FONT_BODY, color: C.ice, align: 'center', italic: true, margin: 0,
+  s.addText('כי למצוא בעל מקצוע אמין זה פשוט מעצבן מדי.', {
+    x: 0.5, y: 3.75, w: 4.0, h: 0.7,
+    fontSize: 11.5, fontFace: FONT_BODY, italic: true, color: C.ice,
+    align: 'center', rtlMode: true, margin: 0,
   });
-  s.addText('Source: internal research, n=210, 2025', {
-    x: 6.0, y: 4.3, w: 3.5, h: 0.3,
-    fontSize: 9, fontFace: FONT_BODY, color: C.muted, align: 'center', margin: 0,
+  s.addText('מחקר פנימי · n=210 · 2025', {
+    x: 0.5, y: 4.45, w: 4.0, h: 0.3,
+    fontSize: 9, fontFace: FONT_BODY, color: C.muted,
+    align: 'center', rtlMode: true, margin: 0,
   });
 
-  addFooter(s, 2, totalSlides);
+  addFooter(s, 2);
 }
 
-// ── Slide 3: Our Solution ─────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 3 — הפתרון
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'One tap. No forms. We do the rest.', 'AI is the middleman — the customer never fills in a category.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'לחיצה אחת. אפס טפסים.', 'ה-AI הוא המתווך — הלקוח לא בוחר קטגוריה בעצמו.');
 
-  // Phone on the left
-  addPhone(s, shot('mock-home-he.png'), 0.7, 1.5, 3.5);
+  // טלפון מימין (כי RTL)
+  addPhone(s, shot('mock-home-he.png'), 6.7, 1.75, 3.2);
 
-  // Right: 3 value props with icons
-  const valueProps = [
-    { h: 'Zero friction', b: 'Photo + two words. That\'s the whole form.', color: C.accent },
-    { h: 'AI understands', b: 'Gemini reads the image, classifies the problem, picks the right pros.', color: C.navy },
-    { h: 'Quotes in minutes', b: 'WhatsApp broadcast reaches 10+ local pros in 60 seconds.', color: C.good },
+  // 3 בלוקים עם מספרים
+  const props = [
+    { h: 'אפס חיכוך',        b: 'תמונה + שתי מילים. זה כל הטופס.',                    color: C.coral },
+    { h: 'ה-AI מבין לבד',    b: 'Gemini קורא את התמונה, מבין את הבעיה, מוצא את המקצועות הרלוונטיים.', color: C.indigo },
+    { h: 'הצעות תוך דקות',   b: 'שליחת ואטספ ל-10+ בעלי מקצוע מקומיים ב-60 שניות.',     color: C.sage },
   ];
-  valueProps.forEach((v, i) => {
-    const y = 1.6 + i * 1.1;
+  props.forEach((p, i) => {
+    const y = 1.85 + i * 1.05;
+    // עיגול עם מספר
     s.addShape(pres.shapes.OVAL, {
-      x: 4.5, y, w: 0.5, h: 0.5,
-      fill: { color: v.color }, line: { color: v.color },
+      x: 5.6, y, w: 0.6, h: 0.6,
+      fill: { color: p.color }, line: { color: p.color },
     });
     s.addText(String(i + 1), {
-      x: 4.5, y: y - 0.02, w: 0.5, h: 0.5,
-      fontSize: 18, bold: true, fontFace: FONT_HEAD, color: C.white,
+      x: 5.6, y: y - 0.02, w: 0.6, h: 0.6,
+      fontSize: 22, bold: true, fontFace: FONT_HEAD, color: C.paper,
       align: 'center', valign: 'middle', margin: 0,
     });
-    s.addText(v.h, {
-      x: 5.15, y, w: 4.4, h: 0.4,
-      fontSize: 17, bold: true, fontFace: FONT_HEAD, color: C.navy, margin: 0,
+    s.addText(p.h, {
+      x: 0.5, y, w: 4.9, h: 0.4,
+      fontSize: 20, bold: true, fontFace: FONT_HEAD, color: C.indigo,
+      align: 'right', rtlMode: true, margin: 0,
     });
-    s.addText(v.b, {
-      x: 5.15, y: y + 0.42, w: 4.4, h: 0.55,
-      fontSize: 12, fontFace: FONT_BODY, color: C.subtext, margin: 0,
+    s.addText(p.b, {
+      x: 0.5, y: y + 0.45, w: 4.9, h: 0.55,
+      fontSize: 12.5, fontFace: FONT_BODY, color: C.subtext,
+      align: 'right', rtlMode: true, margin: 0,
     });
   });
 
-  addFooter(s, 3, totalSlides);
+  addFooter(s, 3);
 }
 
-// ── Slide 4: How It Works (customer flow) ─────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 4 — איך זה עובד (צד הלקוח)
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'Customer side: three screens, done.', null);
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'צד הלקוח: שלושה מסכים, זהו.', null);
 
   const shots = [
-    { path: shot('mock-capture-he.png'),         cap: '1 · Snap + describe' },
-    { path: shot('mock-confirm-he.png'),         cap: '2 · Review AI summary' },
-    { path: shot('mock-request-details-he.png'), cap: '3 · Compare quotes' },
+    { path: shot('mock-capture-he.png'),         cap: '1 · צלם + תאר' },
+    { path: shot('mock-confirm-he.png'),         cap: '2 · אשר את ה-AI' },
+    { path: shot('mock-request-details-he.png'), cap: '3 · השווה הצעות' },
   ];
-  const H = 3.5;
+  const H = 3.3;
   const W = H * PHONE_RATIO;
   const GAP = (SLIDE_W - W * 3 - 1.0) / 2;
-  shots.forEach((shotEntry, i) => {
+  shots.forEach((entry, i) => {
     const x = 0.5 + i * (W + GAP);
-    addPhone(s, shotEntry.path, x, 1.4, H);
-    s.addText(shotEntry.cap, {
-      x: x - 0.3, y: 1.4 + H + 0.25, w: W + 0.6, h: 0.35,
-      fontSize: 13, fontFace: FONT_BODY, bold: true, color: C.navy,
-      align: 'center', margin: 0,
+    addPhone(s, entry.path, x, 1.55, H);
+    s.addText(entry.cap, {
+      x: x - 0.4, y: 1.55 + H + 0.3, w: W + 0.8, h: 0.38,
+      fontSize: 15, fontFace: FONT_HEAD, bold: true, color: C.indigo,
+      align: 'center', rtlMode: true, margin: 0,
     });
   });
 
-  addFooter(s, 4, totalSlides);
+  addFooter(s, 4);
 }
 
-// ── Slide 5: Provider side (WhatsApp) ─────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 5 — צד בעל המקצוע
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'Provider side: just WhatsApp.', 'No app to install. No website to log in to. Zero onboarding cost.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'צד בעל המקצוע: פשוט ואטספ.', 'אין אפליקציה להתקין. אין אתר להתחבר אליו. אפס עלות הצטרפות.');
 
-  addPhone(s, shot('mock-whatsapp-msg-he.png'), 0.8, 1.5, 3.5);
+  // טלפון מימין
+  addPhone(s, shot('mock-whatsapp-msg-he.png'), 6.7, 1.75, 3.2);
 
-  // Right column — key points
-  const y0 = 1.6;
   const points = [
-    ['We DM them the job', 'Photos, short AI summary, one-tap "Quote" link.'],
-    ['They reply with a price', 'Or tap the web form — either works.'],
-    ['We parse & anonymise', 'Customer sees "pro #1 — 350₪ — tomorrow 10am".'],
-    ['Picked? We reveal', 'Both sides get each other\'s contact, not before.'],
+    ['שולחים DM',             'תמונות, סיכום AI קצר, לינק "הצע מחיר".'],
+    ['הם עונים במחיר',         'או לוחצים על הטופס האינטרנטי — שניהם עובדים.'],
+    ['אנחנו מפרקים + מסננים', 'הלקוח רואה "בעל מקצוע 1 · 350₪ · מחר 10:00".'],
+    ['נבחרת? חושפים',          'שני הצדדים מקבלים פרטי קשר, לא לפני.'],
   ];
   points.forEach(([h, b], i) => {
-    const y = y0 + i * 0.82;
-    s.addShape(pres.shapes.RECTANGLE, {
-      x: 4.6, y, w: 0.08, h: 0.6,
-      fill: { color: C.accent }, line: { color: C.accent },
-    });
+    const y = 1.75 + i * 0.82;
+    addCard(s, 0.5, y, 5.0, 0.68, C.coral);
     s.addText(h, {
-      x: 4.85, y, w: 4.5, h: 0.32,
-      fontSize: 14, bold: true, fontFace: FONT_HEAD, color: C.navy, margin: 0,
+      x: 0.7, y: y + 0.05, w: 4.5, h: 0.3,
+      fontSize: 14, bold: true, fontFace: FONT_HEAD, color: C.indigo,
+      align: 'right', rtlMode: true, margin: 0,
     });
     s.addText(b, {
-      x: 4.85, y: y + 0.32, w: 4.5, h: 0.4,
-      fontSize: 11, fontFace: FONT_BODY, color: C.subtext, margin: 0,
+      x: 0.7, y: y + 0.34, w: 4.5, h: 0.32,
+      fontSize: 11, fontFace: FONT_BODY, color: C.subtext,
+      align: 'right', rtlMode: true, margin: 0,
     });
   });
 
-  addFooter(s, 5, totalSlides);
+  addFooter(s, 5);
 }
 
-// ── Slide 6: Live Product Tour (grid) ─────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 6 — סיור במוצר
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'Live product, shipped.', 'Every screen below is running in production on Android / iOS / Web.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'המוצר חי בפרודקשן.', 'כל המסכים רצים כרגע על iOS / אנדרואיד / Web.');
 
   const grid = [
-    { p: shot('mock-home-he.png'),            cap: 'Home' },
-    { p: shot('mock-my-requests-he.png'),     cap: 'My requests' },
-    { p: shot('mock-request-details-he.png'), cap: 'Live quotes' },
-    { p: shot('mock-selected-he.png'),        cap: 'Chosen pro' },
-    { p: shot('mock-whatsapp-msg-he.png'),    cap: 'Provider DM' },
-    { p: shot('mock-provider-quote-he.png'),  cap: 'Pro quote form' },
+    { p: shot('mock-home-he.png'),            cap: 'בית' },
+    { p: shot('mock-my-requests-he.png'),     cap: 'הקריאות שלי' },
+    { p: shot('mock-request-details-he.png'), cap: 'הצעות חיות' },
+    { p: shot('mock-selected-he.png'),        cap: 'בעל המקצוע הנבחר' },
+    { p: shot('mock-whatsapp-msg-he.png'),    cap: 'ואטספ לבעל המקצוע' },
+    { p: shot('mock-provider-quote-he.png'),  cap: 'טופס הצעת מחיר' },
   ];
   const H = 2.5;
   const W = H * PHONE_RATIO;
   const colGap = (SLIDE_W - W * 6 - 1.0) / 5;
   grid.forEach((g, i) => {
     const x = 0.5 + i * (W + colGap);
-    addPhone(s, g.p, x, 1.5, H);
+    addPhone(s, g.p, x, 1.65, H);
     s.addText(g.cap, {
-      x: x - 0.2, y: 1.5 + H + 0.15, w: W + 0.4, h: 0.3,
-      fontSize: 10, fontFace: FONT_BODY, bold: true, color: C.navy,
-      align: 'center', margin: 0,
+      x: x - 0.25, y: 1.65 + H + 0.17, w: W + 0.5, h: 0.32,
+      fontSize: 10.5, fontFace: FONT_HEAD, bold: true, color: C.indigo,
+      align: 'center', rtlMode: true, margin: 0,
     });
   });
 
-  addFooter(s, 6, totalSlides);
+  addFooter(s, 6);
 }
 
-// ── Slide 7: Tech Stack ───────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 7 — הטכנולוגיה
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'How it\'s built.', 'Serverless, edge-first, zero infra overhead.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'איך זה בנוי.', 'Serverless, edge-first, אפס overhead תפעולי.');
 
   const stack = [
-    { h: 'AI',           b: 'Google Gemini 2.5 Flash — multimodal (image + text).', color: C.accent },
-    { h: 'Messaging',    b: 'Twilio WhatsApp Business API for every pro touch.',     color: C.navy },
-    { h: 'Broker',       b: 'Cloudflare Workers (edge) — Places search, broadcast, webhooks.', color: C.good },
-    { h: 'Data',         b: 'Firebase Firestore + Auth + Storage.',                  color: C.warn },
-    { h: 'Client',       b: 'React Native + Expo Router, shared web app via Pages.', color: C.ice },
-    { h: 'Observability',b: 'Firestore event-sourcing, Sentry, admin dashboard.',    color: C.muted },
+    { h: 'AI',             b: 'Google Gemini 2.5 Flash — מולטי-מודאלי (תמונה + טקסט).', color: C.coral },
+    { h: 'הודעות',         b: 'Twilio WhatsApp Business API לכל אינטראקציה עם בעלי מקצוע.', color: C.indigo },
+    { h: 'Broker',         b: 'Cloudflare Workers (edge) — חיפוש Places, שידור, webhooks.', color: C.sage },
+    { h: 'נתונים',          b: 'Firebase Firestore + Auth + Storage.',                      color: C.gold },
+    { h: 'קליינט',          b: 'React Native + Expo Router, אותה אפליקציה גם ל-Web.',        color: C.indigoSoft },
+    { h: 'אובזרבביליות',     b: 'Event-sourcing ב-Firestore, Sentry, דשבורד ניהולי.',        color: C.muted },
   ];
-  const cols = 2;
-  const boxW = 4.3, boxH = 1.0;
+  const cols = 2, boxW = 4.3, boxH = 1.05;
   stack.forEach((entry, i) => {
     const col = i % cols, row = Math.floor(i / cols);
     const x = 0.5 + col * (boxW + 0.4);
-    const y = 1.55 + row * (boxH + 0.2);
-    s.addShape(pres.shapes.RECTANGLE, {
-      x, y, w: boxW, h: boxH,
-      fill: { color: 'F8FAFC' }, line: { color: 'E2E8F0', width: 1 },
-    });
-    s.addShape(pres.shapes.RECTANGLE, {
-      x, y, w: 0.08, h: boxH,
-      fill: { color: entry.color }, line: { color: entry.color },
-    });
+    const y = 1.75 + row * (boxH + 0.2);
+    addCard(s, x, y, boxW, boxH, entry.color);
     s.addText(entry.h, {
-      x: x + 0.25, y: y + 0.12, w: boxW - 0.4, h: 0.35,
-      fontSize: 14, bold: true, fontFace: FONT_HEAD, color: C.navy, margin: 0,
+      x: x + 0.25, y: y + 0.12, w: boxW - 0.5, h: 0.36,
+      fontSize: 15, bold: true, fontFace: FONT_HEAD, color: C.indigo,
+      align: 'right', rtlMode: true, margin: 0,
     });
     s.addText(entry.b, {
-      x: x + 0.25, y: y + 0.45, w: boxW - 0.4, h: 0.5,
-      fontSize: 11, fontFace: FONT_BODY, color: C.subtext, margin: 0,
+      x: x + 0.25, y: y + 0.48, w: boxW - 0.5, h: 0.55,
+      fontSize: 11, fontFace: FONT_BODY, color: C.subtext,
+      align: 'right', rtlMode: true, margin: 0,
     });
   });
 
-  addFooter(s, 7, totalSlides);
+  addFooter(s, 7);
 }
 
-// ── Slide 8: Why We Win ───────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 8 — למה ננצח
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'Why we win.', 'Our unfair advantages over every existing player.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'היתרון שלנו.', 'למה המתחרים לא יכולים להעתיק את זה בחצי שנה.');
 
   const wins = [
-    { h: 'No provider app',  b: 'Every competitor asks pros to install, sign up, log in. We use the one app they already open 50× a day.', color: C.accent },
-    { h: 'AI classifies',    b: 'Customers don\'t pick a category. We read the photo and route. Lower drop-off, better matches.', color: C.navy },
-    { h: 'Anonymous quotes', b: 'Pros compete on price & availability, not on who\'s fastest to grab the phone.', color: C.good },
-    { h: 'Middle layer',     b: 'We own the flow end-to-end. No copy-paste from ZAP to WhatsApp. No leaks, no fraud.', color: C.warn },
+    { h: 'אין אפליקציה לבעל מקצוע', b: 'כל מתחרה דורש מבעלי המקצוע להתקין, להירשם, להתחבר. אנחנו משתמשים באפליקציה שהם כבר פותחים 50 פעמים ביום.', color: C.coral },
+    { h: 'ה-AI מסווג במקום הלקוח', b: 'הלקוח לא בוחר קטגוריה. אנחנו קוראים את התמונה ומנתבים. פחות נטישה, התאמה טובה יותר.', color: C.indigo },
+    { h: 'הצעות אנונימיות',         b: 'בעלי מקצוע מתחרים על מחיר וזמינות, לא על מי הכי מהיר להרים טלפון.', color: C.sage },
+    { h: 'אנחנו השכבה האמצעית',     b: 'בעלות על הזרימה end-to-end. בלי העתק-הדבק מ-ZAP לוואטספ. בלי דליפות ובלי הונאות.', color: C.gold },
   ];
   wins.forEach((w, i) => {
     const col = i % 2, row = Math.floor(i / 2);
     const x = 0.5 + col * 4.6;
-    const y = 1.55 + row * 1.65;
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-      x, y, w: 4.3, h: 1.4,
-      fill: { color: C.white }, line: { color: 'E2E8F0', width: 1 },
-      rectRadius: 0.1,
-      shadow: { type: 'outer', blur: 6, offset: 2, angle: 135, color: '000000', opacity: 0.08 },
-    });
+    const y = 1.7 + row * 1.65;
+    addCard(s, x, y, 4.3, 1.45, w.color);
+    // עיגול וי
     s.addShape(pres.shapes.OVAL, {
-      x: x + 0.25, y: y + 0.3, w: 0.6, h: 0.6,
+      x: x + 3.4, y: y + 0.3, w: 0.55, h: 0.55,
       fill: { color: w.color }, line: { color: w.color },
     });
     s.addText('✓', {
-      x: x + 0.25, y: y + 0.28, w: 0.6, h: 0.6,
-      fontSize: 22, bold: true, color: C.white, align: 'center', valign: 'middle', margin: 0,
+      x: x + 3.4, y: y + 0.27, w: 0.55, h: 0.6,
+      fontSize: 22, bold: true, color: C.paper,
+      align: 'center', valign: 'middle', margin: 0, fontFace: FONT_HEAD,
     });
     s.addText(w.h, {
-      x: x + 1.0, y: y + 0.25, w: 3.1, h: 0.4,
-      fontSize: 16, bold: true, fontFace: FONT_HEAD, color: C.navy, margin: 0,
+      x: x + 0.25, y: y + 0.3, w: 3.05, h: 0.4,
+      fontSize: 16, bold: true, fontFace: FONT_HEAD, color: C.indigo,
+      align: 'right', rtlMode: true, margin: 0,
     });
     s.addText(w.b, {
-      x: x + 1.0, y: y + 0.65, w: 3.1, h: 0.75,
-      fontSize: 10.5, fontFace: FONT_BODY, color: C.subtext, margin: 0,
+      x: x + 0.25, y: y + 0.72, w: 3.9, h: 0.7,
+      fontSize: 10.5, fontFace: FONT_BODY, color: C.subtext,
+      align: 'right', rtlMode: true, margin: 0,
     });
   });
 
-  addFooter(s, 8, totalSlides);
+  addFooter(s, 8);
 }
 
-// ── Slide 9: Risks / Challenges ───────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 9 — סיכונים
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'What keeps us up at night.', 'The honest risks — and how we mitigate them.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'מה לא מרדים אותנו בלילה.', 'הסיכונים — ואיך אנחנו מנטרלים אותם.');
 
   const risks = [
-    { r: 'Provider liquidity',       m: 'Cold-start city by city. Manual seeding of first 50 pros in each area.' },
-    { r: 'WhatsApp policy risk',     m: 'Every template pre-approved by Meta. Opt-out baked into every message.' },
-    { r: 'Take-rate acceptance',     m: 'Free for pros at launch — monetise only after we\'ve delivered jobs.' },
-    { r: 'AI misclassification',     m: 'Human-in-the-loop review gate for low-confidence matches.' },
-    { r: 'Low-trust category',       m: 'Ratings + verified ID for every pro, enforced before detail reveal.' },
+    { r: 'נזילות בעלי מקצוע', m: 'Cold-start עיר-אחרי-עיר. זריעה ידנית של 50 הראשונים בכל אזור.' },
+    { r: 'מדיניות WhatsApp',   m: 'כל תבנית הודעה מאושרת מראש ע"י Meta. Opt-out מובנה בכל הודעה.' },
+    { r: 'קבלת אחוז העמלה',    m: 'חינם לבעלי מקצוע בהשקה — מונטיזציה רק אחרי שהבאנו להם עבודות.' },
+    { r: 'טעויות סיווג של AI', m: 'שער human-in-the-loop לסיווגים בוודאות נמוכה.' },
+    { r: 'קטגוריה עם אמון נמוך',m: 'דירוגים + אימות זהות לכל בעל מקצוע, נאכף לפני חשיפת פרטים.' },
   ];
-  const startY = 1.55, rowH = 0.62;
+  const rowH = 0.58;
   risks.forEach((entry, i) => {
-    const y = startY + i * rowH;
+    const y = 1.7 + i * rowH;
     s.addShape(pres.shapes.RECTANGLE, {
       x: 0.5, y, w: 9, h: rowH - 0.08,
-      fill: { color: i % 2 === 0 ? 'F8FAFC' : C.white }, line: { color: 'E2E8F0', width: 0.5 },
+      fill: { color: i % 2 === 0 ? C.cream : C.paper }, line: { color: C.hairline, width: 0.5 },
     });
     s.addShape(pres.shapes.RECTANGLE, {
-      x: 0.5, y, w: 0.08, h: rowH - 0.08,
-      fill: { color: C.bad }, line: { color: C.bad },
+      x: 0.5 + 9 - 0.08, y, w: 0.08, h: rowH - 0.08,
+      fill: { color: C.coral }, line: { color: C.coral },
     });
     s.addText(entry.r, {
-      x: 0.75, y, w: 3.3, h: rowH - 0.08,
-      fontSize: 13, bold: true, fontFace: FONT_HEAD, color: C.navy, valign: 'middle', margin: 0,
+      x: 5.6, y, w: 3.7, h: rowH - 0.08,
+      fontSize: 14, bold: true, fontFace: FONT_HEAD, color: C.indigo,
+      align: 'right', rtlMode: true, valign: 'middle', margin: 0,
     });
     s.addText(entry.m, {
-      x: 4.1, y, w: 5.3, h: rowH - 0.08,
-      fontSize: 11, fontFace: FONT_BODY, color: C.subtext, valign: 'middle', margin: 0,
+      x: 0.65, y, w: 4.85, h: rowH - 0.08,
+      fontSize: 11, fontFace: FONT_BODY, color: C.subtext,
+      align: 'right', rtlMode: true, valign: 'middle', margin: 0,
     });
   });
 
-  addFooter(s, 9, totalSlides);
+  addFooter(s, 9);
 }
 
-// ── Slide 10: Market Size ─────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 10 — השוק
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'The market.', 'Israeli home services — then the Mediterranean.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'השוק.', 'שירותי תיקוני בית בישראל — ואז הים התיכון.');
 
-  // TAM/SAM/SOM concentric rectangles
-  const baseX = 0.8, baseY = 1.6;
+  // שלושה מלבנים מצולעים זה בתוך זה (TAM/SAM/SOM)
+  const baseX = 5.3, baseY = 1.75;
   const tiers = [
-    { label: 'TAM', value: '$4.2B', sub: 'IL home-services spend (annual)', w: 6.0, h: 3.3, color: C.navyDeep },
-    { label: 'SAM', value: '$1.1B', sub: 'Small-ticket jobs < 2000₪ (60% of urban)', w: 4.5, h: 2.3, color: C.navy },
-    { label: 'SOM', value: '$85M',  sub: '5% capture in Gush Dan + Sharon by Y3',   w: 2.8, h: 1.3, color: C.accent },
+    { label: 'TAM', value: '$4.2B', sub: 'הוצאה שנתית בישראל על שירותי בית', w: 4.2, h: 2.9, color: C.indigoDeep },
+    { label: 'SAM', value: '$1.1B', sub: 'עבודות קטנות < ₪2,000 (60% מהעירוני)', w: 3.1, h: 2.0, color: C.indigo },
+    { label: 'SOM', value: '$85M',  sub: 'נתח של 5% בגוש דן + השרון עד שנה 3', w: 1.9, h: 1.1, color: C.coral },
   ];
   tiers.forEach((tier) => {
     s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-      x: baseX + (6.0 - tier.w) / 2, y: baseY + (3.3 - tier.h) / 2,
+      x: baseX + (4.2 - tier.w) / 2, y: baseY + (2.9 - tier.h) / 2,
       w: tier.w, h: tier.h,
       fill: { color: tier.color }, line: { color: tier.color },
       rectRadius: 0.1,
     });
   });
-  // Labels for each tier on the right
+
+  // לייבלים לכל שכבה — בטור ימני
   tiers.forEach((tier, i) => {
-    const y = 1.7 + i * 0.95;
+    const y = 1.85 + i * 0.9;
     s.addShape(pres.shapes.OVAL, {
-      x: 7.3, y: y + 0.05, w: 0.3, h: 0.3,
+      x: 4.75, y: y + 0.08, w: 0.32, h: 0.32,
       fill: { color: tier.color }, line: { color: tier.color },
     });
-    s.addText(`${tier.label} — ${tier.value}`, {
-      x: 7.7, y, w: 2.3, h: 0.4,
-      fontSize: 16, bold: true, fontFace: FONT_HEAD, color: C.navy, margin: 0,
+    s.addText(`${tier.value} — ${tier.label}`, {
+      x: 0.5, y, w: 4.15, h: 0.4,
+      fontSize: 18, bold: true, fontFace: FONT_HEAD, color: C.indigo,
+      align: 'right', rtlMode: true, margin: 0,
     });
     s.addText(tier.sub, {
-      x: 7.7, y: y + 0.38, w: 2.3, h: 0.5,
-      fontSize: 9.5, fontFace: FONT_BODY, color: C.subtext, margin: 0,
+      x: 0.5, y: y + 0.42, w: 4.15, h: 0.5,
+      fontSize: 11, fontFace: FONT_BODY, color: C.subtext,
+      align: 'right', rtlMode: true, margin: 0,
     });
   });
 
-  s.addText('Expansion path: IL → Cyprus → Greece → Portugal. Same labour shortage, same WhatsApp culture.', {
-    x: 0.5, y: 5.05, w: 9, h: 0.3,
-    fontSize: 10, italic: true, fontFace: FONT_BODY, color: C.subtext, align: 'center', margin: 0,
+  s.addText('מסלול התרחבות: ישראל → קפריסין → יוון → פורטוגל. אותו מחסור בכוח אדם, אותה תרבות ואטספ.', {
+    x: 0.5, y: 4.95, w: 9, h: 0.32,
+    fontSize: 10.5, italic: true, fontFace: FONT_BODY, color: C.subtext,
+    align: 'center', rtlMode: true, margin: 0,
   });
 
-  addFooter(s, 10, totalSlides);
+  addFooter(s, 10);
 }
 
-// ── Slide 11: Business Model ──────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 11 — מודל עסקי
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'Business model.', 'Zero cost to customers. Pros pay only when they get paid.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'מודל עסקי.', 'חינם ללקוחות. בעלי מקצוע משלמים רק כשהם מקבלים כסף.');
 
-  // Left: take-rate stat
+  // קובייה עם אחוז העמלה בצד ימין
   s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-    x: 0.5, y: 1.55, w: 3.2, h: 3.3,
-    fill: { color: C.navy }, line: { color: C.navy }, rectRadius: 0.15,
+    x: 6.3, y: 1.7, w: 3.2, h: 3.2,
+    fill: { color: C.indigo }, line: { color: C.indigo }, rectRadius: 0.18,
   });
   s.addText('12%', {
-    x: 0.5, y: 1.7, w: 3.2, h: 1.2,
-    fontSize: 72, bold: true, fontFace: FONT_HEAD, color: C.gold,
+    x: 6.3, y: 1.9, w: 3.2, h: 1.2,
+    fontSize: 82, bold: true, fontFace: FONT_HEAD, color: C.gold,
     align: 'center', valign: 'middle', margin: 0,
   });
-  s.addText('Take rate on closed jobs', {
-    x: 0.5, y: 2.95, w: 3.2, h: 0.4,
-    fontSize: 13, fontFace: FONT_BODY, color: C.white, align: 'center', margin: 0,
+  s.addText('עמלה על עבודה שנסגרה', {
+    x: 6.3, y: 3.15, w: 3.2, h: 0.4,
+    fontSize: 14, fontFace: FONT_HEAD, bold: true, color: C.paper,
+    align: 'center', rtlMode: true, margin: 0,
   });
-  s.addText('Paid by provider. Only when the customer confirms the job was done.', {
-    x: 0.5, y: 3.35, w: 3.2, h: 1.3,
-    fontSize: 11, italic: true, fontFace: FONT_BODY, color: C.ice, align: 'center', margin: 0,
+  s.addText('משולמת ע"י בעל המקצוע. רק אחרי שהלקוח אישר שהעבודה בוצעה.', {
+    x: 6.3, y: 3.6, w: 3.2, h: 1.2,
+    fontSize: 11, italic: true, fontFace: FONT_BODY, color: C.ice,
+    align: 'center', rtlMode: true, margin: 0,
   });
 
-  // Right: unit economics
+  // טבלה של יחידות כלכליות בטור שמאל
   const rows = [
-    ['Avg. ticket size',    '420 ₪'],
-    ['Revenue per job',     '50 ₪'],
-    ['Direct cost (AI + WA)','3 ₪'],
-    ['Contribution margin', '47 ₪  (94%)'],
-    ['CAC (early)',         '18 ₪ / first order'],
-    ['Payback',             '1st successful job'],
+    ['גודל עבודה ממוצע',    '₪420'],
+    ['הכנסה לעבודה',        '₪50'],
+    ['עלות ישירה (AI + WA)', '₪3'],
+    ['רווח תרומה',           '₪47  (94%)'],
+    ['CAC (מוקדם)',         '₪18 / קריאה ראשונה'],
+    ['החזר השקעה',           'עבודה מוצלחת ראשונה'],
   ];
   rows.forEach((row, i) => {
-    const y = 1.6 + i * 0.48;
+    const y = 1.7 + i * 0.5;
     s.addShape(pres.shapes.RECTANGLE, {
-      x: 4.0, y, w: 5.5, h: 0.42,
-      fill: { color: i % 2 === 0 ? 'F8FAFC' : C.white }, line: { color: 'E2E8F0', width: 0.5 },
+      x: 0.5, y, w: 5.6, h: 0.44,
+      fill: { color: i % 2 === 0 ? C.cream : C.paper }, line: { color: C.hairline, width: 0.5 },
     });
     s.addText(row[0], {
-      x: 4.15, y, w: 3.2, h: 0.42,
-      fontSize: 12, fontFace: FONT_BODY, color: C.ink, valign: 'middle', margin: 0,
+      x: 2.8, y, w: 3.15, h: 0.44,
+      fontSize: 12, fontFace: FONT_BODY, color: C.ink,
+      align: 'right', rtlMode: true, valign: 'middle', margin: 0,
     });
     s.addText(row[1], {
-      x: 7.35, y, w: 2.1, h: 0.42,
-      fontSize: 13, bold: true, fontFace: FONT_HEAD, color: C.navy, valign: 'middle', align: 'right', margin: 0,
+      x: 0.65, y, w: 2.1, h: 0.44,
+      fontSize: 13, bold: true, fontFace: FONT_HEAD, color: C.indigo,
+      align: 'left', valign: 'middle', margin: 0,
     });
   });
 
-  addFooter(s, 11, totalSlides);
+  addFooter(s, 11);
 }
 
-// ── Slide 12: Competitors ─────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 12 — מתחרים
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'Who else is in this space?', 'We win on the axes that actually matter.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'מי עוד בשוק?', 'אנחנו מנצחים בצירים שבאמת חשובים.');
 
-  // Table: us vs competitors
-  const header = ['', 'ai-fixly', 'ZAP', 'Fixer', 'Yellow / phone tree'];
+  // כותרות בסדר RTL: ai-fixly ראשי מימין, אחר כך המתחרים
+  const header = ['', 'ai-fixly', 'ZAP', 'Fixer', 'דפי זהב / טלפון'];
   const body = [
-    ['Customer friction', '1 tap', 'Form + calls',    'Form',           'Phone roulette'],
-    ['Pro onboarding',    'None',  'Dashboard signup','App install',    'None (organic)'],
-    ['AI categorisation', 'Yes',   'No',               'Partial',        'No'],
-    ['Anonymous quotes',  'Yes',   'No',               'No',             'No'],
-    ['Time to first bid', '<5 min','Hours',            '30–60 min',      'Hours/days'],
+    ['חיכוך הלקוח',  'לחיצה אחת', 'טופס + שיחות',   'טופס',            'רולטת טלפון'],
+    ['Onboarding לבעל מקצוע', 'שום דבר', 'הרשמה לדשבורד', 'התקנת אפליקציה', 'שום דבר (אורגני)'],
+    ['סיווג AI',      'כן',         'לא',             'חלקי',            'לא'],
+    ['הצעות אנונימיות','כן',         'לא',             'לא',              'לא'],
+    ['זמן להצעה ראשונה','פחות מ-5 דק׳','שעות',         '30–60 דק׳',       'שעות/ימים'],
   ];
 
   const tableData = [
-    header.map((h, i) => ({
+    header.map((h) => ({
       text: h,
       options: {
-        fill: { color: C.navy }, color: C.white, bold: true,
+        fill: { color: C.indigo }, color: C.paper, bold: true,
         fontSize: 11, fontFace: FONT_HEAD, align: 'center', valign: 'middle',
       },
     })),
@@ -575,130 +678,141 @@ const mkSlide = () => pres.addSlide();
       row.map((cell, ci) => ({
         text: cell,
         options: {
-          fill: { color: ri % 2 === 0 ? 'F8FAFC' : C.white },
-          color: ci === 1 ? C.accent : C.ink,
+          fill: { color: ri % 2 === 0 ? C.cream : C.paper },
+          color: ci === 1 ? C.coral : C.ink,
           bold: ci === 1 || ci === 0,
-          fontSize: 11, fontFace: FONT_BODY,
-          align: ci === 0 ? 'left' : 'center',
+          fontSize: 11, fontFace: ci === 0 ? FONT_HEAD : FONT_BODY,
+          align: ci === 0 ? 'right' : 'center',
           valign: 'middle',
+          rtlMode: true,
         },
       })),
     ),
   ];
 
   s.addTable(tableData, {
-    x: 0.5, y: 1.55, w: 9, h: 3.3,
+    x: 0.5, y: 1.7, w: 9, h: 3.2,
     colW: [2.2, 1.7, 1.7, 1.7, 1.7],
-    border: { pt: 0.5, color: 'E2E8F0' },
-    rowH: 0.55,
+    border: { pt: 0.5, color: C.hairline },
+    rowH: 0.54,
   });
 
-  addFooter(s, 12, totalSlides);
+  addFooter(s, 12);
 }
 
-// ── Slide 13: Traction / Built ────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 13 — טראקשן
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  addTitle(s, 'What we\'ve already built.', 'Shipped. Live. Running end-to-end in production.');
+  const s = pres.addSlide();
+  lightBg(s);
+  addTitle(s, 'מה כבר בנינו.', 'עובד. חי. רץ end-to-end בפרודקשן.');
 
   const stats = [
-    { n: '40+',  l: 'Screens live',         sub: 'Customer + provider + admin' },
-    { n: '5',    l: 'Languages',            sub: 'Hebrew-first, EN / AR / RU ready' },
-    { n: '14',   l: 'OTA updates shipped',  sub: 'EAS Update, in-market iterations' },
-    { n: '100%', l: 'Admin observability',  sub: 'Every event traced end-to-end' },
+    { n: '40+',   l: 'מסכים חיים',       sub: 'לקוח + בעל מקצוע + ניהול' },
+    { n: '5',    l: 'שפות',              sub: 'עברית-ראשונה, אנגלית / ערבית / רוסית' },
+    { n: '14',   l: 'עדכוני OTA',        sub: 'EAS Update, איטרציות בשטח' },
+    { n: '100%', l: 'שקיפות לניהול',     sub: 'כל אירוע עקיב end-to-end' },
   ];
   stats.forEach((st, i) => {
-    const col = i % 4;
-    const x = 0.5 + col * 2.3;
+    const x = 0.5 + i * 2.35;
     s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-      x, y: 1.5, w: 2.1, h: 1.7,
-      fill: { color: C.navy }, line: { color: C.navy }, rectRadius: 0.12,
+      x, y: 1.7, w: 2.1, h: 1.75,
+      fill: { color: C.indigo }, line: { color: C.indigo }, rectRadius: 0.14,
     });
     s.addText(st.n, {
-      x, y: 1.55, w: 2.1, h: 0.9,
-      fontSize: 44, bold: true, fontFace: FONT_HEAD, color: C.gold,
+      x, y: 1.75, w: 2.1, h: 0.9,
+      fontSize: 46, bold: true, fontFace: FONT_HEAD, color: C.gold,
       align: 'center', valign: 'middle', margin: 0,
     });
     s.addText(st.l, {
-      x, y: 2.45, w: 2.1, h: 0.35,
-      fontSize: 12, bold: true, fontFace: FONT_BODY, color: C.white,
-      align: 'center', margin: 0,
+      x, y: 2.7, w: 2.1, h: 0.35,
+      fontSize: 12, bold: true, fontFace: FONT_HEAD, color: C.paper,
+      align: 'center', rtlMode: true, margin: 0,
     });
     s.addText(st.sub, {
-      x: x - 0.05, y: 2.8, w: 2.2, h: 0.4,
+      x: x - 0.05, y: 3.05, w: 2.2, h: 0.4,
       fontSize: 9, fontFace: FONT_BODY, color: C.ice,
-      align: 'center', margin: 0,
+      align: 'center', rtlMode: true, margin: 0,
     });
   });
 
-  // Infra checklist
   const infra = [
-    '✓  Real-time Firestore sync + offline queue',
+    '✓  סינכרון Firestore real-time + תור offline',
     '✓  Cloudflare Worker broker (Twilio, Places, Gemini)',
-    '✓  Admin dashboard: requests, providers, alerts, funnel',
-    '✓  EAS builds + OTA updates shipping weekly',
-    '✓  Twilio interactive WhatsApp templates (approved)',
-    '✓  Public SEO pages for discovery',
+    '✓  דשבורד ניהולי: קריאות, בעלי מקצוע, התראות',
+    '✓  EAS builds + OTA updates בשחרור שבועי',
+    '✓  Twilio interactive WhatsApp templates (מאושרים)',
+    '✓  דפי SEO ציבוריים לגילוי אורגני',
   ];
   infra.forEach((line, i) => {
     const col = i % 2;
     const row = Math.floor(i / 2);
     s.addText(line, {
-      x: 0.6 + col * 4.5, y: 3.45 + row * 0.42, w: 4.3, h: 0.35,
-      fontSize: 12, fontFace: FONT_BODY, color: C.navy, bold: true, margin: 0,
+      x: col === 0 ? 5.0 : 0.6, y: 3.7 + row * 0.4, w: 4.3, h: 0.34,
+      fontSize: 11.5, fontFace: FONT_BODY, color: C.indigo, bold: true,
+      align: 'right', rtlMode: true, margin: 0,
     });
   });
 
-  addFooter(s, 13, totalSlides);
+  addFooter(s, 13);
 }
 
-// ── Slide 14: The Ask ─────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════
+//  שקף 14 — הבקשה
+// ═════════════════════════════════════════════════════════════════════════
 {
-  const s = mkSlide();
-  s.background = { color: C.navy };
+  const s = pres.addSlide();
+  darkBg(s);
 
+  // "fixly" ענק ברקע
   s.addText('fixly', {
-    x: 0, y: 1.5, w: SLIDE_W, h: 3.5,
-    fontSize: 220, fontFace: FONT_HEAD, bold: true, color: C.navyDeep,
-    align: 'center', valign: 'middle', margin: 0,
+    x: 0, y: 1.6, w: SLIDE_W, h: 3.3,
+    fontSize: 240, fontFace: FONT_HEAD, bold: true, color: C.indigoSoft,
+    align: 'center', valign: 'middle', margin: 0, charSpacing: -6,
   });
 
-  s.addText('The ask.', {
-    x: 0.5, y: 0.5, w: 9, h: 0.8,
-    fontSize: 36, bold: true, fontFace: FONT_HEAD, color: C.white, margin: 0,
+  s.addText('הבקשה.', {
+    x: 0.5, y: 0.55, w: 9, h: 0.9,
+    fontSize: 42, bold: true, fontFace: FONT_HEAD, color: C.paper,
+    align: 'right', rtlMode: true, margin: 0,
   });
   s.addShape(pres.shapes.RECTANGLE, {
-    x: 0.5, y: 1.35, w: 0.8, h: 0.06, fill: { color: C.accent }, line: { color: C.accent },
+    x: 8.5, y: 1.45, w: 1.0, h: 0.06, fill: { color: C.gold }, line: { color: C.gold },
   });
 
   const asks = [
-    { h: '$1.5M seed', b: '18-month runway.' },
-    { h: 'Gush Dan pilot', b: '500 first jobs, 200 paying pros.' },
-    { h: 'Then Sharon + Haifa', b: 'One city per quarter after PMF.' },
+    { h: '$1.5M סיד',       b: 'ראנוויי של 18 חודשים.' },
+    { h: 'פיילוט גוש דן',   b: '500 עבודות ראשונות, 200 בעלי מקצוע משלמים.' },
+    { h: 'אחר כך שרון + חיפה', b: 'עיר חדשה כל רבעון אחרי Product-Market Fit.' },
   ];
   asks.forEach((a, i) => {
-    const y = 2.0 + i * 0.95;
+    const y = 2.1 + i * 0.95;
+    // פס מבטא בימין
     s.addShape(pres.shapes.RECTANGLE, {
-      x: 0.5, y, w: 0.1, h: 0.8,
-      fill: { color: C.accent }, line: { color: C.accent },
+      x: 9.2, y, w: 0.1, h: 0.82,
+      fill: { color: C.gold }, line: { color: C.gold },
     });
     s.addText(a.h, {
-      x: 0.8, y, w: 8.5, h: 0.4,
-      fontSize: 22, bold: true, fontFace: FONT_HEAD, color: C.gold, margin: 0,
+      x: 0.5, y, w: 8.55, h: 0.45,
+      fontSize: 24, bold: true, fontFace: FONT_HEAD, color: C.gold,
+      align: 'right', rtlMode: true, margin: 0,
     });
     s.addText(a.b, {
-      x: 0.8, y: y + 0.4, w: 8.5, h: 0.4,
-      fontSize: 14, fontFace: FONT_BODY, color: C.ice, margin: 0,
+      x: 0.5, y: y + 0.45, w: 8.55, h: 0.4,
+      fontSize: 15, fontFace: FONT_BODY, color: C.ice,
+      align: 'right', rtlMode: true, margin: 0,
     });
   });
 
   s.addText('roee@ai-fixly.com  ·  ai-fixly-web.pages.dev', {
-    x: 0.5, y: 5.0, w: 9, h: 0.4,
-    fontSize: 13, fontFace: FONT_BODY, color: C.ice, align: 'center', margin: 0,
+    x: 0.5, y: 5.05, w: 9, h: 0.4,
+    fontSize: 13, fontFace: FONT_BODY, color: C.ice,
+    align: 'center', margin: 0,
   });
 }
 
-// ── Write ────────────────────────────────────────────────────────────────
+// ── כתיבה ────────────────────────────────────────────────────────────────
 pres.writeFile({ fileName: path.resolve(__dirname, 'ai-fixly-investor-deck.pptx') }).then((file) => {
   console.log('Wrote:', file);
 });
