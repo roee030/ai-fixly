@@ -95,6 +95,7 @@ export default {
     phoneSubtitle: 'נשלח לך קוד אימות ב-SMS',
     phonePlaceholder: '050-1234567',
     sendCode: 'שלח קוד',
+    sendingCode: 'שולחים לך קוד...',
     verifyTitle: 'הזן את הקוד',
     verifySubtitle: 'שלחנו קוד ל-{{phone}}',
     verify: 'אמת',

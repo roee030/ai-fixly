@@ -165,7 +165,7 @@ export default {
       if (url.pathname.startsWith('/provider/request/') && request.method === 'GET') {
         const rlOk = await checkRateLimit(env.PLACES_CACHE, `pubreq:${clientIp}`, 60, 3600);
         if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
-        return await handlePublicRequestSummary(request, env, url);
+        return await handlePublicRequestSummary(request, env, url, ctx);
       }
       if (url.pathname === '/provider/bid' && request.method === 'POST') {
         const rlOk = await checkRateLimit(env.PLACES_CACHE, `pubbid:${clientIp}`, 30, 3600);
@@ -1636,6 +1636,7 @@ async function handlePublicRequestSummary(
   request: Request,
   env: Env,
   url: URL,
+  ctx: ExecutionContext,
 ): Promise<Response> {
   const requestId = url.pathname.split('/').pop() || '';
   if (!requestId) {
@@ -1643,6 +1644,39 @@ async function handlePublicRequestSummary(
   }
   const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
   const result = await firestore.getPublicRequestView(requestId);
+
+  // Observability: every link open is interesting — we want to be able to
+  // answer "did this provider click their link?" from the admin dashboard.
+  // The event goes to the request's events subcollection so it shows up on
+  // the request timeline next to the twilio_send that originally delivered
+  // the link. Fire-and-forget so a slow Firestore write can't stall the
+  // provider's page load.
+  const referer = request.headers.get('referer') || '';
+  const userAgent = request.headers.get('user-agent') || '';
+  const outcome = result.kind; // 'ok' | 'not_found' | 'closed'
+  // Only log under the request doc when we actually found one — writing
+  // events under a non-existent serviceRequest doc creates phantom ghost
+  // documents that pollute the admin UI.
+  if (outcome !== 'not_found') {
+    ctx.waitUntil(
+      firestore
+        .batchWriteEvents(requestId, [
+          {
+            type: 'provider_link_opened',
+            ok: outcome === 'ok',
+            durationMs: 0,
+            error: outcome === 'ok' ? undefined : outcome,
+            metadata: {
+              outcome,
+              referer: referer.slice(0, 200),
+              userAgent: userAgent.slice(0, 200),
+            },
+          },
+        ])
+        .catch(() => {}),
+    );
+  }
+
   // Discriminated status codes so the provider form can show distinct UIs:
   //   404 = "we have no record of this request"   -> offer report CTA
   //   410 = "this request has been closed"         -> informational only

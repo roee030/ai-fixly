@@ -35,7 +35,6 @@ import { getFirestore, doc, getDoc } from '../../src/services/firestore/imports'
 
 const HERO_SIZE = 260;
 const CORE_SIZE = 156;
-const RING_OFFSET = (HERO_SIZE - CORE_SIZE) / 2;
 
 export default function HomeScreen() {
   const user = useAuthStore((s) => s.user);
@@ -118,7 +117,12 @@ export default function HomeScreen() {
         </FadeInView>
 
         {/* Hero — the Pressable IS the 260×260 frame so taps anywhere
-            (including on the pulsing rings) navigate to capture. */}
+            (including on the pulsing rings) navigate to capture. A tight
+            inner wrapper (heroStack) holds the rings + core and is
+            flex-centered inside the Pressable. Every visual child uses
+            position:absolute inset:0 against that wrapper, so they all
+            share the exact same center — no hardcoded top/left offsets
+            that can drift when RTL or device pixel density shifts things. */}
         <View style={styles.heroSection}>
           <Pressable
             onPress={() => router.push('/capture')}
@@ -129,15 +133,12 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="דווח על בעיה"
           >
-            {/* Pulse rings: absolute, CORE_SIZE, offset to center in the
-                HERO_SIZE frame. scale transform takes them outward. */}
-            <Animated.View style={[styles.pulseRing, ring1Style]} pointerEvents="none" />
-            <Animated.View style={[styles.pulseRing, ring2Style]} pointerEvents="none" />
-            {/* Core: regular flex child centered by the Pressable's
-                alignItems/justifyContent. Camera icon inside centered
-                by the core's same props. */}
-            <View style={styles.core}>
-              <Ionicons name="camera" size={58} color="#FFFFFF" />
+            <View style={styles.heroStack} pointerEvents="none">
+              <Animated.View style={[styles.pulseRing, ring1Style]} pointerEvents="none" />
+              <Animated.View style={[styles.pulseRing, ring2Style]} pointerEvents="none" />
+              <View style={styles.core}>
+                <Ionicons name="camera" size={58} color="#FFFFFF" />
+              </View>
             </View>
           </Pressable>
 
@@ -209,18 +210,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'center',
   },
-  pulseRing: {
-    position: 'absolute',
-    top: RING_OFFSET,
-    left: RING_OFFSET,
+  heroStack: {
     width: CORE_SIZE,
     height: CORE_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseRing: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderRadius: CORE_SIZE / 2,
     backgroundColor: COLORS.primary,
   },
   core: {
-    width: CORE_SIZE,
-    height: CORE_SIZE,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderRadius: CORE_SIZE / 2,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
