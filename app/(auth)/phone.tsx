@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Keyboard } from 'react-native';
+import { View, Text, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Keyboard, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -101,6 +101,19 @@ export default function PhoneScreen() {
           style={{ position: 'fixed', bottom: 0, left: 0, opacity: 0, pointerEvents: 'none' }}
         />
       )}
+
+      {/* Full-screen "sending code" overlay.
+          Without this the verify screen pushes in while the OTP is still
+          being requested — users see a half-rendered OTP input flash before
+          the request completes, which feels glitchy. The overlay covers
+          that transition: we only navigate to /verify once the SMS is sent,
+          and the overlay stays up the whole time in between. */}
+      {isLoading && (
+        <View style={styles.sendingOverlay} pointerEvents="auto">
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.sendingText}>{t('auth.sendingCode')}</Text>
+        </View>
+      )}
     </ScreenContainer>
   );
 }
@@ -121,5 +134,21 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     color: COLORS.textSecondary,
     lineHeight: 22,
+  },
+  sendingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: COLORS.background + 'F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  sendingText: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
