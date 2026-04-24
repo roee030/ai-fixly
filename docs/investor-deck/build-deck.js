@@ -39,8 +39,9 @@ const FONT_BODY = 'Calibri';
 const SHOTS = path.resolve(__dirname, '..', 'screenshots');
 const shot = (name) => path.join(SHOTS, name);
 
-// Phone screenshots are ~429×864 (1:2.01). Keep that ratio when sizing.
-const PHONE_RATIO = 429 / 864;
+// Hebrew mockups are rendered at 430×900 (1:2.09). Keep that ratio so the
+// phone frame never stretches the UI.
+const PHONE_RATIO = 430 / 900;
 function phoneSize(h) {
   return { w: +(h * PHONE_RATIO).toFixed(3), h };
 }
@@ -211,7 +212,7 @@ const mkSlide = () => pres.addSlide();
   addTitle(s, 'One tap. No forms. We do the rest.', 'AI is the middleman — the customer never fills in a category.');
 
   // Phone on the left
-  addPhone(s, shot('mock-home.png'), 0.7, 1.5, 3.5);
+  addPhone(s, shot('mock-home-he.png'), 0.7, 1.5, 3.5);
 
   // Right: 3 value props with icons
   const valueProps = [
@@ -249,9 +250,9 @@ const mkSlide = () => pres.addSlide();
   addTitle(s, 'Customer side: three screens, done.', null);
 
   const shots = [
-    { path: shot('mock-capture.png'),         cap: '1 · Snap + describe' },
-    { path: shot('mock-confirm.png'),         cap: '2 · Review AI summary' },
-    { path: shot('mock-request-details.png'), cap: '3 · Compare quotes' },
+    { path: shot('mock-capture-he.png'),         cap: '1 · Snap + describe' },
+    { path: shot('mock-confirm-he.png'),         cap: '2 · Review AI summary' },
+    { path: shot('mock-request-details-he.png'), cap: '3 · Compare quotes' },
   ];
   const H = 3.5;
   const W = H * PHONE_RATIO;
@@ -274,7 +275,7 @@ const mkSlide = () => pres.addSlide();
   const s = mkSlide();
   addTitle(s, 'Provider side: just WhatsApp.', 'No app to install. No website to log in to. Zero onboarding cost.');
 
-  addPhone(s, shot('mock-whatsapp-msg.png'), 0.8, 1.5, 3.5);
+  addPhone(s, shot('mock-whatsapp-msg-he.png'), 0.8, 1.5, 3.5);
 
   // Right column — key points
   const y0 = 1.6;
@@ -309,12 +310,12 @@ const mkSlide = () => pres.addSlide();
   addTitle(s, 'Live product, shipped.', 'Every screen below is running in production on Android / iOS / Web.');
 
   const grid = [
-    { p: shot('mock-home.png'),          cap: 'Home' },
-    { p: shot('mock-my-requests.png'),   cap: 'My requests' },
-    { p: shot('mock-confirm.png'),       cap: 'AI confirm' },
-    { p: shot('mock-selected.png'),      cap: 'Chosen pro' },
-    { p: shot('mock-provider-quote.png'),cap: 'Pro quote form' },
-    { p: shot('mock-review.png'),        cap: 'Review + rating' },
+    { p: shot('mock-home-he.png'),            cap: 'Home' },
+    { p: shot('mock-my-requests-he.png'),     cap: 'My requests' },
+    { p: shot('mock-request-details-he.png'), cap: 'Live quotes' },
+    { p: shot('mock-selected-he.png'),        cap: 'Chosen pro' },
+    { p: shot('mock-whatsapp-msg-he.png'),    cap: 'Provider DM' },
+    { p: shot('mock-provider-quote-he.png'),  cap: 'Pro quote form' },
   ];
   const H = 2.5;
   const W = H * PHONE_RATIO;

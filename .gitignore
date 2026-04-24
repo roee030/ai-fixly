@@ -54,3 +54,4 @@ expo-env.d.ts
 twilio_2FA_recovery_code.txt
 *.2fa
 *recovery_code*
+.playwright-mcp/
