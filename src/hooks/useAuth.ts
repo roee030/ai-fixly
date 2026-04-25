@@ -4,6 +4,7 @@ import { useRequestsStore } from '../stores/useRequestsStore';
 import { authService } from '../services/auth';
 import { getFirestore, doc, getDoc } from '../services/firestore/imports';
 import { setSessionUser } from '../services/analytics/sessionLogger';
+import { setErrorReportingUser } from '../services/errorReporting';
 
 /**
  * Subscribe to Firebase auth changes ONCE at module load. This runs outside
@@ -46,6 +47,10 @@ import { setSessionUser } from '../services/analytics/sessionLogger';
     isFirstCallback = false;
 
     setUser(authUser);
+    // Tag every Sentry report with the current user — null on sign-out
+    // clears the tag so signed-out crashes don't get attributed to the
+    // last user.
+    setErrorReportingUser(authUser?.uid || null);
 
     if (authUser) {
       setSessionUser(authUser.uid);

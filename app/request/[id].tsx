@@ -14,7 +14,7 @@ import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../src/components/layout';
-import { Button, SkeletonImage } from '../../src/components/ui';
+import { Button, SkeletonImage, EmptyState, Skeleton } from '../../src/components/ui';
 import { VideoPreview } from '../../src/components/ui/VideoPreview';
 import { requestService } from '../../src/services/requests';
 import { bidService } from '../../src/services/bids';
@@ -430,11 +430,22 @@ export default function RequestDetailsScreen() {
             </View>
 
             {isLoadingBids ? (
-              <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
+              // Show 3 placeholder bid cards instead of a bare spinner —
+              // gives the user a clear visual that "stuff is loading where
+              // bids will land" rather than "the screen is broken".
+              <View style={{ gap: 8, marginTop: 4 }}>
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} width="100%" height={88} borderRadius={14} />
+                ))}
+              </View>
             ) : bids.length === 0 ? (
-              <View style={styles.emptyBids}>
-                <Ionicons name="hourglass-outline" size={48} color={COLORS.textTertiary} />
-                <Text style={styles.emptyBidsText}>{t('requestDetails.waitingForProviders')}</Text>
+              <View style={{ alignItems: 'center' }}>
+                <EmptyState
+                  variant="waiting"
+                  icon="hourglass-outline"
+                  title={t('requestDetails.waitingForProviders')}
+                  subtitle="הצעות מגיעות בדרך כלל תוך 5 דקות. נשלח התראה כשתגיע."
+                />
                 <StaleRequestBanner
                   request={request}
                   hasBids={bids.length > 0}

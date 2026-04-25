@@ -32,13 +32,20 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // RTL is now handled dynamically by src/i18n/index.ts based on device language
 
-// Initialize Sentry — only on native (@sentry/react-native is not web-compatible)
+// Initialize Sentry — only on native (@sentry/react-native is not web-compatible).
+// The wrapper in src/services/errorReporting picks this init up via its
+// `markErrorReportingReady` flag; until that flag is set, captureException
+// is a no-op so calls during module-load don't crash.
 if (Platform.OS !== 'web') {
   const Sentry = require('@sentry/react-native');
   Sentry.init({
     dsn: process.env.EXPO_PUBLIC_SENTRY_DSN || '',
     enabled: !!process.env.EXPO_PUBLIC_SENTRY_DSN,
+    // 10% trace sampling in prod — captures latency without billing surprises.
+    tracesSampleRate: __DEV__ ? 1.0 : 0.1,
   });
+  const { markErrorReportingReady } = require('../src/services/errorReporting');
+  markErrorReportingReady();
 }
 
 // Kick off loading persisted state (onboarding flag, permissions flag) at

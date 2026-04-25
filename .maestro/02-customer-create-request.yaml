@@ -1,0 +1,49 @@
+# 02 — Customer creates a service request
+#
+# The money flow. Pre-conditions:
+#   - User is already signed in (run after 01-onboarding + auth setup,
+#     or pre-seed the device with a phone-auth'd session).
+#   - Test phone has the demo image installed in its photo library.
+#   - EXPO_PUBLIC_BROKER_URL points at a dry-run Worker so this doesn't
+#     actually WhatsApp 10 plumbers.
+#
+# Verifies: home → capture → AI confirm → sent. Any break here is
+# user-visible immediately.
+
+appId: com.aifixly.app
+---
+- launchApp:
+    clearState: false   # keep auth, just bounce the screen stack
+
+# Home screen — the centered camera Pressable is labeled "דווח על בעיה".
+- assertVisible: "דווח על בעיה"
+- tapOn: "דווח על בעיה"
+
+# Capture screen.
+- assertVisible: "מה הבעיה?"
+- tapOn: "מהגלריה"
+# Pick the first image. On CI this needs the gallery to have at least
+# one image — the dev build seeds one via the prebuild script.
+- tapOn:
+    index: 0
+
+# Wait for the photo to mount in the picker.
+- assertVisible: "תאר את הבעיה"
+- tapOn: "תאר את הבעיה"
+- inputText: "נזילה במטבח, התחילה הבוקר"
+- hideKeyboard
+
+- tapOn: "שלח לניתוח"
+
+# AI confirm — Gemini call should be mocked to return a plumber match
+# in dev. Allow up to 12s; cold-start can be slow.
+- extendedWaitUntil:
+    visible: "אינסטלטור"
+    timeout: 12000
+
+# Tap "send to providers" — in dry-run mode this just writes the request
+# without actually broadcasting.
+- tapOn: "שלח לבעלי מקצוע"
+
+# Sent screen — the smoke check.
+- assertVisible: "ההצעות בדרך"

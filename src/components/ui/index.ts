@@ -7,6 +7,7 @@ export { AnimatedPressable } from './AnimatedPressable';
 export { FadeInView } from './FadeInView';
 export { Skeleton } from './Skeleton';
 export { SkeletonImage } from './SkeletonImage';
+export { EmptyState } from './EmptyState';
 export { RequestCardSkeleton, RequestListSkeleton } from './RequestCardSkeleton';
 export { ResumeDraftModal } from './ResumeDraftModal';
 export { VersionBadge } from './VersionBadge';

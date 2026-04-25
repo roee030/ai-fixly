@@ -154,6 +154,13 @@ export default function HomeScreen() {
             <Pressable
               onPress={() => router.push('/(tabs)/requests')}
               style={styles.activePill}
+              accessibilityRole="button"
+              accessibilityLabel={
+                activeCount === 1
+                  ? 'יש לך בעיה אחת פעילה'
+                  : `יש לך ${activeCount} בעיות פעילות`
+              }
+              accessibilityHint="פתיחת רשימת הקריאות לצפייה בהצעות ובחירה"
             >
               <View style={styles.activePillLeft}>
                 <Ionicons name="construct-outline" size={18} color={COLORS.success} />

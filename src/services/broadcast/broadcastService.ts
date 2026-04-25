@@ -1,6 +1,7 @@
 import { logger } from '../logger';
 import { analyticsService } from '../analytics';
 import { eventLogger } from '../observability';
+import { captureException } from '../errorReporting';
 
 function brokerUrl(): string | null {
   return process.env.EXPO_PUBLIC_BROKER_URL || null;
@@ -117,6 +118,17 @@ export async function broadcastToProviders(input: BroadcastInput): Promise<Broad
       ok: false,
       durationMs: 0,
       error: String(err).slice(0, 200),
+    });
+    // Sentry too: broker outage is a P1 page on call. Tag with a
+    // dedicated category so we can alert separately from generic errors.
+    captureException(err, {
+      tags: { service: 'broadcast', failureMode: 'broker_unreachable' },
+      extra: {
+        requestId: input.requestId,
+        professions: input.professions.join(','),
+        providerCount: 0,
+      },
+      level: 'fatal',
     });
     throw err;
   }

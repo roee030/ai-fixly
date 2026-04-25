@@ -1,5 +1,6 @@
 import { supabase } from '../../config/supabase';
 import { MediaService, UploadedMedia } from './types';
+import { captureException } from '../errorReporting';
 
 const BUCKET_NAME = 'request-media';
 
@@ -49,7 +50,14 @@ class SupabaseMediaService implements MediaService {
         });
         videoMedia.thumbnailUrl = posterMedia.downloadUrl;
       } catch (err) {
-        console.warn('Video uploaded, but poster upload failed:', err);
+        // Poster upload is best-effort — videos still play without it,
+        // they just look uglier in the bid card thumbnail. Capture so we
+        // can spot a systemic poster-extraction regression.
+        captureException(err, {
+          tags: { service: 'media', kind: 'video_poster' },
+          extra: { requestId },
+          level: 'warning',
+        });
       }
     }
 

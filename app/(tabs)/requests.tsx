@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { ScreenContainer } from '../../src/components/layout';
-import { RequestListSkeleton } from '../../src/components/ui';
+import { RequestListSkeleton, EmptyState } from '../../src/components/ui';
 import { useRequestsStore } from '../../src/stores/useRequestsStore';
 import { REQUEST_STATUS } from '../../src/constants/status';
 import { localizeProfession } from '../../src/utils/professionLabel';
@@ -100,7 +100,13 @@ export default function RequestsScreen() {
       (firstMedia?.type !== 'video' ? firstMedia?.downloadUrl || firstMedia?.url : null);
 
     return (
-      <Pressable onPress={() => openRequest(item.id)} style={styles.requestCard}>
+      <Pressable
+        onPress={() => openRequest(item.id)}
+        style={styles.requestCard}
+        accessibilityRole="button"
+        accessibilityLabel={`${professionDisplay || t('requests.serviceRequest')} — ${t(`status.${item.status}`)}${showBadge ? ` — ${unread} הצעות חדשות` : ''}`}
+        accessibilityHint="פתיחת פרטי הקריאה והצעות המחיר"
+      >
         {thumbUri ? (
           <Image source={{ uri: thumbUri }} style={styles.requestThumb} />
         ) : (
@@ -175,6 +181,9 @@ export default function RequestsScreen() {
             key={o.k}
             onPress={() => setDateRange(o.k)}
             style={[styles.chip, dateRange === o.k && styles.chipActive]}
+            accessibilityRole="button"
+            accessibilityLabel={`סינון תאריך — ${o.l}`}
+            accessibilityState={{ selected: dateRange === o.k }}
           >
             <Text style={[styles.chipText, dateRange === o.k && styles.chipTextActive]}>
               {o.l}
@@ -189,6 +198,9 @@ export default function RequestsScreen() {
             key={o.k}
             onPress={() => setStatusFilter(o.k)}
             style={[styles.chip, statusFilter === o.k && styles.chipActive]}
+            accessibilityRole="button"
+            accessibilityLabel={`סינון סטטוס — ${o.l}`}
+            accessibilityState={{ selected: statusFilter === o.k }}
           >
             <Text style={[styles.chipText, statusFilter === o.k && styles.chipTextActive]}>
               {o.l}
@@ -202,15 +214,28 @@ export default function RequestsScreen() {
           <RequestListSkeleton />
         </View>
       ) : filtered.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="document-text-outline" size={64} color={COLORS.textTertiary} />
-          <Text style={styles.emptyTitle}>
-            {requests.length === 0 ? t('requests.empty') : 'אין תוצאות במסנן הזה'}
-          </Text>
-          <Text style={styles.emptySubtitle}>
-            {requests.length === 0 ? t('requests.emptyHint') : 'נסה לשנות את הפילטרים'}
-          </Text>
-        </View>
+        // Two distinct empty states — "you have no requests at all" wants
+        // a CTA to capture, but "your filters hid everything" just wants
+        // a hint. Avoid showing the camera CTA when the user already
+        // has requests but the filter happens to be empty.
+        requests.length === 0 ? (
+          <EmptyState
+            variant="empty"
+            icon="document-text-outline"
+            title={t('requests.empty')}
+            subtitle={t('requests.emptyHint')}
+            actionLabel={t('home.report')}
+            onAction={() => router.push('/capture')}
+            actionHint="פתיחת מסך הצילום"
+          />
+        ) : (
+          <EmptyState
+            variant="waiting"
+            icon="filter"
+            title="אין תוצאות במסנן הזה"
+            subtitle="נסה לשנות את הפילטרים"
+          />
+        )
       ) : (
         <FlatList
           data={filtered}
