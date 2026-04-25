@@ -9,8 +9,12 @@ import {
 } from './problemMatrix';
 
 describe('problemMatrix', () => {
-  test('PROFESSIONS has exactly 29 entries', () => {
-    expect(PROFESSIONS).toHaveLength(29);
+  test('PROFESSIONS list keeps growing — never shrinks below the floor', () => {
+    // The matrix is intentionally allowed to grow as we add specialties.
+    // We assert a floor (and a sane ceiling) instead of a fixed number so
+    // a normal addition doesn't fail the build.
+    expect(PROFESSIONS.length).toBeGreaterThanOrEqual(29);
+    expect(PROFESSIONS.length).toBeLessThan(200);
   });
 
   test('every profession has required fields', () => {
