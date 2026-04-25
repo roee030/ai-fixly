@@ -24,6 +24,7 @@ export interface RequestDoc {
  * customer's identity (userId, name, phone, exact address are stripped).
  */
 import { normaliseCityName } from './cityNames';
+import { decideAutoSuspension } from './providerSuspension';
 
 export interface PublicMediaItem {
   url: string;
@@ -97,6 +98,60 @@ export class FirestoreClient {
       return phones;
     } catch (err) {
       console.error('getBusyProviderPhones failed:', err);
+      return new Set();
+    }
+  }
+
+  /**
+   * Query: return the set of provider phone numbers that are currently
+   * suspended (auto or manually). Used by /broadcast to exclude them so
+   * a low-rated provider doesn't keep getting jobs while their suspension
+   * is being reviewed by the admin.
+   */
+  async getSuspendedProviderPhones(): Promise<Set<string>> {
+    try {
+      const accessToken = await this.getToken();
+      const url = `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents:runQuery`;
+
+      const body = {
+        structuredQuery: {
+          from: [{ collectionId: 'providers_agg' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'suspended' },
+              op: 'EQUAL',
+              value: { booleanValue: true },
+            },
+          },
+          select: { fields: [{ fieldPath: 'phone' }] },
+        },
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) return new Set();
+
+      const data = (await response.json()) as any[];
+      const phones = new Set<string>();
+      for (const row of data) {
+        // Phone is the document id — also stored as a `phone` field, but
+        // the doc name is the most reliable source.
+        const docName = row?.document?.name as string | undefined;
+        if (docName) {
+          const phone = decodeURIComponent(docName.split('/').pop() || '');
+          if (phone) phones.add(phone);
+        }
+      }
+      return phones;
+    } catch (err) {
+      console.error('getSuspendedProviderPhones failed:', err);
       return new Set();
     }
   }
@@ -1358,6 +1413,11 @@ export class FirestoreClient {
       replyRate: 0,
       avgResponseMinutes: 0,
     };
+    // Auto-suspension state. We pull the rolling buffer of recent ratings
+    // and the current `suspended` flag so decideAutoSuspension can decide
+    // whether this review should auto-disable the provider.
+    let recentRatings: number[] = [];
+    let alreadySuspended = false;
     if (providerPhone) {
       try {
         const aggUrl = `https://firestore.googleapis.com/v1/${db}/documents/providers_agg/${encodeURIComponent(providerPhone)}`;
@@ -1375,9 +1435,23 @@ export class FirestoreClient {
             replyRate:         Number(s.replyRate?.integerValue ?? 0),
             avgResponseMinutes: Number(s.avgResponseMinutes?.integerValue ?? 0),
           };
+          // Decode the rolling buffer of last N ratings, oldest first.
+          const recentArr = s.recentRatings?.arrayValue?.values || [];
+          recentRatings = recentArr
+            .map((v: any) => Number(v.integerValue ?? v.doubleValue ?? 0))
+            .filter((n: number) => Number.isFinite(n) && n > 0);
+          alreadySuspended = !!agg.fields?.suspended?.booleanValue;
         }
       } catch { /* treat as new provider */ }
     }
+
+    // Run the auto-suspension decision before building writes so we know
+    // whether to flip the suspended flag in the same commit.
+    const suspensionDecision = decideAutoSuspension(
+      recentRatings,
+      input.rating,
+      alreadySuspended,
+    );
 
     // 4. Compute O(1) running averages for the new review.
     const n = existingStats.completed;
@@ -1456,9 +1530,14 @@ export class FirestoreClient {
           },
         },
 
-        // providers_agg/{phone}.stats (running averages)
+        // providers_agg/{phone}.stats (running averages + rolling buffer)
+        // + the suspended flag if auto-suspension fired this review.
         {
-          updateMask: { fieldPaths: ['stats', 'updatedAt'] },
+          updateMask: {
+            fieldPaths: suspensionDecision.shouldSuspend && !alreadySuspended
+              ? ['stats', 'updatedAt', 'suspended', 'suspendedAt', 'suspendReason']
+              : ['stats', 'updatedAt'],
+          },
           update: {
             name: `${db}/documents/providers_agg/${encodeURIComponent(providerPhone)}`,
             fields: {
@@ -1474,14 +1553,63 @@ export class FirestoreClient {
                     replyRate:         { integerValue: existingStats.replyRate.toString() },
                     avgResponseMinutes: { integerValue: existingStats.avgResponseMinutes.toString() },
                     lastJobAt:         { timestampValue: nowIso },
+                    // Rolling buffer of last N ratings — oldest first.
+                    // Used by decideAutoSuspension on every review.
+                    recentRatings: {
+                      arrayValue: {
+                        values: suspensionDecision.recentRatings.map((r) => ({
+                          integerValue: r.toString(),
+                        })),
+                      },
+                    },
                   },
                 },
               },
               updatedAt: { timestampValue: nowIso },
+              // Top-level suspended flag — outside `stats` so admin UI can
+              // flip it manually without touching running averages.
+              ...(suspensionDecision.shouldSuspend && !alreadySuspended
+                ? {
+                    suspended: { booleanValue: true },
+                    suspendedAt: { timestampValue: nowIso },
+                    suspendReason: { stringValue: suspensionDecision.reason || 'auto-suspended' },
+                  }
+                : {}),
             },
           },
         },
       );
+
+      // If we just auto-suspended this provider, write an admin alert so
+      // the team sees it in the dashboard. Outside the providers_agg write
+      // because alerts have their own collection.
+      if (suspensionDecision.shouldSuspend && !alreadySuspended) {
+        writes.push({
+          update: {
+            name: `${db}/documents/admin_alerts/${crypto.randomUUID()}`,
+            fields: {
+              type: { stringValue: 'provider_auto_suspended' },
+              severity: { stringValue: 'warning' },
+              message: {
+                stringValue: `${providerName} (${providerPhone}) הושעה אוטומטית — ${
+                  suspensionDecision.reason || 'דירוג נמוך'
+                }`,
+              },
+              createdAt: { timestampValue: nowIso },
+              read: { booleanValue: false },
+              metadata: {
+                mapValue: {
+                  fields: {
+                    providerPhone: { stringValue: providerPhone },
+                    avgInBuffer: { doubleValue: Number(suspensionDecision.avgInBuffer.toFixed(2)) },
+                    triggerRequestId: { stringValue: input.requestId },
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
     }
 
     // 6. Commit.

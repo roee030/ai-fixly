@@ -14,6 +14,7 @@
     "deploy:rules": "npx firebase-tools deploy --only firestore:rules",
     "deploy:all": "npm run deploy:web && npm run deploy:worker",
     "test": "jest",
+    "test:e2e": "maestro test .maestro/",
     "test:worker": "cd workers/broker && npm test",
     "test:all": "npm test && npm run test:worker",
     "lint": "expo lint"

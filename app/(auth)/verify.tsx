@@ -9,6 +9,7 @@ import { OtpBoxInput } from '../../src/components/ui/OtpBoxInput';
 import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { otpSchema } from '../../src/validators';
 import { authService } from '../../src/services/auth';
+import { captureException } from '../../src/services/errorReporting';
 import { COLORS, LIMITS } from '../../src/constants';
 
 export default function VerifyScreen() {
@@ -37,6 +38,16 @@ export default function VerifyScreen() {
         await authService.confirmOtp(verificationId, finalCode);
         // Auth state change handled by useAuth hook → AuthGate redirects.
       } catch (err) {
+        // "Wrong code" is the expected case — only report if it's not a
+        // user-facing error so we can spot transport failures (Firebase down,
+        // network, malformed verificationId).
+        const code = (err as any)?.code;
+        if (code !== 'auth/invalid-verification-code' && code !== 'auth/code-expired') {
+          captureException(err, {
+            tags: { screen: 'verify_otp', action: 'confirm_otp' },
+            extra: { errorCode: code },
+          });
+        }
         setError(t('auth.wrongCode'));
       } finally {
         setIsLoading(false);

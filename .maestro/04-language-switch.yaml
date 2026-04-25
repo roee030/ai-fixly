@@ -1,0 +1,28 @@
+# 04 — Language switch
+#
+# Smoke test for the i18n plumbing. We ship 4 languages
+# (Hebrew default, English / Arabic / Russian) and any string that's
+# missing a translation falls back silently — easy to ship a broken
+# screen without noticing. This flow flips Hebrew → English → Hebrew
+# and confirms the change actually re-renders.
+
+appId: com.aifixly.app
+---
+- launchApp:
+    clearState: false
+
+# Profile tab (Hebrew default).
+- tapOn: "פרופיל"
+- assertVisible: "שפה"           # "Language" section header in Hebrew
+
+# Tap the EN option. The labels in the locale picker stay native — "English"
+# in English, "עברית" in Hebrew, etc. — so this works in either direction.
+- tapOn: "English"
+
+# Header is now "Profile" in English.
+- assertVisible: "Profile"
+- assertVisible: "Language"
+
+# Flip back to Hebrew so subsequent flows that assume Hebrew don't break.
+- tapOn: "עברית"
+- assertVisible: "פרופיל"

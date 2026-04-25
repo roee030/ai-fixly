@@ -271,10 +271,17 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
   const broadcastStart = Date.now();
   const broadcastStartIso = new Date(broadcastStart).toISOString();
 
-  // Fetch the set of provider phones that are already busy with another
-  // in-progress job so we can exclude them from this broadcast.
-  const busyPhones = await firestore.getBusyProviderPhones();
-  console.log(`[broadcast] ${busyPhones.size} providers are currently busy`);
+  // Fetch the set of provider phones we have to skip on this broadcast:
+  //   - busyPhones    → currently mid-job for someone else
+  //   - suspendedPhones → auto-suspended (low rating) or admin-disabled
+  // Both are queried in parallel since they're independent reads.
+  const [busyPhones, suspendedPhones] = await Promise.all([
+    firestore.getBusyProviderPhones(),
+    firestore.getSuspendedProviderPhones(),
+  ]);
+  console.log(
+    `[broadcast] ${busyPhones.size} busy, ${suspendedPhones.size} suspended (excluded)`,
+  );
 
   // Find providers via Google Places (cached via KV)
   const allProviders: PlacesProvider[] = [];
@@ -305,6 +312,10 @@ async function handleBroadcast(request: Request, env: Env, ctx: ExecutionContext
         if (seenPlaceIds.has(p.placeId)) continue;
         if (p.phone && busyPhones.has(p.phone)) {
           console.log(`[skip] ${p.name} is busy with another job`);
+          continue;
+        }
+        if (p.phone && suspendedPhones.has(p.phone)) {
+          console.log(`[skip] ${p.name} is suspended`);
           continue;
         }
         seenPlaceIds.add(p.placeId);

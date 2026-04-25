@@ -13,6 +13,7 @@ import {
 } from '../firestore/imports';
 import { RequestService, CreateRequestInput, ServiceRequest } from './types';
 import { REQUEST_STATUS } from '../../constants/status';
+import { captureException } from '../errorReporting';
 
 class FirebaseRequestService implements RequestService {
   private db = getFirestore();
@@ -51,7 +52,10 @@ class FirebaseRequestService implements RequestService {
       if (!snapshot) return null;
       return snapshotToRequest(snapshot);
     } catch (err) {
-      console.warn('[getRequest] failed', err);
+      captureException(err, {
+        tags: { service: 'requests', action: 'getRequest' },
+        extra: { requestId },
+      });
       return null;
     }
   }
@@ -74,7 +78,10 @@ class FirebaseRequestService implements RequestService {
         })
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     } catch (err) {
-      console.warn('[getUserRequests] failed', err);
+      captureException(err, {
+        tags: { service: 'requests', action: 'getUserRequests' },
+        extra: { userId },
+      });
       return [];
     }
   }
@@ -113,7 +120,10 @@ class FirebaseRequestService implements RequestService {
         broadcastedAt: serverTimestamp(),
       });
     } catch (err) {
-      console.warn('[saveBroadcastResult] failed', err);
+      captureException(err, {
+        tags: { service: 'requests', action: 'saveBroadcastResult' },
+        extra: { requestId, providerCount: providers.length },
+      });
     }
   }
 

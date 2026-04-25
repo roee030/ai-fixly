@@ -1,0 +1,38 @@
+# 03 — Customer views bids on an existing request
+#
+# Verifies the My Requests list renders, opens a request, and the
+# bid list (or empty-state for fresh requests) shows up. Catches
+# regressions in the Firestore subscription wiring + the new
+# EmptyState component for the "waiting for offers" case.
+
+appId: com.aifixly.app
+---
+- launchApp:
+    clearState: false
+
+# Tab to "My Requests" — uses the tab bar label set in (tabs)/_layout.tsx.
+- tapOn: "הקריאות שלי"
+- assertVisible: "הקריאות שלי"
+
+# Either there's at least one request or we see the empty state.
+# Maestro doesn't have a built-in OR, so we use runFlow with two
+# branches and tolerate one of them succeeding.
+- runFlow:
+    when:
+      visible: "אין לך"        # empty-state title token
+    commands:
+      - assertVisible: "התחל"   # empty-state CTA pointing at /capture
+
+- runFlow:
+    when:
+      notVisible: "אין לך"
+    commands:
+      # At least one request card. Tap the first one.
+      - tapOn:
+          index: 0
+      # Request details renders a header — either bids exist (we see
+      # "הצעות מחיר") or we're still waiting (EmptyState shows
+      # "ממתינים לבעלי מקצוע").
+      - extendedWaitUntil:
+          visible: "(?i)(הצעות מחיר|ממתינים לבעלי מקצוע)"
+          timeout: 8000

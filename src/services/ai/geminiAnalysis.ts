@@ -4,6 +4,7 @@ import { ANALYSIS_PROMPT } from './prompts';
 import { logger } from '../logger';
 import { reportAiFullFailure } from './alertAiFailure';
 import { validateProfessionKeys } from './professionValidation';
+import { captureException } from '../errorReporting';
 
 const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite'];
 
@@ -156,6 +157,18 @@ class GeminiAnalysisService implements AIAnalysisService {
       imageCount: (input.images || []).length,
       lastError: lastError?.message || 'unknown',
     }).catch(() => {});
+
+    // Sentry: tagged 'fatal' because if every Gemini variant failed, a real
+    // user just lost their request. Should page on-call.
+    captureException(lastError || new Error('All AI models failed'), {
+      tags: { service: 'ai', failureMode: 'all_models_failed' },
+      extra: {
+        modelTimings: JSON.stringify(modelTimings),
+        payloadKB,
+        imageCount: (input.images || []).length,
+      },
+      level: 'fatal',
+    });
 
     throw lastError || new Error('All AI models failed');
   }

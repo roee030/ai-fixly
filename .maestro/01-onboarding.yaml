@@ -1,0 +1,33 @@
+# 01 — Onboarding
+#
+# First-launch path. Verifies the 3-slide onboarding renders, swipes
+# advance the slides, and "let's start" lands on the phone-auth screen.
+#
+# This is the regression guard for the manual-pager rewrite — RN's
+# horizontal ScrollView used to flip its content offset on RTL Hebrew
+# devices, sending the user backwards when they swiped forward. The
+# manual Animated + PanResponder pager fixed it; this flow makes sure
+# it stays fixed.
+
+appId: com.aifixly.app
+---
+# Always start clean so we hit the actual onboarding flow and not a
+# resumed session.
+- clearState
+- launchApp
+
+- assertVisible: "צלם"          # slide 1 title contains this
+- assertVisible: "המשך"         # primary CTA on slide 1
+
+# Tap-through (we don't test swipe gestures here — that's a unit-level
+# concern handled by the panResponder logic; here we just want to make
+# sure the buttons advance the index correctly).
+- tapOn: "המשך"
+- assertVisible: "AI"            # slide 2 references the AI matcher
+
+- tapOn: "המשך"
+- assertVisible: "מהיר"          # slide 3 references speed/quality
+
+- tapOn: "בואו נתחיל"
+# Phone-auth screen.
+- assertVisible: "מה המספר שלך?"

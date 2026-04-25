@@ -8,6 +8,7 @@ import { Button, Input, FadeInView } from '../../src/components/ui';
 import { FeedbackModal } from '../../src/components/ui/FeedbackModal';
 import { authService } from '../../src/services/auth';
 import { normalizePhoneNumber, isValidPhoneNumber } from '../../src/utils/phone';
+import { captureException } from '../../src/services/errorReporting';
 import { COLORS } from '../../src/constants';
 
 export default function PhoneScreen() {
@@ -36,7 +37,10 @@ export default function PhoneScreen() {
         params: { verificationId, phone: normalizedPhone },
       });
     } catch (err: any) {
-      console.error('Phone auth error:', err);
+      captureException(err, {
+        tags: { screen: 'phone_auth', action: 'send_otp' },
+        extra: { phoneLength: normalizedPhone.length },
+      });
       setError(t('auth.sendCodeFailed'));
     } finally {
       setIsLoading(false);

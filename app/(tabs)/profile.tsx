@@ -240,7 +240,13 @@ export default function ProfileScreen() {
         </View>
 
         {/* Feedback button -- visible to all users */}
-        <Pressable style={styles.feedbackButton} onPress={() => setShowFeedback(true)}>
+        <Pressable
+          style={styles.feedbackButton}
+          onPress={() => setShowFeedback(true)}
+          accessibilityRole="button"
+          accessibilityLabel={t('profile.reportProblem')}
+          accessibilityHint="פתיחת טופס דיווח על תקלה לצוות"
+        >
           <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.primary} />
           <Text style={styles.feedbackButtonText}>{t('profile.reportProblem')}</Text>
         </Pressable>
@@ -294,15 +300,31 @@ export default function ProfileScreen() {
         </Pressable>
 
         <View style={styles.legalLinks}>
-          <Pressable onPress={() => router.push('/legal/terms' as any)}>
+          <Pressable
+            onPress={() => router.push('/legal/terms' as any)}
+            accessibilityRole="link"
+            accessibilityLabel={t('profile.termsOfService')}
+          >
             <Text style={styles.legalLink}>{t('profile.termsOfService')}</Text>
           </Pressable>
-          <Text style={styles.legalSeparator}>•</Text>
-          <Pressable onPress={() => router.push('/legal/privacy' as any)}>
+          <Text style={styles.legalSeparator} accessibilityElementsHidden>
+            •
+          </Text>
+          <Pressable
+            onPress={() => router.push('/legal/privacy' as any)}
+            accessibilityRole="link"
+            accessibilityLabel={t('profile.privacyPolicy')}
+          >
             <Text style={styles.legalLink}>{t('profile.privacyPolicy')}</Text>
           </Pressable>
-          <Text style={styles.legalSeparator}>•</Text>
-          <Pressable onPress={() => router.push('/legal/accessibility' as any)}>
+          <Text style={styles.legalSeparator} accessibilityElementsHidden>
+            •
+          </Text>
+          <Pressable
+            onPress={() => router.push('/legal/accessibility' as any)}
+            accessibilityRole="link"
+            accessibilityLabel={t('profile.accessibility')}
+          >
             <Text style={styles.legalLink}>{t('profile.accessibility')}</Text>
           </Pressable>
         </View>
