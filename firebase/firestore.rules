@@ -18,6 +18,11 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/adminUids/$(request.auth.uid));
     }
 
+    function ownsRequest(requestId) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/serviceRequests/$(requestId)).data.userId == request.auth.uid;
+    }
+
     // ====================================
     // Users — strict owner-only access
     // ====================================
@@ -38,32 +43,37 @@ service cloud.firestore {
                     || isAdmin();
       // NO delete — requests are permanent records
 
-      // Chat messages — only request owner
+      // Chat messages — only the request owner (or an admin) can see / send.
+      // Previously this was `request.auth != null` which leaked every chat
+      // to every authed user. Closed in P0 audit.
       match /messages/{messageId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if ownsRequest(requestId) || isAdmin();
       }
 
       // Service events — admin + request owner can read; nothing else.
       // Writes happen from the worker via service account, which bypasses
       // rules entirely, or from the owner for client-originated events.
       match /events/{eventId} {
-        allow read: if (request.auth != null
-                       && get(/databases/$(database)/documents/serviceRequests/$(requestId)).data.userId == request.auth.uid)
-                    || isAdmin();
-        allow create: if request.auth != null
-                       && get(/databases/$(database)/documents/serviceRequests/$(requestId)).data.userId == request.auth.uid;
+        allow read: if ownsRequest(requestId) || isAdmin();
+        allow create: if ownsRequest(requestId);
         allow update, delete: if false;
       }
     }
 
     // ====================================
-    // Bids — read by anyone authed (for now)
-    // TODO: restrict to request owner when we add proper indexes
+    // Bids — readable only by the request owner (or admin).
+    // Bids carry pricing + provider phone numbers; the public surface is
+    // anonymised to "בעל מקצוע 1/2/3" by the customer app, but the raw
+    // doc must not leak between requests.
     // ====================================
     match /bids/{bidId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      // NO update, NO delete — bids are immutable
+      allow read: if ownsRequest(resource.data.requestId) || isAdmin();
+      // Creates come exclusively from the worker's service account
+      // (which bypasses these rules). Block client-side creates so a
+      // malicious authed user can't inject a bid into someone else's
+      // request.
+      allow create: if isAdmin();
+      allow update, delete: if false;
     }
 
     // ====================================
@@ -75,17 +85,19 @@ service cloud.firestore {
     }
 
     // ====================================
-    // Provider aggregates — admin dashboard support
-    // Worker maintains stats + jobs subcollection via service account.
-    // Authed users can read so the customer app can show provider
-    // summaries on bid cards. Admins can write for dev-mode seeding.
+    // Provider aggregates — admin-only.
+    // Earlier this was readable by every authed user "so the customer
+    // app could show provider stats on bid cards", but the customer
+    // app never actually used it (only the admin dashboard does).
+    // Locked down to admins so a competitor with a single account
+    // can't scrape every provider's pricing history.
     // ====================================
     match /providers_agg/{phone} {
-      allow read: if request.auth != null;
+      allow read: if isAdmin();
       allow write: if isAdmin();
 
       match /jobs/{requestId} {
-        allow read: if request.auth != null;
+        allow read: if isAdmin();
         allow write: if isAdmin();
       }
     }
@@ -100,10 +112,13 @@ service cloud.firestore {
     }
 
     // ====================================
-    // Reviews — write once, read by anyone authed
+    // Reviews — write once, read by request owner / admin only
+    // (a review carries a provider's identifier; mass-reading exposes
+    // every customer's chosen provider history)
     // ====================================
     match /reviews/{reviewId} {
-      allow read: if request.auth != null;
+      allow read: if (request.auth != null && resource.data.userId == request.auth.uid)
+                  || isAdmin();
       allow create: if request.auth != null
                     && request.resource.data.userId == request.auth.uid
                     && request.resource.data.rating >= 1
@@ -120,42 +135,44 @@ service cloud.firestore {
     }
 
     // ====================================
-    // Feedback — authed create + admin read
+    // Feedback — authed create + admin read.
+    // Earlier any authed user could read all feedback; locked to admin.
     // ====================================
     match /feedback/{docId} {
       allow create: if request.auth != null
                     && request.resource.data.freeText.size() <= 2000;
-      allow read: if request.auth != null;
+      allow read: if isAdmin();
       // NO update, NO delete
     }
 
     // ====================================
-    // Session logs — write only (analytics)
+    // Session logs — analytics. Authed users can append their own;
+    // only admin can read the full collection.
     // ====================================
     match /session_logs/{docId} {
       allow create: if request.auth != null;
-      allow read: if request.auth != null;
+      allow read: if isAdmin();
       // NO update, NO delete
     }
 
     // ====================================
-    // Admin alerts — worker creates, admin reads/updates
+    // Admin alerts — worker creates (service account), admin reads / dismisses
     // ====================================
     match /admin_alerts/{alertId} {
-      allow read: if request.auth != null;
-      allow update: if request.auth != null;
-      // NO create from client — only worker
+      allow read: if isAdmin();
+      allow create: if isAdmin();   // dev-mode mock seeder; worker uses service account
+      allow update: if isAdmin();
       // NO delete
     }
 
     // ====================================
-    // Provider signups — public form (no auth for create)
+    // Provider signups — public form (no auth for create), admin-only read
     // ====================================
     match /provider_signups/{signupId} {
       allow create: if true
                     && request.resource.data.name.size() <= 200
                     && request.resource.data.phone.size() <= 20;
-      allow read: if request.auth != null;
+      allow read: if isAdmin();
       // NO update, NO delete from client
     }
 

@@ -9,20 +9,24 @@ module.exports = {
     '\\.css$': '<rootDir>/__tests__/helpers/styleMock.js',
   },
   testPathIgnorePatterns: ['/node_modules/', '/workers/'],
+  // Match the jest-expo/web preset's pattern style: no trailing `/`, so a
+  // prefix like `expo` matches `expo-constants/` too. The previous version
+  // had `(?!(...)/)`, which silently excluded every `expo-*` and
+  // `react-native-*` subpackage from Babel and broke every screen test.
   transformIgnorePatterns: [
     'node_modules/(?!(' +
+      '\\.pnpm|' +
       'react-native|' +
-      'react-native-web|' +
       '@react-native|' +
+      '@react-native-community|' +
       'expo|' +
       '@expo|' +
-      'react-native-reanimated|' +
-      'react-native-gesture-handler|' +
-      'react-native-screens|' +
-      'react-native-safe-area-context|' +
+      '@expo-google-fonts|' +
+      'react-navigation|' +
       '@react-navigation|' +
+      '@sentry/react-native|' +
       'nativewind|' +
       '@testing-library' +
-    ')/)',
+    '))',
   ],
 };

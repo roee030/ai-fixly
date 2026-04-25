@@ -14,6 +14,14 @@
 // React Native's __DEV__ flag — set to true in test environment
 global.__DEV__ = true;
 
+// Stub env vars that some services (Gemini, Supabase) read at module-load.
+// Without these the constructors throw and crash the test runner before any
+// test even gets a chance to run.
+process.env.EXPO_PUBLIC_GEMINI_API_KEY ||= 'test-key';
+process.env.EXPO_PUBLIC_SUPABASE_URL ||= 'https://test.supabase.co';
+process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||= 'test-anon-key';
+process.env.EXPO_PUBLIC_BROKER_URL ||= 'https://test-broker.workers.dev';
+
 // ============================================================================
 // 1. Zustand store cleanup
 // ============================================================================
@@ -326,6 +334,24 @@ jest.mock('@sentry/react-native', () => ({
   captureException: jest.fn(),
   captureMessage: jest.fn(),
   addBreadcrumb: jest.fn(),
+}));
+
+// Google Generative AI SDK — never hit the real Gemini API in tests.
+// The default mock returns a sensible profession so the routing pipeline
+// can be exercised; individual tests can override by re-mocking the
+// service module entirely.
+jest.mock('@google/generative-ai', () => ({
+  GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
+    getGenerativeModel: jest.fn(() => ({
+      generateContent: jest.fn(() =>
+        Promise.resolve({
+          response: {
+            text: () => JSON.stringify({ professions: ['handyman'] }),
+          },
+        })
+      ),
+    })),
+  })),
 }));
 
 // AsyncStorage

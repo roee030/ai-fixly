@@ -1,29 +1,24 @@
 import { generateAnalysisPrompt } from './promptGenerator';
-import { PROFESSIONS, PROBLEM_MATRIX } from '../../constants/problemMatrix';
+import { PROFESSIONS } from '../../constants/problemMatrix';
 
+/**
+ * The prompt was rewritten in the routing-only refactor: it no longer
+ * extracts diagnoses, urgency, problemId or short summaries — it only
+ * returns the matching profession key(s). These tests pin the new
+ * contract so the next refactor can't drop a profession key or
+ * disambiguation rule by accident.
+ */
 describe('generateAnalysisPrompt', () => {
   const prompt = generateAnalysisPrompt();
 
-  test('includes all 29 profession keys', () => {
+  test('lists every profession key + Hebrew label', () => {
     for (const p of PROFESSIONS) {
       expect(prompt).toContain(p.key);
       expect(prompt).toContain(p.labelHe);
     }
   });
 
-  test('includes all 10 domain category Hebrew headers', () => {
-    for (const d of PROBLEM_MATRIX) {
-      expect(prompt).toContain(d.labelHe);
-    }
-  });
-
-  test('includes problem examples from each domain', () => {
-    for (const d of PROBLEM_MATRIX) {
-      expect(prompt).toContain(d.problems[0].descriptionHe);
-    }
-  });
-
-  test('includes disambiguation rules for key professions', () => {
+  test('keeps the disambiguation rules that prevent the most common AI mistakes', () => {
     expect(prompt).toContain('seamstress');
     expect(prompt).toContain('solar_water_heater_tech');
     expect(prompt).toContain('metalworker');
@@ -32,15 +27,21 @@ describe('generateAnalysisPrompt', () => {
     expect(prompt).toContain('shutter_technician');
   });
 
-  test('requests JSON with professions + problemId + urgency', () => {
+  test('asks for a JSON envelope with a single `professions` array (routing-only)', () => {
     expect(prompt).toContain('"professions"');
-    expect(prompt).toContain('"problemId"');
-    expect(prompt).toContain('"urgency"');
-    expect(prompt).toContain('"professionLabelsHe"');
-    expect(prompt).toContain('"shortSummary"');
+    // The legacy fields (problemId / urgency / shortSummary) were dropped
+    // from the prompt to cut tokens. Make sure they don't sneak back.
+    expect(prompt).not.toContain('"problemId"');
+    expect(prompt).not.toContain('"urgency"');
+    expect(prompt).not.toContain('"shortSummary"');
   });
 
-  test('prompt is under 15000 estimated tokens (4 chars per token)', () => {
+  test('asks for output as JSON, not markdown', () => {
+    expect(prompt).toMatch(/JSON/i);
+    expect(prompt).toMatch(/no markdown/i);
+  });
+
+  test('caps at ~15k tokens (4 chars per token estimate)', () => {
     const estimatedTokens = prompt.length / 4;
     expect(estimatedTokens).toBeLessThan(15000);
   });

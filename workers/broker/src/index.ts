@@ -37,6 +37,7 @@ import { sendPush } from './fcm';
 import { recordProviderContact, lookupProviderContact } from './phoneMap';
 import { isKillSwitchOn, setKillSwitch, listKillSwitches } from './killSwitch';
 import { verifyFirebaseIdToken } from './firebaseAuthVerify';
+import { verifyTwilioSignature } from './twilioSignature';
 import { getUrgencyConfig } from './professionConfig';
 import { shortenProviderName } from './nameUtils';
 import { getProvidersForWave, getNextWaveTime } from './tiering';
@@ -1038,6 +1039,24 @@ function simulateProviderReply(customerText: string): string {
 
 async function handleTwilioWebhook(request: Request, env: Env): Promise<Response> {
   const formData = await request.formData();
+
+  // Reject any caller that doesn't carry a valid Twilio signature. This is
+  // the only thing standing between attackers and "provider replied" forgery.
+  // Set SKIP_TWILIO_SIGNATURE_CHECK=true in the worker env for local dev.
+  const skipCheck = (env as any).SKIP_TWILIO_SIGNATURE_CHECK === 'true';
+  if (!skipCheck) {
+    const valid = await verifyTwilioSignature(
+      request.url,
+      formData,
+      env.TWILIO_AUTH_TOKEN,
+      request.headers.get('x-twilio-signature'),
+    );
+    if (!valid) {
+      console.warn('[webhook] invalid Twilio signature, rejecting');
+      return new Response('forbidden', { status: 403 });
+    }
+  }
+
   const from = formData.get('From')?.toString() || '';
   const body = formData.get('Body')?.toString() || '';
   const profileName = formData.get('ProfileName')?.toString() || 'בעל מקצוע';
