@@ -9,7 +9,8 @@
       "distribution": "internal",
       "channel": "development",
       "env": {
-        "EXPO_PUBLIC_ENV": "development"
+        "EXPO_PUBLIC_ENV": "development",
+        "EXPO_PUBLIC_BROKER_URL": "https://ai-fixly-broker.mr-roee-angel.workers.dev"
       }
     },
     "preview": {
@@ -22,7 +23,8 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_ENV": "preview"
+        "EXPO_PUBLIC_ENV": "preview",
+        "EXPO_PUBLIC_BROKER_URL": "https://ai-fixly-broker.mr-roee-angel.workers.dev"
       }
     },
     "production": {
@@ -32,7 +34,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_ENV": "production"
+        "EXPO_PUBLIC_ENV": "production",
+        "EXPO_PUBLIC_BROKER_URL": "https://ai-fixly-broker.mr-roee-angel.workers.dev"
       }
     }
   },
