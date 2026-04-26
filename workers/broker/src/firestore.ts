@@ -228,6 +228,36 @@ export class FirestoreClient {
   }
 
   /**
+   * Wipe a user's stored FCM token. Called when FCM tells us the token
+   * is permanently invalid (UNREGISTERED / 404) — the device will
+   * re-register on the next launch and the new token will land in the
+   * user doc via the existing onTokenRefresh handler.
+   *
+   * Best-effort: if the patch fails, the next push attempt just hits the
+   * same dead token and we'll try again. Never throw.
+   */
+  async clearUserFcmToken(userId: string): Promise<void> {
+    try {
+      const accessToken = await this.getToken();
+      // PATCH with updateMask=fcmToken and an empty body for that field
+      // = delete just the one field (vs. overwriting the whole doc).
+      const url =
+        `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents/users/${userId}` +
+        `?updateMask.fieldPaths=fcmToken`;
+      await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fields: {} }),
+      });
+    } catch (err) {
+      console.warn('clearUserFcmToken failed:', err);
+    }
+  }
+
+  /**
    * Look up a registered provider by phone number. Used during dispatch
    * to honor the vacation toggle: if the matched user is a registered
    * provider AND on vacation, we skip them and move to the next candidate.

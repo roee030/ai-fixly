@@ -68,7 +68,7 @@ export default function ProviderReportScreen() {
   return (
     <ScreenContainer>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brandTitle}>ai-fixly</Text>
+        <Text style={styles.brandTitle}>Fixly</Text>
         <Text style={styles.title}>{t('providerReport.title')}</Text>
         <Text style={styles.subtitle}>{t('providerReport.subtitle')}</Text>
 

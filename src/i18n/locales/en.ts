@@ -32,9 +32,9 @@ export default {
   },
 
   appPromo: {
-    bannerText: 'ai-fixly works better in the app',
+    bannerText: 'Fixly works better in the app',
     bannerOpen: 'Open',
-    modalTitle: 'ai-fixly',
+    modalTitle: 'Fixly',
     modalSubtitle: 'Our app works much better',
     valueCapture: 'Snap the problem → get quotes',
     valueNotifications: 'Real-time notifications',
@@ -50,7 +50,7 @@ export default {
   },
 
   common: {
-    appName: 'ai-fixly',
+    appName: 'Fixly',
     loading: 'Loading...',
     error: 'Error',
     retry: 'Try again',
@@ -325,12 +325,12 @@ export default {
     submittedTitle: 'Quote sent!',
     submittedSubtitle: "The customer will see your quote alongside others. If they pick you, we'll send their details to you on WhatsApp.",
     requestNotFound: 'This request was not found or has been closed.',
-    footer: 'ai-fixly — connecting problems to solutions',
+    footer: 'Fixly — connecting problems to solutions',
   },
 
   servicePage: {
-    titleFmt: '{{name}} near you — quotes in minutes | ai-fixly',
-    metaDescFmt: 'Find {{name}} near you with ai-fixly — snap the problem, get quotes from rated professionals in minutes. Free, no commitment.',
+    titleFmt: '{{name}} near you — quotes in minutes | Fixly',
+    metaDescFmt: 'Find {{name}} near you with Fixly — snap the problem, get quotes from rated professionals in minutes. Free, no commitment.',
     heroH1Fmt: '{{name}} near you',
     emergencyBadge: '24/7 service available',
     trustFast: 'Minutes',
@@ -341,7 +341,7 @@ export default {
     inlineFormPlaceholder: 'e.g., water leaking from the kitchen tap, started this morning',
     inlineFormSubmit: 'Continue with a photo and get quotes',
     inlineFormNote: 'Free • No commitment • Quotes from rated professionals in your area',
-    whyUsTitle: 'Why ai-fixly?',
+    whyUsTitle: 'Why Fixly?',
     whyUs1: 'Snap the problem — our AI identifies exactly what you need',
     whyUs2: 'Quotes from professionals in your area, in minutes',
     whyUs3: 'No cost, no commitment, no endless searching',
@@ -366,7 +366,7 @@ export default {
     finalCtaTitleFmt: 'Looking for a {{name}}? Start now',
     finalCtaSubtitle: 'One photo + short description → quotes from pros in your area in minutes',
     finalCtaButton: 'Start now →',
-    footer: 'ai-fixly — the easy way to find a professional',
+    footer: 'Fixly — the easy way to find a professional',
     backHome: 'Back home',
     notFound: 'Service not found',
     genericIssue1Fmt: 'Urgent issues in the {{name}} field',
@@ -376,9 +376,9 @@ export default {
     genericPricing1: 'Price depends on the job complexity, area and time of day',
     genericPricing2: 'Always request a written quote before any work starts',
     genericPricing3: 'Peripheral areas are usually cheaper than central ones',
-    genericIntroFmt: 'Looking for a {{name}} near you? ai-fixly connects you to the top professionals in minutes — snap the problem and receive quotes right away.',
+    genericIntroFmt: 'Looking for a {{name}} near you? Fixly connects you to the top professionals in minutes — snap the problem and receive quotes right away.',
     genericFaq1qFmt: 'How do I find a reliable {{name}}?',
-    genericFaq1aFmt: 'With ai-fixly you snap the problem and receive quotes within minutes from professionals rated by previous customers in your area. Our service is free — you only pay the professional you choose.',
+    genericFaq1aFmt: 'With Fixly you snap the problem and receive quotes within minutes from professionals rated by previous customers in your area. Our service is free — you only pay the professional you choose.',
     genericFaq2q: 'How long does it take to receive a quote?',
     genericFaq2a: 'The first quotes arrive within minutes. You see them in the app with an estimated price and ETA, and pick whichever suits you.',
     genericFaq3q: 'What does the service cost?',
@@ -529,7 +529,7 @@ export default {
   },
 
   join: {
-    title: 'Join ai-fixly',
+    title: 'Join Fixly',
     subtitle: 'Get new clients in your area.',
     subtitleLine2: 'We send you job opportunities directly to WhatsApp.',
     benefit1: 'Job opportunities directly to WhatsApp',
@@ -547,7 +547,7 @@ export default {
     submitting: 'Sending...',
     submitError: 'Could not submit the form. Try again.',
     thankYou: 'Thank you for signing up!',
-    thankYouSubtitle: "We'll get back to you within 24 hours with details on how to start getting clients through ai-fixly",
-    footer: 'ai-fixly — The easy way to find new clients',
+    thankYouSubtitle: "We'll get back to you within 24 hours with details on how to start getting clients through Fixly",
+    footer: 'Fixly — The easy way to find new clients',
   },
 };

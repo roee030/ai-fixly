@@ -251,7 +251,7 @@ export default function ProviderQuoteScreen() {
   return (
     <ScreenContainer>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Text style={styles.brandTitle}>ai-fixly</Text>
+        <Text style={styles.brandTitle}>Fixly</Text>
         <Text style={styles.title}>{t('providerForm.title')}</Text>
 
         {/* Problem context — read-only summary the provider needs */}

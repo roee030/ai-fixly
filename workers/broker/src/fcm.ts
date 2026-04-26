@@ -39,12 +39,35 @@ export interface FcmPushParams {
   badge?: number;
 }
 
-export async function sendPush(params: FcmPushParams): Promise<boolean> {
+/**
+ * Result of an FCM send attempt. The caller can react to specific
+ * failure modes:
+ *   - `kind: 'no_token'` — user has no registered FCM token (skip).
+ *   - `kind: 'invalid_token'` — FCM 404 / NotRegistered. Caller should
+ *     delete the token from the user doc so we don't keep retrying it.
+ *   - `kind: 'transient'` — 5xx or network. Caller may retry or alert.
+ *   - `kind: 'ok'` — push delivered to FCM (the device may still drop it,
+ *     but the service accepted it).
+ */
+export type FcmSendResult =
+  | { kind: 'ok' }
+  | { kind: 'no_token' }
+  | { kind: 'invalid_token'; statusCode: number; body: string }
+  | { kind: 'transient'; statusCode: number; body: string }
+  | { kind: 'fatal'; error: string };
+
+/**
+ * Send a push and return a structured result. The legacy `sendPush`
+ * boolean wrapper is kept below for callers that don't care about
+ * specifics, but new code should prefer this so it can react to
+ * "token revoked" by clearing the stale token.
+ */
+export async function sendPushDetailed(params: FcmPushParams): Promise<FcmSendResult> {
   const { serviceAccountJson, token, title, body, data, imageUrl, tag, badge } = params;
 
   if (!token) {
     console.log('[fcm] no token, skipping push');
-    return false;
+    return { kind: 'no_token' };
   }
 
   try {
@@ -122,13 +145,53 @@ export async function sendPush(params: FcmPushParams): Promise<boolean> {
     if (!response.ok) {
       const errText = await response.text();
       console.error(`FCM send error ${response.status}: ${errText}`);
-      return false;
+      return mapFcmErrorResponse(response.status, errText);
     }
 
     console.log('[fcm] push sent', { title });
-    return true;
+    return { kind: 'ok' };
   } catch (err) {
     console.error('FCM send failed:', err);
-    return false;
+    return { kind: 'fatal', error: String(err).slice(0, 200) };
   }
+}
+
+/**
+ * Pure decoder: turn an FCM error response into the discriminated result
+ * the caller acts on. Exported so tests can assert the mapping without
+ * wiring up the full sign-JWT-call-FCM dance.
+ *
+ * Rules:
+ *   - 404 / 410 / UNREGISTERED / NOT_FOUND → invalid_token (delete it)
+ *   - 5xx / 429                            → transient (caller may retry)
+ *   - everything else                      → fatal (log and move on)
+ */
+export function mapFcmErrorResponse(statusCode: number, body: string): FcmSendResult {
+  // 404 = the registration token was deleted on the device side
+  // (user uninstalled, cleared data, or token rotated). 410 is the
+  // legacy NotRegistered status. FCM v1 sometimes returns 400 with
+  // `errorCode: UNREGISTERED` in the body. In every case the token is
+  // dead forever — caller should delete it.
+  if (
+    statusCode === 404 ||
+    statusCode === 410 ||
+    body.includes('UNREGISTERED') ||
+    body.includes('NOT_FOUND')
+  ) {
+    return { kind: 'invalid_token', statusCode, body: body.slice(0, 500) };
+  }
+  // 5xx or 429 are retryable; surface as transient so caller can decide.
+  if (statusCode >= 500 || statusCode === 429) {
+    return { kind: 'transient', statusCode, body: body.slice(0, 500) };
+  }
+  return { kind: 'fatal', error: `FCM ${statusCode}: ${body.slice(0, 200)}` };
+}
+
+/**
+ * Legacy boolean wrapper. Prefer sendPushDetailed in new code so you can
+ * tell apart "token is dead, delete it" from "FCM had a bad minute, retry".
+ */
+export async function sendPush(params: FcmPushParams): Promise<boolean> {
+  const result = await sendPushDetailed(params);
+  return result.kind === 'ok';
 }

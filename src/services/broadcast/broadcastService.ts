@@ -2,9 +2,27 @@ import { logger } from '../logger';
 import { analyticsService } from '../analytics';
 import { eventLogger } from '../observability';
 import { captureException } from '../errorReporting';
+import { getAuth } from '@react-native-firebase/auth';
 
 function brokerUrl(): string | null {
   return process.env.EXPO_PUBLIC_BROKER_URL || null;
+}
+
+/**
+ * Best-effort fetch the current user's Firebase ID token. Returns null if
+ * the user is signed out or the token can't be refreshed — the worker is
+ * still in soft-auth mode so the call goes through, but we want every
+ * authenticated session to send the token so we can flip strict mode on.
+ */
+async function getAuthHeader(): Promise<Record<string, string>> {
+  try {
+    const user = (getAuth() as any)?.currentUser;
+    if (!user) return {};
+    const token = await user.getIdToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
 }
 
 async function brokerFetch(path: string, body: unknown): Promise<Response | null> {
@@ -15,9 +33,13 @@ async function brokerFetch(path: string, body: unknown): Promise<Response | null
   }
 
   try {
+    const authHeader = await getAuthHeader();
     return await fetch(`${url}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeader,
+      },
       body: JSON.stringify(body),
     });
   } catch (err) {
@@ -83,9 +105,13 @@ export async function broadcastToProviders(input: BroadcastInput): Promise<Broad
       professions: input.professions.join(','),
     });
 
+    const authHeader = await getAuthHeader();
     const response = await fetch(`${workerUrl}/broadcast`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeader,
+      },
       body: JSON.stringify(input),
     });
 

@@ -206,23 +206,23 @@ const SCREENS = [
   { id: 'out-of-area',     title: '5b. Out of area (dead end)', route: '/auth/out-of-area',   img: 'screenshots/mock-out-of-area.png',    zone: 'auth', next: [], x: 1760, y: 1400 },
 
   // Main tabs
-  { id: 'home',            title: '6. Home (hub)',          route: '/(tabs)/',                img: 'screenshots/mock-home.png',           zone: 'auth', next: ['capture', 'request-details'], label: 'Snap', x: 2200, y: 60 },
-  { id: 'my-requests',     title: '7. My Requests',         route: '/(tabs)/requests',        img: 'screenshots/mock-my-requests.png',    zone: 'auth', next: ['request-details'], x: 2200, y: 1000 },
+  { id: 'home',            title: '6. Home (hub)',          route: '/(tabs)/',                img: 'screenshots/mock-home-he.png',           zone: 'auth', next: ['capture', 'request-details'], label: 'Snap', x: 2200, y: 60 },
+  { id: 'my-requests',     title: '7. My Requests',         route: '/(tabs)/requests',        img: 'screenshots/mock-my-requests-he.png',    zone: 'auth', next: ['request-details'], x: 2200, y: 1000 },
   { id: 'profile',         title: '7b. Profile',            route: '/(tabs)/profile',         img: 'screenshots/mock-profile-tab.png',    zone: 'auth', next: ['provider-dashboard', 'admin-overview'], label: 'If provider / admin', x: 2200, y: 1950 },
 
   // Capture flow
-  { id: 'capture',         title: '8. Capture',             route: '/capture',                img: 'screenshots/mock-capture.png',        zone: 'auth', next: ['confirm'], label: 'Send for analysis', x: 2640, y: 60 },
-  { id: 'confirm',         title: '9. AI Confirm',          route: '/capture/confirm',        img: 'screenshots/mock-confirm.png',        zone: 'auth', next: ['sent'], label: 'Confirm', x: 3080, y: 60 },
+  { id: 'capture',         title: '8. Capture',             route: '/capture',                img: 'screenshots/mock-capture-he.png',        zone: 'auth', next: ['confirm'], label: 'Send for analysis', x: 2640, y: 60 },
+  { id: 'confirm',         title: '9. AI Confirm',          route: '/capture/confirm',        img: 'screenshots/mock-confirm-he.png',        zone: 'auth', next: ['sent'], label: 'Confirm', x: 3080, y: 60 },
   { id: 'sent',            title: '10. Sent',               route: '/capture/sent',           img: 'screenshots/mock-sent.png',           zone: 'auth', next: ['my-requests'], x: 3520, y: 60 },
 
   // Request lifecycle
-  { id: 'request-details', title: '11. Request details',    route: '/request/[id]',           img: 'screenshots/mock-request-details.png', zone: 'auth', next: ['selected', 'review'], label: 'Pick bid', x: 2640, y: 1000 },
-  { id: 'selected',        title: '12. Provider selected',  route: '/request/[id] (state)',   img: 'screenshots/mock-selected.png',       zone: 'auth', next: ['review'], label: 'Close request', x: 3080, y: 1000 },
+  { id: 'request-details', title: '11. Request details',    route: '/request/[id]',           img: 'screenshots/mock-request-details-he.png', zone: 'auth', next: ['selected', 'review'], label: 'Pick bid', x: 2640, y: 1000 },
+  { id: 'selected',        title: '12. Provider selected',  route: '/request/[id] (state)',   img: 'screenshots/mock-selected-he.png',       zone: 'auth', next: ['review'], label: 'Close request', x: 3080, y: 1000 },
   { id: 'review',          title: '13. Review',             route: '/review/[requestId]',     img: 'screenshots/mock-review.png',         zone: 'auth', next: [], x: 3520, y: 1000 },
 
   // Provider side (WhatsApp → web)
-  { id: 'whatsapp-msg',    title: 'WhatsApp to provider',   route: 'Twilio WA',               img: 'screenshots/mock-whatsapp-msg.png',   zone: 'provider', next: ['provider-quote', 'provider-report'], x: 500, y: 2900 },
-  { id: 'provider-quote',  title: 'Provider quote form',    route: '/provider/quote/[id]',    img: 'screenshots/mock-provider-quote.png', zone: 'provider', next: ['request-details'], label: 'Bid appears', x: 1000, y: 2900 },
+  { id: 'whatsapp-msg',    title: 'WhatsApp to provider',   route: 'Twilio WA',               img: 'screenshots/mock-whatsapp-msg-he.png',   zone: 'provider', next: ['provider-quote', 'provider-report'], x: 500, y: 2900 },
+  { id: 'provider-quote',  title: 'Provider quote form',    route: '/provider/quote/[id]',    img: 'screenshots/mock-provider-quote-he.png', zone: 'provider', next: ['request-details'], label: 'Bid appears', x: 1000, y: 2900 },
   { id: 'provider-report', title: 'Provider report form',   route: '/provider/report/[id]',   img: 'screenshots/mock-provider-report.png', zone: 'provider', next: [], x: 1500, y: 2900 },
 
   // Provider in-app (registered providers see these tabs after the owner

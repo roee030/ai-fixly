@@ -27,6 +27,8 @@ import { getFirestore, doc, getDoc, updateDoc } from '../../src/services/firesto
 import { draftService } from '../../src/services/drafts';
 import { eventLogger } from '../../src/services/observability';
 import { resolveCity } from '../../src/utils/resolveCity';
+import { withRetry } from '../../src/utils/retry';
+import { captureException } from '../../src/services/errorReporting';
 
 import type { AIAnalysisResult } from '../../src/services/ai';
 
@@ -105,7 +107,18 @@ export default function ConfirmScreen() {
         setModerationBlocked(true);
         logAction('ai_analysis_blocked', 'confirm', { category: err.category });
       } else {
-        console.error('AI analysis error:', err);
+        // Sentry: failure in the AI analysis surface is the most user-visible
+        // bug we have — the user lands here with a fresh photo and gets a
+        // dead-end "try again" screen. Capture aggressively so we can spot
+        // patterns (which model failed, payload size, image count).
+        captureException(err, {
+          tags: { screen: 'confirm', action: 'analyze' },
+          extra: {
+            imageCount: imageUris.length,
+            videoCount: videoAssets.length,
+            descriptionLength: (description || '').length,
+          },
+        });
         analyticsService.trackEvent('ai_analysis_failed');
         setHasError(true);
       }
@@ -158,11 +171,20 @@ export default function ConfirmScreen() {
       const imageTimings: Array<{ sizeMB: number; durationMs: number; ok: boolean }> = [];
       const videoTimings: Array<{ sizeMB: number; durationMs: number; ok: boolean }> = [];
 
+      // Wrap each upload with withRetry — flaky cellular gives lots of
+      // 1-shot failures that succeed on the second try. 3 attempts with a
+      // 1s base backoff is enough to ride out a brief signal drop without
+      // making the user wait minutes.
       const uploadedImages = await Promise.all(
         imageUris.map(async (uri) => {
           const t0 = Date.now();
           try {
-            const result = await mediaService.uploadImage(uri, user.uid, tempId);
+            const result = await withRetry(
+              () => mediaService.uploadImage(uri, user.uid, tempId),
+              3,
+              1000,
+              'media.uploadImage',
+            );
             imageTimings.push({
               sizeMB: (result as any).sizeMB ?? 0,
               durationMs: Date.now() - t0,
@@ -171,6 +193,10 @@ export default function ConfirmScreen() {
             return result;
           } catch (err) {
             imageTimings.push({ sizeMB: 0, durationMs: Date.now() - t0, ok: false });
+            captureException(err, {
+              tags: { screen: 'confirm', action: 'upload_image' },
+              extra: { tempId, attempts: 3, durationMs: Date.now() - t0 },
+            });
             throw err;
           }
         }),
@@ -179,7 +205,12 @@ export default function ConfirmScreen() {
         videoAssets.map(async (v) => {
           const t0 = Date.now();
           try {
-            const result = await mediaService.uploadVideo(v.uri, user.uid, tempId, v.thumbnailUri);
+            const result = await withRetry(
+              () => mediaService.uploadVideo(v.uri, user.uid, tempId, v.thumbnailUri),
+              3,
+              1500,
+              'media.uploadVideo',
+            );
             videoTimings.push({
               sizeMB: (result as any).sizeMB ?? 0,
               durationMs: Date.now() - t0,
@@ -188,6 +219,10 @@ export default function ConfirmScreen() {
             return result;
           } catch (err) {
             videoTimings.push({ sizeMB: 0, durationMs: Date.now() - t0, ok: false });
+            captureException(err, {
+              tags: { screen: 'confirm', action: 'upload_video' },
+              extra: { tempId, attempts: 3, durationMs: Date.now() - t0 },
+            });
             throw err;
           }
         }),
@@ -201,13 +236,22 @@ export default function ConfirmScreen() {
       const finalAnalysis = { ...analysis, professions: chosenProfessions } as AIAnalysisResult;
 
       const writeStart = Date.now();
-      const request = await requestService.createRequest({
-        userId: user.uid,
-        media: uploadedMedia,
-        aiAnalysis: finalAnalysis,
-        location,
-        textDescription: description,
-      });
+      // Firestore writes are usually instantaneous but a flaky network can
+      // make a single attempt fail. Retry twice — beyond that something's
+      // structurally wrong (auth expired, rules denied) and retrying won't
+      // help.
+      const request = await withRetry(
+        () => requestService.createRequest({
+          userId: user.uid,
+          media: uploadedMedia,
+          aiAnalysis: finalAnalysis,
+          location,
+          textDescription: description,
+        }),
+        2,
+        500,
+        'requests.createRequest',
+      );
       const writeMs = Date.now() - writeStart;
 
       await requestService.updateStatus(request.id, REQUEST_STATUS.OPEN);
@@ -287,9 +331,30 @@ export default function ConfirmScreen() {
         shortSummary: analysis.shortSummary,
         mediaUrls: uploadedMedia.map((m) => m.downloadUrl),
         location,
-      }).catch((err) => logger.error('Broadcast failed', err as Error));
+      }).catch((err) => {
+        logger.error('Broadcast failed', err as Error);
+        // Already captured inside broadcastService with level: 'fatal',
+        // but add a screen-level breadcrumb here so the Sentry trace shows
+        // exactly which user flow surfaced the failure.
+        captureException(err, {
+          tags: { screen: 'confirm', action: 'broadcast_post_create' },
+          extra: { requestId: request.id, professionCount: chosenProfessions.length },
+        });
+      });
     } catch (err: any) {
-      console.error('Send error:', err);
+      // The whole upload-create-broadcast pipeline is one atomic UX from the
+      // user's POV — if anything throws, the user sees a generic error and
+      // we have to figure out which step it was. Capture with the step
+      // we got the furthest into so we can chase the right cause.
+      captureException(err, {
+        tags: { screen: 'confirm', action: 'send_pipeline' },
+        extra: {
+          imageCount: imageUris.length,
+          videoCount: videoAssets.length,
+          professionCount: chosenProfessions.length,
+        },
+        level: 'fatal',
+      });
       setHasError(true);
       setIsSending(false);
     }

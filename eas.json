@@ -28,12 +28,27 @@
     "production": {
       "channel": "production",
       "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
         "EXPO_PUBLIC_ENV": "production"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./play-store-service-account.json",
+        "track": "internal",
+        "releaseStatus": "draft",
+        "changesNotSentForReview": false
+      },
+      "ios": {
+        "appleId": "mr.roee.angel@gmail.com",
+        "ascAppId": "REPLACE_AFTER_FIRST_CREATE",
+        "appleTeamId": "REPLACE_AFTER_APPLE_DEV_SIGNUP"
+      }
+    }
   }
 }
