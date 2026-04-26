@@ -15,6 +15,8 @@
     "deploy:all": "npm run deploy:web && npm run deploy:worker",
     "test": "jest",
     "test:e2e": "maestro test .maestro/",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build -o storybook-static",
     "test:worker": "cd workers/broker && npm test",
     "test:all": "npm test && npm run test:worker",
     "lint": "expo lint"
@@ -77,11 +79,14 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@storybook/react-native-web-vite": "^10.3.5",
+    "@storybook/react-vite": "^10.3.5",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.1.0",
+    "@vitejs/plugin-react": "^4.7.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "jest": "^30.3.0",
@@ -89,8 +94,10 @@
     "jest-expo": "^55.0.15",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "react-test-renderer": "19.1.0",
+    "storybook": "^10.3.5",
     "ts-jest": "^29.4.9",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "vite": "^5.4.21"
   },
   "private": true
 }

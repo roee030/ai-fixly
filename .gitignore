@@ -55,3 +55,7 @@ twilio_2FA_recovery_code.txt
 *.2fa
 *recovery_code*
 .playwright-mcp/
+
+# Storybook build output
+storybook-static/
+
