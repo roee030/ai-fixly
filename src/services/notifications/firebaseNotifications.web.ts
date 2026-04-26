@@ -94,7 +94,7 @@ class WebNotificationService implements NotificationService {
 
         // Show browser notification for foreground messages too
         if (Notification.permission === 'granted' && payload.notification) {
-          new Notification(payload.notification.title || 'ai-fixly', {
+          new Notification(payload.notification.title || 'Fixly', {
             body: payload.notification.body || '',
             icon: '/favicon.png',
           });

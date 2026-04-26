@@ -33,11 +33,12 @@ import { EventBatcher } from './eventLogger';
 import { normaliseCityName } from './cityNames';
 import { parseProviderReply } from './geminiParser';
 import { FirestoreClient } from './firestore';
-import { sendPush } from './fcm';
+import { sendPush, sendPushDetailed } from './fcm';
 import { recordProviderContact, lookupProviderContact } from './phoneMap';
 import { isKillSwitchOn, setKillSwitch, listKillSwitches } from './killSwitch';
 import { verifyFirebaseIdToken } from './firebaseAuthVerify';
 import { verifyTwilioSignature } from './twilioSignature';
+import { softAuth } from './authGuard';
 import { getUrgencyConfig } from './professionConfig';
 import { shortenProviderName } from './nameUtils';
 import { getProvidersForWave, getNextWaveTime } from './tiering';
@@ -94,6 +95,11 @@ export default {
       if (url.pathname === '/broadcast' && request.method === 'POST') {
         const rlOk = await checkRateLimit(env.PLACES_CACHE, `broadcast:${clientIp}`, 10, 3600);
         if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        // Auth guard: broadcast costs Places + Twilio money per call.
+        // Soft mode allows missing token while clients OTA; flip env
+        // BROKER_AUTH_MODE=strict once coverage is confirmed.
+        const auth = await softAuth(request, env, '/broadcast');
+        if (auth instanceof Response) return auth;
         // Admin kill switch — lets the owner pause all WhatsApp outbound
         // activity in an emergency (Twilio on fire, billing overrun, etc.)
         // without redeploying. Returns 503 so the app shows a friendly
@@ -141,11 +147,15 @@ export default {
       if (url.pathname === '/provider/selected' && request.method === 'POST') {
         const rlOk = await checkRateLimit(env.PLACES_CACHE, `selected:${clientIp}`, 20, 3600);
         if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        const auth = await softAuth(request, env, '/provider/selected');
+        if (auth instanceof Response) return auth;
         return await handleProviderSelected(request, env, ctx);
       }
       if (url.pathname === '/chat/send' && request.method === 'POST') {
         const rlOk = await checkRateLimit(env.PLACES_CACHE, `chat:${clientIp}`, 120, 3600);
         if (!rlOk) return jsonResponse({ error: 'Rate limited' }, 429, request);
+        const auth = await softAuth(request, env, '/chat/send');
+        if (auth instanceof Response) return auth;
         return await handleChatSend(request, env, ctx);
       }
       if (url.pathname === '/feedback/critical' && request.method === 'POST') {
@@ -859,6 +869,7 @@ async function handleProviderSelected(request: Request, env: Env, ctx: Execution
       text
     : text;
 
+  const t0 = Date.now();
   const result = await sendWhatsAppMessage({
     accountSid: env.TWILIO_ACCOUNT_SID,
     authToken: env.TWILIO_AUTH_TOKEN,
@@ -866,6 +877,28 @@ async function handleProviderSelected(request: Request, env: Env, ctx: Execution
     to: destinationPhone,
     body: outboundBody,
   });
+  const durationMs = Date.now() - t0;
+
+  // Log the WhatsApp send attempt to the request's events subcollection
+  // so the admin timeline shows "selection notice sent (or not) at HH:MM".
+  // Without this, "the customer picked X but X never got the message" is
+  // a black box. Fire-and-forget — never block the response.
+  const firestore = new FirestoreClient(env.FIREBASE_PROJECT_ID, env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  ctx.waitUntil(
+    firestore
+      .batchWriteEvents(body.requestId, [{
+        type: 'selection_whatsapp_sent',
+        ok: result.success,
+        durationMs,
+        error: result.success ? undefined : (result.error || 'unknown').slice(0, 200),
+        metadata: {
+          providerName: body.providerName,
+          providerPhone: destinationPhone,
+          testMode: isTestMode,
+        },
+      }])
+      .catch(() => {}),
+  );
 
   return jsonResponse({ ok: result.success, error: result.error, testMode: isTestMode }, 200, request);
 }
@@ -1592,11 +1625,13 @@ async function pushToCustomer(params: {
   body: string;
 }): Promise<void> {
   console.log(`[push] pushToCustomer entered type=${params.type} requestId=${params.requestId}`);
+  // Hoisted out of the try so the catch handler can also write events
+  // about its own failure.
+  const firestore = new FirestoreClient(
+    params.env.FIREBASE_PROJECT_ID,
+    params.env.FIREBASE_SERVICE_ACCOUNT_JSON
+  );
   try {
-    const firestore = new FirestoreClient(
-      params.env.FIREBASE_PROJECT_ID,
-      params.env.FIREBASE_SERVICE_ACCOUNT_JSON
-    );
     const requestDoc = await firestore.getRequest(params.requestId);
     if (!requestDoc?.userId) {
       console.warn(`[push] skipping — request ${params.requestId} has no userId`);
@@ -1632,7 +1667,8 @@ async function pushToCustomer(params: {
       badge = bidCount;
     }
 
-    await sendPush({
+    const t0 = Date.now();
+    const result = await sendPushDetailed({
       serviceAccountJson: params.env.FIREBASE_SERVICE_ACCOUNT_JSON,
       token: fcmToken,
       title,
@@ -1647,8 +1683,43 @@ async function pushToCustomer(params: {
       // the user sees a visual reminder of what the push is about.
       imageUrl: requestDoc.heroImageUrl,
     });
+    const durationMs = Date.now() - t0;
+
+    // Log every push attempt — admin timeline shows whether the customer
+    // got pinged when each bid arrived. Without this, "I never got a
+    // notification" complaints are impossible to diagnose.
+    void firestore.batchWriteEvents(params.requestId, [{
+      type: 'push_sent',
+      ok: result.kind === 'ok',
+      durationMs,
+      error: result.kind === 'ok' ? undefined : result.kind,
+      metadata: {
+        pushType: params.type,
+        userId: requestDoc.userId,
+        ...(result.kind === 'invalid_token' || result.kind === 'transient'
+          ? { statusCode: result.statusCode }
+          : {}),
+        ...(result.kind === 'fatal' ? { errorMessage: result.error } : {}),
+      },
+    }]);
+
+    // Dead-token cleanup: if FCM says the token is permanently invalid,
+    // wipe it from the user doc so the next push doesn't waste an API call.
+    // The app will register a fresh token on the next launch.
+    if (result.kind === 'invalid_token') {
+      console.warn(`[push] removing dead FCM token for user ${requestDoc.userId}`);
+      void firestore.clearUserFcmToken(requestDoc.userId);
+    }
   } catch (err) {
     console.error('pushToCustomer failed:', err);
+    // Last-resort observability — we couldn't even reach the push code.
+    void firestore.batchWriteEvents(params.requestId, [{
+      type: 'push_sent',
+      ok: false,
+      durationMs: 0,
+      error: 'pushToCustomer_threw',
+      metadata: { errorMessage: String(err).slice(0, 200) },
+    }]).catch(() => {});
   }
 }
 

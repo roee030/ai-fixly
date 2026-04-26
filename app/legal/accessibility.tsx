@@ -22,7 +22,7 @@ export default function AccessibilityScreen() {
 
         <Text style={styles.sectionTitle}>1. מחויבות לנגישות</Text>
         <Text style={styles.paragraph}>
-          ai-fixly מחויבת להנגשת האפליקציה לכלל המשתמשים, כולל אנשים עם מוגבלויות. אנו פועלים באופן מתמיד לשפר את הנגישות ולהבטיח חוויית שימוש שוויונית לכולם.
+          Fixly מחויבת להנגשת האפליקציה לכלל המשתמשים, כולל אנשים עם מוגבלויות. אנו פועלים באופן מתמיד לשפר את הנגישות ולהבטיח חוויית שימוש שוויונית לכולם.
         </Text>
 
         <Text style={styles.sectionTitle}>2. סטנדרטים</Text>

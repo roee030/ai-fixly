@@ -63,7 +63,7 @@ export function useNotifications() {
     // and mirrors what WhatsApp / Gmail do when you're inside their app.
     const unsubscribeForeground = notificationService.onNotificationReceived(
       (notification) => {
-        const title = notification.title || 'ai-fixly';
+        const title = notification.title || 'Fixly';
         const body = notification.body || '';
         logger.info('Push notification in foreground', { title });
         if (Platform.OS === 'android') {

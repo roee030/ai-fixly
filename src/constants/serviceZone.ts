@@ -1,5 +1,5 @@
 /**
- * Defines the geographic area where ai-fixly is currently active.
+ * Defines the geographic area where Fixly is currently active.
  * Used by the geo-fence check in profile setup and by the worker
  * for search radius validation.
  *

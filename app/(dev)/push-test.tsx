@@ -107,7 +107,7 @@ export default function PushTestScreen() {
           status={perm === 'loading' ? '...' : perm === 'ok' ? 'granted' : 'denied'}
           hint={
             perm === 'denied'
-              ? 'Go to Android Settings → Apps → ai-fixly → Notifications → enable, then tap Re-check.'
+              ? 'Go to Android Settings → Apps → Fixly → Notifications → enable, then tap Re-check.'
               : undefined
           }
           color={permColor}

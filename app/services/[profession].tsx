@@ -24,11 +24,11 @@ function buildServiceJsonLd(name: string, canonicalUrl: string, description: str
   return {
     '@context': 'https://schema.org',
     '@type': 'Service',
-    name: `${name} — ai-fixly`,
+    name: `${name} — Fixly`,
     description,
     provider: {
       '@type': 'Organization',
-      name: 'ai-fixly',
+      name: 'Fixly',
       url: BASE_URL,
       logo: `${BASE_URL}/icon.png`,
     },
@@ -101,7 +101,7 @@ function SeoHead({
       <meta property="og:type" content="website" />
       <meta property="og:url" content={canonicalUrl} />
       <meta property="og:locale" content={language === 'he' ? 'he_IL' : language === 'ar' ? 'ar_IL' : language === 'ru' ? 'ru_RU' : 'en_US'} />
-      <meta property="og:site_name" content="ai-fixly" />
+      <meta property="og:site_name" content="Fixly" />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={title} />
       <meta name="twitter:description" content={metaDescription} />
