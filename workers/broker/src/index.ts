@@ -1369,7 +1369,7 @@ async function handleCriticalFeedback(request: Request, env: Env): Promise<Respo
   const screen = (body.screen || 'unknown').slice(0, 100);
   const error = (body.error || '').slice(0, 500);
 
-  const ownerPhone = '+972546651088';
+  const ownerPhone = '+972548336350';
   const message = [
     '\uD83D\uDEA8 *\u05D3\u05D9\u05D5\u05D5\u05D7 \u05E7\u05E8\u05D9\u05D8\u05D9 \u05DE\u05D4\u05D0\u05E4\u05DC\u05D9\u05E7\u05E6\u05D9\u05D4*',
     '',
@@ -1575,7 +1575,7 @@ async function handleAlertChecks(firestore: FirestoreClient, env: Env): Promise<
   // Send WhatsApp for critical/warning alerts
   const criticalAlerts = alerts.filter(a => a.severity === 'critical' || a.severity === 'warning');
   if (criticalAlerts.length > 0) {
-    const ownerPhone = '+972546651088';
+    const ownerPhone = '+972548336350';
     const testPhone = (env.TEST_PHONE_OVERRIDE || '').trim();
     const isTestMode = testPhone.length > 0;
 

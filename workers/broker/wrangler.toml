@@ -38,7 +38,7 @@ DRY_RUN = "true"
 # WhatsApp flow against YOUR own phone without bothering real providers.
 # Overrides DRY_RUN when set. Leave empty to disable.
 # Example: TEST_PHONE_OVERRIDE = "+972501234567"
-TEST_PHONE_OVERRIDE = "+972546651088"
+TEST_PHONE_OVERRIDE = "+972548336350"
 
 # Cron: check for pending wave broadcasts every 5 minutes
 [triggers]
